@@ -3,4 +3,8 @@ name = "irmf-slicer"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "irmf_slicer"
+path = "src/main.rs"
+
 [dependencies]

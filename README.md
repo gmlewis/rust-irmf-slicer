@@ -69,21 +69,20 @@ however, this standalone slicer will no longer be needed.
 
 ## How do I install it?
 
-After you have a recent version of [Go](https://go.dev/) installed,
+After you have a recent version of [Rust](https://rustup.rs/) installed,
 run the following command in a terminal window:
 
 ```sh
-$ go install github.com/gmlewis/irmf-slicer/v3/cmd/irmf-slicer
+$ cargo install irmf-slicer
 ```
 
-Then you might want to try it out on some of the [example IRMF
-shaders](https://github.com/gmlewis/irmf-examples?tab=readme-ov-file#examples) located on GitHub.
+Then you might want to try it out on some of the [example IRMF shaders](/examples).
 
 To slice one or more `.irmf` files, just list them on the command line,
 like this:
 
 ```sh
-$ irmf-slicer -view -stl examples/*/*.irmf
+$ irmf_slicer -view -stl examples/*/*.irmf
 ```
 
 The output files will be saved in the same directory as the original

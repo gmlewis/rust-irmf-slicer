@@ -2,6 +2,15 @@
 name = "irmf-slicer"
 version = "0.1.0"
 edition = "2024"
+categories = ["command-line-utilities", "3d-printing", "3d-modeling", "cad"]
+description = "A slicer for IRMF (Infinite Resolution Materials Format) files"
+exclude = ["assets/", "tools/", ".github/", "crates/", "examples/wasm/assets/"]
+homepage = "https://irmf.io"
+keywords = ["3d-printing", "slicer", "irmf", "infinite-resolution", "materials", "cad", "3d", "modeling"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/gmlewis/rust-irmf-slicer"
+rust-version = "1.92.0"
 
 [[bin]]
 name = "irmf_slicer"

@@ -1,0 +1,59 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-07-15",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA1"],
+  "max": [21,15,3],
+  "min": [-15,-15,-3],
+  "notes": "Chain link.",
+  "options": {},
+  "title": "Chain Link",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const M_PI = 3.1415926535897932384626433832795;
+
+fn torus(majorRadius: f32, minorRadius: f32, fromDeg: f32, toDeg: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  if (r > majorRadius + minorRadius || r < majorRadius - minorRadius) { return 0.0; }
+  
+  let angle = atan2(xyz.y, xyz.x);
+  let center = vec3f(majorRadius * cos(angle), majorRadius * sin(angle), 0.0);
+  let v = xyz - center;
+  let r2 = length(v);
+  if (r2 > minorRadius) { return 0.0; }
+  
+  var angleDeg = (360.0 + atan2(xyz.y, xyz.x) * 180.0 / M_PI) % 360.0;
+  if (fromDeg < toDeg && (angleDeg < fromDeg || angleDeg > toDeg)) { return 0.0; }
+  if (fromDeg > toDeg && angleDeg < fromDeg && angleDeg > toDeg) { return 0.0; }
+  
+  return 1.0;
+}
+
+fn cylinder(radius: f32, height: f32, xyz: vec3f) -> f32 {
+  // First, trivial reject on the two ends of the cylinder.
+  if (xyz.x < 0.0 || xyz.x > height) { return 0.0; }
+  
+  // Then, constrain radius of the cylinder:
+  let r = length(xyz.yz);
+  if (r > radius) { return 0.0; }
+  
+  return 1.0;
+}
+
+fn chainLink(majorRadius: f32, minorRadius: f32, separator: f32, xyz: vec3f) -> f32 {
+  var result = torus(majorRadius, minorRadius, 90.0, 270.0, xyz);
+  result += torus(majorRadius, minorRadius, 270.0, 90.0, xyz - vec3f(separator, 0.0, 0.0));
+  result += cylinder(minorRadius, separator, xyz - vec3f(0.0, majorRadius, 0.0));
+  result += cylinder(minorRadius, separator, xyz + vec3f(0.0, majorRadius, 0.0));
+  return result;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = chainLink(9.0, 3.0, 6.0, xyz);
+  return materials;
+}

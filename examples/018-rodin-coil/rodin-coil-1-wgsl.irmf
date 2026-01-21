@@ -1,0 +1,102 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-06-30",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["copper"],
+  "max": [170,150,50],
+  "min": [-150,-150,-50],
+  "notes": "1st order Rodin coil.",
+  "options": {},
+  "title": "1st order Rodin coil",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const M_PI = 3.1415926535897932384626433832795;
+
+fn rotAxis(axis: vec3f, a: f32) -> mat3x3f {
+  let s = sin(a);
+  let c = cos(a);
+  let oc = 1.0 - c;
+  let as_ = axis * s;
+  let p = mat3x3f(axis.x * axis, axis.y * axis, axis.z * axis);
+  let q = mat3x3f(c, as_.z, -as_.y, -as_.z, c, as_.x, as_.y, -as_.x, c);
+  return p * oc + q;
+}
+
+fn mat3ToMat4(m: mat3x3f) -> mat4x4f {
+  return mat4x4f(
+    vec4f(m[0], 0.0),
+    vec4f(m[1], 0.0),
+    vec4f(m[2], 0.0),
+    vec4f(0.0, 0.0, 0.0, 1.0)
+  );
+}
+
+fn rotX(angle: f32) -> mat4x4f {
+  return mat3ToMat4(rotAxis(vec3f(1.0,0.0,0.0), angle));
+}
+
+fn rotY(angle: f32) -> mat4x4f {
+  return mat3ToMat4(rotAxis(vec3f(0.0,1.0,0.0), angle));
+}
+
+fn rotZ(angle: f32) -> mat4x4f {
+  return mat3ToMat4(rotAxis(vec3f(0.0,0.0,1.0), angle));
+}
+
+fn cube(xfm: mat4x4f, size: f32, xyz: vec3f) -> f32 {
+  let xyz_xfm = (xfm * vec4f(xyz, 1.0)).xyz;
+  if (any(abs(xyz_xfm) > vec3f(size))) { return 0.0; }
+  return 1.0;
+}
+
+fn rodinCoil(majorRadius: f32, minorRadius: f32, bundleRadius: f32, numBundles: f32, twistsPerRevolution: i32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  if (r > majorRadius + minorRadius || r < majorRadius - minorRadius) { return 0.0; }
+  
+  var angle = atan2(xyz.y, xyz.x);
+  if (angle < 0.0) { angle += 2.0 * M_PI; }
+  let torusSliceXYZ = (rotZ(-angle) * vec4f(xyz, 1.0)).xyz - vec3f(majorRadius, 0.0, 0.0);
+  let twistedSliceXYZ = (rotY((f32(twistsPerRevolution) + (1.0/numBundles)) * angle) * vec4f(torusSliceXYZ, 1.0)).xyz;
+  
+  var subAngle = atan2(twistedSliceXYZ.z, twistedSliceXYZ.x);
+  if (subAngle < 0.0) { subAngle += 2.0 * M_PI; }
+  let bundleNum = floor(subAngle * numBundles / (2.0 * M_PI) + 0.5 * numBundles / (2.0 * M_PI));
+  let bundleAngle = 2.0 * M_PI * bundleNum / numBundles;
+  let offsetRadius = minorRadius - bundleRadius;
+  let bundleCenter = vec3f(offsetRadius * cos(bundleAngle), 0.0, offsetRadius * sin(bundleAngle));
+  let subBundleXYZ = twistedSliceXYZ - bundleCenter;
+  let r2 = length(subBundleXYZ.xz);
+  if (r2 > bundleRadius) { return 0.0; }
+  
+  return 1.0;
+}
+
+fn wire(xfm: mat4x4f, start: vec3f, end: vec3f, size: f32, xyz: vec3f) -> f32 {
+  let xyz_xfm = (xfm * vec4f(xyz, 1.0)).xyz;
+  if (xyz_xfm.x < start.x - size || xyz_xfm.x > end.x + size) { return 0.0; }
+  let v = xyz_xfm - start;
+  let r = length(v.yz);
+  if (r > 0.75 * size) { return 0.0; }
+  return 1.0;
+}
+
+fn wiredRodinCoil(majorRadius: f32, minorRadius: f32, bundleRadius: f32, numBundles: i32, twistsPerRevolution: i32, xyz: vec3f) -> f32 {
+  var coil = rodinCoil(majorRadius, minorRadius, bundleRadius, f32(numBundles), twistsPerRevolution, xyz);
+  let x = majorRadius + minorRadius - bundleRadius;
+  let rot = rotX(0.25 * M_PI);
+  coil -= cube(rot, bundleRadius, xyz - vec3f(x, 0.0, 0.0));
+  coil += wire(rot, vec3f(x, 0.0, bundleRadius), vec3f(x + 4.0 * bundleRadius, 0.0, bundleRadius), bundleRadius, xyz);
+  coil += wire(rot, vec3f(x, 0.0, -bundleRadius), vec3f(x + 4.0 * bundleRadius, 0.0, -bundleRadius), bundleRadius, xyz);
+  
+  return coil;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = wiredRodinCoil(100.0, 50.0, 5.0, 9, 3, xyz);
+  return materials;
+}

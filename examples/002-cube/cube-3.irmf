@@ -1,0 +1,25 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-06-30",
+  "irmf": "1.0",
+  "language": "glsl",
+  "materials": ["PLA"],
+  "max": [0.5,0.5,0.5],
+  "min": [-0.5,-0.5,-0.5],
+  "notes": "Simple IRMF shader - cube function",
+  "options": {},
+  "title": "1mm diameter Cube",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+float cube(in mat4 xfm, in vec4 xyz) {
+  xyz = xyz * xfm;
+  if (any(greaterThan(abs(xyz), vec4(0.5, 0.5, 0.5, 1.0)))) { return 0.0; }
+  return 1.0;
+}
+
+void mainModel4(out vec4 materials, in vec3 xyz) {
+  materials[0] = cube(mat4(1), vec4(xyz, 1.0)); // mat4(1) is the identity matrix.
+}

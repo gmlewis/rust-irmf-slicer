@@ -1,0 +1,67 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-03-05",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA"],
+  "max": [5,5,1.5],
+  "min": [-5,-5,-1.5],
+  "notes": "Simple IRMF shader - coil with square cross-section face. Includes trimStartAngle and trimEndAngle.",
+  "options": {},
+  "title": "5mm outer-diameter, 3mm inner-diameter coil",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const M_PI = 3.1415926535897932384626433832795;
+
+fn coilSquareFace(radius: f32, size: f32, gap: f32, nTurns: i32, trimStartAngle: f32, trimEndAngle: f32, xyz: vec3f) -> f32 {
+  // First, trivial reject on the two vertical ends of the coil.
+  if (xyz.z < -0.5 * size || xyz.z > f32(nTurns) * (size + gap) + 0.5 * size) { return 0.0; }
+  
+  // Then, constrain the coil to the cylinder with wall thickness "size":
+  let rxy = length(xyz.xy);
+  if (rxy < radius - 0.5 * size || rxy > radius + 0.5 * size) { return 0.0; }
+  
+  // If the current point is between the coils, return no material:
+  var angle = atan2(xyz.y, xyz.x) / (2.0 * M_PI);
+  if (angle < 0.0) { angle += 1.0; } // 0 <= angle <= 1 between coils from center to center.
+  // 0 <= dz <= (size+gap) between coils from center to center.
+  let dz = xyz.z - (size + gap) * floor(xyz.z / (size + gap));
+  
+  var lastHelixZ = angle * (size + gap);
+  var coilNum = 0.0;
+  if (lastHelixZ > dz) {
+    lastHelixZ -= (size + gap); // center of current coil.
+    coilNum = -1.0;
+  }
+  let nextHelixZ = lastHelixZ + (size + gap); // center of next higher vertical coil.
+  
+  // If the current point is within the gap between the two coils, reject it.
+  if (dz > lastHelixZ + 0.5 * size && dz < nextHelixZ - 0.5 * size) { return 0.0; }
+  
+  coilNum += floor((xyz.z + (0.5 * size) - lastHelixZ) / (size + gap));
+  
+  // If the current point is in a coil numbered outside the current range, reject it.
+  if (coilNum < 0.0 || coilNum >= f32(nTurns)) { return 0.0; }
+  
+  // For the last two checks, convert angle back to radians.
+  let rad_angle = angle * (2.0 * M_PI);
+  
+  // If the current point is in the first coil, use the trimStartAngle.
+  if (coilNum < 1.0) { return select(0.0, 1.0, rad_angle >= trimStartAngle); }
+  
+  // If the current point is in the last coil, use the trimEndAngle.
+  if (coilNum >= f32(nTurns) - 1.0 && trimEndAngle > 0.0) { return select(0.0, 1.0, rad_angle <= trimEndAngle); }
+  
+  return 1.0;
+}
+
+fn mainModel4(xyz_in: vec3f) -> vec4f {
+  var xyz = xyz_in;
+  xyz.z += 1.0;
+  var materials = vec4f(0.0);
+  materials[0] = coilSquareFace(3.0, 0.85, 0.15, 2, 0.5, (2.0 * M_PI) - 0.5, xyz);
+  return materials;
+}

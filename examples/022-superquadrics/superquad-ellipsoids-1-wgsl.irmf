@@ -1,0 +1,45 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-03-17",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Figure 7 from: https://authors.library.caltech.edu/9756.",
+  "options": {},
+  "title": "Superquadric ellipsoids",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn superquad(e1: f32, e2: f32, xyz_in: vec3f) -> f32 {
+  let xyz = abs(xyz_in);
+  let f = pow(pow(xyz.x, 2.0 / e2) + pow(xyz.y, 2.0 / e2), e2 / e1) + pow(xyz.z, 2.0 / e1);
+  return select(0.0, 1.0, f <= 1.0);
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let u = 1.2;
+  let v = 3.4;
+  var materials = vec4f(0.0);
+  materials[0] =
+  superquad(0.3, 0.3, xyz - vec3f(-v, 0.0, v))
+  + superquad(0.3, 0.1, xyz - vec3f(-u, 0.0, v))
+  + superquad(0.3, 1.0, xyz - vec3f(u, 0.0, v))
+  + superquad(0.3, 3.0, xyz - vec3f(v, 0.0, v))
+  + superquad(0.1, 0.3, xyz - vec3f(-v, 0.0, u))
+  + superquad(0.1, 0.1, xyz - vec3f(-u, 0.0, u))
+  + superquad(0.1, 1.0, xyz - vec3f(u, 0.0, u))
+  + superquad(0.1, 3.0, xyz - vec3f(v, 0.0, u))
+  + superquad(1.0, 0.3, xyz - vec3f(-v, 0.0, - u))
+  + superquad(1.0, 0.1, xyz - vec3f(-u, 0.0, - u))
+  + superquad(1.0, 1.0, xyz - vec3f(u, 0.0, - u))
+  + superquad(1.0, 3.0, xyz - vec3f(v, 0.0, - u))
+  + superquad(3.0, 0.3, xyz - vec3f(-v, 0.0, - v))
+  + superquad(3.0, 0.1, xyz - vec3f(-u, 0.0, - v))
+  + superquad(3.0, 1.0, xyz - vec3f(u, 0.0, - v))
+  + superquad(3.0, 3.0, xyz - vec3f(v, 0.0, - v));
+  return materials;
+}

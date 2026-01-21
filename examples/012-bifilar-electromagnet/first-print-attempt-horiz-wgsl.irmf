@@ -1,0 +1,150 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-10-12",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["copper"],
+  "max": [71,25,25],
+  "min": [-61,-25,-25],
+  "notes": "The IRMF shader that started it all... the bifilar electromagnet.",
+  "options": {},
+  "title": "axial+radial bifilar electromagnet - full model - first 3D print attempt",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const M_PI = 3.1415926535897932384626433832795;
+
+fn rotAxis(axis: vec3f, a: f32) -> mat3x3f {
+  let s = sin(a);
+  let c = cos(a);
+  let oc = 1.0 - c;
+  let as_ = axis * s;
+  let p = mat3x3f(axis.x * axis, axis.y * axis, axis.z * axis);
+  let q = mat3x3f(c, as_.z, -as_.y, -as_.z, c, as_.x, as_.y, -as_.x, c);
+  return p * oc + q;
+}
+
+fn mat3ToMat4(m: mat3x3f) -> mat4x4f {
+  return mat4x4f(
+    vec4f(m[0], 0.0),
+    vec4f(m[1], 0.0),
+    vec4f(m[2], 0.0),
+    vec4f(0.0, 0.0, 0.0, 1.0)
+  );
+}
+
+fn rotZ(angle: f32) -> mat4x4f {
+  return mat3ToMat4(rotAxis(vec3f(0.0, 0.0, 1.0), angle));
+}
+
+fn box_prim(start: vec3f, end: vec3f, size: f32, xyz: vec3f) -> f32 {
+  let ll = min(start, end) - vec3f(0.5 * size);
+  let ur = max(start, end) + vec3f(0.5 * size);
+  if (any(xyz < ll) || any(xyz > ur)) { return 0.0; }
+  return 1.0;
+}
+
+fn cylinder(radius: f32, height: f32, xyz: vec3f) -> f32 {
+  if (xyz.z < 0.0 || xyz.z > height) { return 0.0; }
+  let rxy = length(xyz.xy);
+  if (rxy > radius) { return 0.0; }
+  return 1.0;
+}
+
+fn wgsl_mod(x: f32, y: f32) -> f32 {
+  return x - y * floor(x / y);
+}
+
+fn coilSquareFace(radius: f32, size: f32, gap: f32, nTurns: i32, trimStartAngle: f32, trimEndAngle: f32, xyz: vec3f) -> f32 {
+  if (xyz.z < -0.5 * size || xyz.z > f32(nTurns) * (size + gap) + 0.5 * size) { return 0.0; }
+  let rxy = length(xyz.xy);
+  if (rxy < radius - 0.5 * size || rxy > radius + 0.5 * size) { return 0.0; }
+  var angle = atan2(xyz.y, xyz.x) / (2.0 * M_PI);
+  if (angle < 0.0) { angle += 1.0; }
+  let dz = wgsl_mod(xyz.z, size + gap);
+  var lastHelixZ = angle * (size + gap);
+  var coilNum = 0.0;
+  if (lastHelixZ > dz) {
+    lastHelixZ -= (size + gap);
+    coilNum = -1.0;
+  }
+  let nextHelixZ = lastHelixZ + (size + gap);
+  if (dz > lastHelixZ + 0.5 * size && dz < nextHelixZ - 0.5 * size) { return 0.0; }
+  coilNum += floor((xyz.z + (0.5 * size) - lastHelixZ) / (size + gap));
+  if (coilNum < 0.0 || coilNum >= f32(nTurns)) { return 0.0; }
+  let rad_angle = angle * (2.0 * M_PI);
+  if (coilNum < 1.0) { return select(0.0, 1.0, rad_angle >= trimStartAngle); }
+  if (coilNum >= f32(nTurns) - 1.0 && trimEndAngle > 0.0) { return select(0.0, 1.0, rad_angle <= trimEndAngle); }
+  return 1.0;
+}
+
+fn coilPlusConnectorWires(wireNum: i32, coilNum: i32, numCoils: i32, inc: f32, innerRadius: f32, connectorRadius: f32, size: f32, singleGap: f32, nTurns: i32, xyz_orig: vec3f) -> f32 {
+  let gap = size + 2.0 * singleGap;
+  let radiusOffset = f32(coilNum - 1);
+  let spacingAngle = f32(numCoils - 4) * inc * atan(2.0 * radiusOffset / f32(numCoils - 1));
+  let xfm = rotZ(spacingAngle);
+  var coilRadius = radiusOffset + innerRadius;
+  let trimStartAngle = 0.05;
+  var xyz = (xfm * vec4f(xyz_orig, 1.0)).xyz;
+  var coil = coilSquareFace(coilRadius, size, gap, nTurns, trimStartAngle, 0.0, xyz);
+  let tz = f32(nTurns) * (size + gap);
+  let zexit = (f32(nTurns) + 10.0) * (size + gap);
+  if (coilNum == numCoils) {
+    if (wireNum == 1) {
+      let slightRot = rotZ(0.16);
+      xyz = (slightRot * vec4f(xyz, 1.0)).xyz;
+      coil += box_prim(vec3f(coilRadius, 0.0, tz), vec3f(coilRadius, 0.0, zexit), size, xyz);
+    } else {
+      coil += box_prim(vec3f(coilRadius, 0.0, tz), vec3f(connectorRadius, 0.0, tz), size, xyz);
+      coil += box_prim(vec3f(connectorRadius, 0.0, - size), vec3f(connectorRadius, 0.0, tz), size, xyz);
+      coil += box_prim(vec3f(connectorRadius, 0.0, - size), vec3f(innerRadius, 0.0, - size), size, xyz);
+      coil += box_prim(vec3f(innerRadius, 0.0, - size), vec3f(innerRadius, 0.0, 0.0), size, xyz);
+      coil += box_prim(vec3f(-innerRadius, 0.0, - size), vec3f(-innerRadius, 0.0, 0.0), size, xyz);
+      coil += box_prim(vec3f(-connectorRadius, 0.0, - size), vec3f(-innerRadius, 0.0, - size), size, xyz);
+      coil += box_prim(vec3f(-connectorRadius, 0.0, - size), vec3f(-connectorRadius, 0.0, zexit), size, xyz);
+    }
+  } else {
+    coil += box_prim(vec3f(coilRadius, 0.0, tz), vec3f(coilRadius, 0.0, tz + size), size, xyz);
+    coil += box_prim(vec3f(coilRadius, 0.0, tz + size), vec3f(connectorRadius, 0.0, tz + size), size, xyz);
+    coil += box_prim(vec3f(connectorRadius, 0.0, - size), vec3f(connectorRadius, 0.0, tz + size), size, xyz);
+    coilRadius += size + singleGap;
+    coil += box_prim(vec3f(coilRadius, 0.0, - size), vec3f(connectorRadius, 0.0, - size), size, xyz);
+    coil += box_prim(vec3f(coilRadius, 0.0, - size), vec3f(coilRadius, 0.0, 0.0), size, xyz);
+  }
+  return clamp(coil, 0.0, 1.0);
+}
+
+fn arBifilarElectromagnet(numPairs: i32, innerRadius: f32, size: f32, gap: f32, numTurns: i32, xyz: vec3f) -> vec3f {
+  let nTurns = f32(numTurns);
+  let inc = M_PI / f32(numPairs);
+  let connectorRadius = innerRadius + f32(numPairs) * (size + gap);
+  var metal1 = 0.0;
+  var metal2 = 0.0;
+  let xfm = rotZ(M_PI);
+  let xyz180Z = (xfm * vec4f(xyz, 1.0)).xyz;
+  for(var i = 1; i <= numPairs; i ++ ) {
+    metal1 += coilPlusConnectorWires(1, i, numPairs, inc, innerRadius, connectorRadius, size, gap, numTurns, xyz);
+    metal2 += coilPlusConnectorWires(2, i, numPairs, inc, innerRadius, connectorRadius, size, gap, numTurns, xyz180Z);
+  }
+  metal1 = clamp(metal1, 0.0, 1.0);
+  metal2 = clamp(metal2 - metal1, 0.0, 1.0);
+  let dielectricRadius = f32(numPairs) * (size + gap) + innerRadius + gap;
+  let dielectricHeight = 2.0 * (nTurns + 2.0) * (size + gap);
+  var dielectric = cylinder(dielectricRadius, dielectricHeight, xyz + vec3f(0.0, 0.0, 2.0));
+  let solidCore = 2.0 * cylinder(innerRadius - 0.5 * size - gap - 0.05, dielectricHeight, xyz + vec3f(0.0, 0.0, 2.0));
+  let spindleRadius = f32(numPairs + 1) * (size + gap) + innerRadius;
+  dielectric += cylinder(spindleRadius, 2.0 * (size + gap), xyz + vec3f(0.0, 0.0, 2.0));
+  dielectric += cylinder(spindleRadius, 2.0 * (size + gap), xyz - vec3f(0.0, 0.0, dielectricHeight - 4.0));
+  dielectric -= 2.0 * cylinder(innerRadius - 0.5 * size - gap, dielectricHeight, xyz + vec3f(0.0, 0.0, 2.0));
+  dielectric = clamp(dielectric - metal1 - metal2, 0.0, 1.0);
+  return vec3f(metal1 + metal2, solidCore, dielectric);
+}
+
+fn mainModel4(xyz_in: vec3f) -> vec4f {
+  var xyz = xyz_in;
+  xyz.x += 60.0;
+  let res = arBifilarElectromagnet(20, 3.0, 0.85, 0.15, 61, xyz.zyx);
+  return vec4f(res, 0.0);
+}

@@ -1,0 +1,57 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-04-12",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["Red","Green"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "https://en.wikipedia.org/wiki/Oloid",
+  "options": {
+    "resolution": 2048,
+    "color1": [255,0,0,1],
+    "color2": [0,255,0,1]
+  },
+  "title": "Oloid",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const M_PI = 3.1415926535897932384626433832795;
+
+fn wgsl_mod(x: f32, y: f32) -> f32 {
+  return x - y * floor(x / y);
+}
+
+fn oloid2(slices: f32, xyz: vec3f) -> vec2f {
+  if (xyz.x >= 0.0) {
+    let r = length(xyz.xy - vec2f(0.5, 0.0));
+    if (r > 1.0) { return vec2f(0.0); }
+    let y = abs(xyz.y);
+    let h = sin(120.0 * M_PI / 180.0) * (1.0 - xyz.x / 1.5);
+    let sy = sqrt((1.0 - (xyz.x - 0.5) * (xyz.x - 0.5)));
+    let sz = mix(h, 0.0, y / sy);
+    let z = abs(xyz.z);
+    if (z > sz) { return vec2f(0.0); }
+    if (wgsl_mod(abs(xyz.z) * slices, 1.0) <= 0.5) { return vec2f(1.0, 0.0); }
+    return vec2f(0.0, 1.0);
+  } else {
+    let r = length(xyz.xz + vec2f(0.5, 0.0));
+    if (r > 1.0) { return vec2f(0.0); }
+    let z = abs(xyz.z);
+    let h = sin(120.0 * M_PI / 180.0) * (1.0 + xyz.x / 1.5);
+    let sz = sqrt((1.0 - (xyz.x + 0.5) * (xyz.x + 0.5)));
+    let sy = mix(h, 0.0, z / sz);
+    let y = abs(xyz.y);
+    if (y > sy) { return vec2f(0.0); }
+    if (wgsl_mod(-abs(xyz.y) * slices, 1.0) <= 0.5) { return vec2f(1.0, 0.0); }
+    return vec2f(0.0, 1.0);
+  }
+  return vec2f(0.0);
+}
+
+fn mainModel4(xyz_in: vec3f) -> vec4f {
+  let res = oloid2(5.79, xyz_in / (5.0 / 1.5));
+  return vec4f(res, 0.0, 0.0);
+}

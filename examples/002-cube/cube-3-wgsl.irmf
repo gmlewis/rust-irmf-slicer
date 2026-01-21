@@ -1,0 +1,27 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-06-30",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA"],
+  "max": [0.5,0.5,0.5],
+  "min": [-0.5,-0.5,-0.5],
+  "notes": "Simple IRMF shader - cube function",
+  "options": {},
+  "title": "1mm diameter Cube",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn cube(xfm: mat4x4f, xyz_in: vec4f) -> f32 {
+  let xyz = xfm * xyz_in;
+  if (any(abs(xyz) > vec4f(0.5, 0.5, 0.5, 1.0))) { return 0.0; }
+  return 1.0;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = cube(mat4x4f(vec4f(1,0,0,0), vec4f(0,1,0,0), vec4f(0,0,1,0), vec4f(0,0,0,1)), vec4f(xyz, 1.0));
+  return materials;
+}

@@ -1,0 +1,46 @@
+/*{
+  "irmf": "1.0",
+  "language": "glsl",
+  "materials": ["material0"],
+  "max": [50.04315,10.012651,50.04315],
+  "min": [-50.04315,-5,-50.04315],
+  "units": "mm"
+}*/
+
+vec2 gsdfWinding(vec2 p,vec2 v1,vec2 v2,vec2 d_s){
+  vec2 e=v2-v1;
+  vec2 w=p-v1;
+  vec2 b=w-e*clamp(dot(w,e)/dot(e,e),0.,1.);
+  d_s.x=min(d_s.x,dot(b,b));
+  // winding number from http://geomalgorithms.com/a03-_inclusion.html
+  bvec3 cond=bvec3(p.y>=v1.y,
+    p.y<v2.y,
+  e.x*w.y>e.y*w.x);
+  if(all(cond)||all(not(cond))){
+    d_s.y=-d_s.y;
+  }
+  return d_s;
+}
+float poly2Dbnjic2bp8rorpnqrlf3(vec2 p){
+  vec2[25]v=vec2[25](vec2(0.,0.),vec2(40.,0.),vec2(47.07106781,10.),vec2(47.435428619,10.012651443),vec2(47.798168182,9.976100922),vec2(48.152679443,9.891014099),vec2(48.49249649,9.758943558),vec2(48.811424255,9.582296371),vec2(49.10364151,9.364293098),vec2(49.363830566,9.108909607),vec2(49.587238312,8.820800781),vec2(49.769794464,8.505221367),vec2(49.908172607,8.167924881),vec2(49.999847412,7.815060139),vec2(50.043151855,7.453062057),vec2(50.037288666,7.088530064),vec2(49.982368469,6.728111267),vec2(49.879394531,6.378376961),
+  vec2(49.730243683,6.045703888),vec2(49.537635803,5.736157417),vec2(49.305076599,5.455381393),vec2(49.036815643,5.20849514),vec2(48.737735748,5.),vec2(42.5,-5.),vec2(0.,-5.));
+  const int num=v.length();
+  vec2 d_s=vec2(dot(p-v[0],p-v[0]),1.);
+  for(int i=0,j=num-1;i<num;j=i,i++)
+  {
+    d_s=gsdfWinding(p,v[i],v[j],d_s);
+  }
+  return d_s.y*sqrt(d_s.x);
+  
+}
+float revolution_p7r125nfu2r9vk(vec3 p){
+  float w=0.;
+  vec2 q=vec2(length(p.xz)-w,p.y);
+  float d=poly2Dbnjic2bp8rorpnqrlf3(q);
+  return d;
+}
+
+void mainModel4(out vec4 materials,in vec3 xyz){
+  float d=revolution_p7r125nfu2r9vk(xyz);
+  materials=vec4(d<=0.?1.:0.,0.,0.,0.);
+}

@@ -1,0 +1,27 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-07-24",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Nostalgic cos(θ)+cos(2θ)+cos(5θ) 3D function.",
+  "options": {},
+  "title": "cos125",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn cos125(thickness: f32, xyz: vec3f) -> f32 {
+  let theta = length(xyz.xy);
+  let z = cos(theta) + cos(2.0 * theta) + cos(5.0 * theta);
+  return select(0.0, 1.0, xyz.z <= z && xyz.z >= z-thickness);
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = cos125(0.4, xyz);
+  return materials;
+}

@@ -1,0 +1,34 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-07-13",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Simple IRMF shader - tube.",
+  "options": {},
+  "title": "tube",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn tube(innerRadius: f32, outerRadius: f32, height: f32, xyz: vec3f) -> f32 {
+  // First, trivial reject on the two ends of the tube.
+  if (xyz.z < 0.0 || xyz.z > height) { return 0.0; }
+  
+  // Then, constrain the tube to the inner and outer radii.
+  let rxy = length(xyz.xy);
+  if (rxy < innerRadius || rxy > outerRadius) { return 0.0; }
+  
+  return 1.0;
+}
+
+fn mainModel4(xyz_in: vec3f) -> vec4f {
+  var xyz = xyz_in;
+  xyz.z += 5.0;
+  var materials = vec4f(0.0);
+  materials[0] = tube(4.0, 5.0, 10.0, xyz);
+  return materials;
+}

@@ -1,0 +1,99 @@
+/*{
+  "irmf": "1.0",
+  "language": "glsl",
+  "materials": ["material0"],
+  "max": [30,30,5.388603],
+  "min": [-30,-30,-12.5],
+  "units": "mm"
+}*/
+
+vec2 gsdfWinding(vec2 p,vec2 v1,vec2 v2,vec2 d_s){
+  vec2 e=v2-v1;
+  vec2 w=p-v1;
+  vec2 b=w-e*clamp(dot(w,e)/dot(e,e),0.,1.);
+  d_s.x=min(d_s.x,dot(b,b));
+  // winding number from http://geomalgorithms.com/a03-_inclusion.html
+  bvec3 cond=bvec3(p.y>=v1.y,
+    p.y<v2.y,
+  e.x*w.y>e.y*w.x);
+  if(all(cond)||all(not(cond))){
+    d_s.y=-d_s.y;
+  }
+  return d_s;
+}
+
+float gsdfCylinder3D(vec3 p,float radius,float h,float round){
+  p=p.xzy;
+  vec2 d=vec2(length(p.xz)-radius+round,abs(p.y)-h);
+  return min(max(d.x,d.y),0.)+length(max(d,0.))-round;
+}
+float poly2Dflugflf3v00831obob8(vec2 p){
+  vec2[12]v=vec2[12](vec2(.071428575,0.),vec2(.071428575,.381338149),vec2(.026785716,.381338149),vec2(.004464287,.419999987),vec2(.003029984,.421592951),vec2(.00107177,.422464788),vec2(-.001071763,.422464788),vec2(-.003029979,.421592951),vec2(-.004464287,.419999987),vec2(-.026785716,.381338149),vec2(-.071428575,.381338149),vec2(-.071428575,0.));
+  const int num=v.length();
+  vec2 d_s=vec2(dot(p-v[0],p-v[0]),1.);
+  for(int i=0,j=num-1;i<num;j=i,i++)
+  {
+    d_s=gsdfWinding(p,v[i],v[j],d_s);
+  }
+  return d_s.y*sqrt(d_s.x);
+  
+}
+float cyl1p1811023oh28c71of2jb(vec3 p){
+  return gsdfCylinder3D(p,1.181102395,.103346452,.034448817);
+}
+float screw_0d0714fcuusg6vjei0r(vec3 p){
+  float lead=-.071428575;
+  float pitch=.071428575;
+  float taper=.031239834;
+  float L=.214271203;
+  
+  #define Pi 3.1415926535897932384626433832795
+  float y=length(p.xy);
+  if(taper!=0.){
+    y+=p.z*atan(taper);
+  }
+  float theta=atan(p.y,p.x);
+  float z=p.z+lead*theta/(2.*Pi);
+  float sawt=(z+pitch/2.)/pitch;
+  float saw=pitch*(sawt-floor(sawt))-.5*pitch;
+  vec2 p2=vec2(saw,y);
+  float d2=poly2Dflugflf3v00831obob8(p2);
+  float d3=abs(p.z)-L;
+  return max(d2,d3);
+}
+float cyl0p5600752dr4eed6t0nvn4(vec3 p){
+  return gsdfCylinder3D(p,.560075283,.212149709,0.);
+}
+float translate0p0clfeoamm2mvuk(vec3 p){
+  vec3 t=vec3(0.,0.,-.354330719);
+  return cyl1p1811023oh28c71of2jb(p-t);
+}
+float diff_cyl0p56d0pmihm9d0ht8(vec3 p){
+  float a=cyl0p5600752dr4eed6t0nvn4(p);
+  float b=screw_0d0714fcuusg6vjei0r(p);
+  return max(a,-b);
+}
+float cyl0p3751p109o812ootnclpd(vec3 p){
+  return gsdfCylinder3D(p,.375,.551181078,0.);
+}
+float smoothUnion_cmbg3om2unnf1(vec3 p){
+  float d1=diff_cyl0p56d0pmihm9d0ht8(p);
+  float d2=translate0p0clfeoamm2mvuk(p);
+  float k=.200000003;
+  float h=clamp(.5+.5*(d2-d1)/k,0.,1.);
+  return mix(d2,d1,h)-k*h*(1.-h);
+}
+float diff_smoothU1dc1qvopm944r(vec3 p){
+  float a=smoothUnion_cmbg3om2unnf1(p);
+  float b=cyl0p3751p109o812ootnclpd(p);
+  return max(a,-b);
+}
+float scale_diff_s2utn7dkqgo1e4(vec3 p){
+  float s=25.399999619;
+  return diff_smoothU1dc1qvopm944r(p/s)*s;
+}
+
+void mainModel4(out vec4 materials,in vec3 xyz){
+  float d=scale_diff_s2utn7dkqgo1e4(xyz);
+  materials=vec4(d<=0.?1.:0.,0.,0.,0.);
+}

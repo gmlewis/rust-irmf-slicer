@@ -1,0 +1,36 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-07-12",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA"],
+  "max": [1,1,0.5],
+  "min": [-1,-1,-0.5],
+  "notes": "Simple IRMF shader - cone.",
+  "options": {},
+  "title": "cone",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn cone(xyz: vec3f) -> f32 {
+  // Trivially reject above and below the cone.
+  if (xyz.z < 0.0 || xyz.z > 1.0) { return 0.0; }
+  
+  // Calculate the new size based on the height.
+  let zsize = mix(1.0, 0.0, xyz.z);
+  let r = length(xyz.xy);
+  
+  if (r > zsize) { return 0.0; }
+  
+  return 1.0;
+}
+
+fn mainModel4(xyz_in: vec3f) -> vec4f {
+  var xyz = xyz_in;
+  xyz.z += 0.5;
+  var materials = vec4f(0.0);
+  materials[0] = cone(xyz);
+  return materials;
+}

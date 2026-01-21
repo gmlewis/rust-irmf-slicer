@@ -1,0 +1,354 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-07-19",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Experimental text.",
+  "options": {},
+  "title": "Text",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn blinnLoop(A: vec2f, B: vec2f, C: vec2f) -> f32 {
+  let v0 = C - A;
+  let v1 = B - A;
+  let v2 = vec2f(0.75,0.5) - A;
+  let dot00 = dot(v0, v0);
+  let dot01 = dot(v0, v1);
+  let dot02 = dot(v0, v2);
+  let dot11 = dot(v1, v1);
+  let dot12 = dot(v1, v2);
+  let invDenom = 1.0 / (dot00 * dot11 - dot01 * dot01);
+  let u = (dot11 * dot02 - dot01 * dot12) * invDenom;
+  let v = (dot00 * dot12 - dot01 * dot02) * invDenom;
+  let w = (1.0 - u - v);
+  return w;
+}
+
+fn interpLine(A: vec2f, B: vec2f, y: f32) -> f32 {
+  let p = (y - A.y) / (B.y - A.y);
+  return p*(B.x-A.x) + A.x;
+}
+
+fn interpQuadratic(p0: vec2f, p1: vec2f, p2: vec2f, y: f32) -> f32 {
+  let a = p2.y + p0.y - 2.0*p1.y;
+  let b = 2.0 * (p1.y - p0.y);
+  let c = p0.y - y;
+  if (b*b < 4.0*a*c) { return 0.0; } 
+  let det = sqrt(b*b - 4.0*a*c);
+  var t = (-b + det) / (2.0 * a);
+  let t2 = (-b - det) / (2.0 * a);
+  if (t2 >= 0.0 && t2 <= 1.0) {
+    t = t2;
+  }
+  let x = (1.0-t)*(1.0-t)*p0.x + 2.0*(1.0-t)*t*p1.x + t*t*p2.x;
+  return x;
+}
+
+fn glyph_F_1(xyz: vec3f) -> f32 {
+  if (any(xyz.xy < vec2f(0.00,0.00)) || any(xyz.xy > vec2f(904.00,1467.00))) { return 0.0; }
+
+  if (xyz.y >= 1306.00 && xyz.y <= 1467.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || xyz.x > interpLine(vec2f(904.00,1306.00),vec2f(904.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 793.00 && xyz.y < 1306.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || xyz.x > interpLine(vec2f(200.00,793.00),vec2f(200.00,1306.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 631.00 && xyz.y < 793.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || xyz.x > interpLine(vec2f(802.00,631.00),vec2f(802.00,793.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 0.00 && xyz.y < 631.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || xyz.x > interpLine(vec2f(200.00,0.00),vec2f(200.00,631.00),xyz.y))) { return 0.0; }
+  return 1.0;
+}
+
+fn glyph_F(height: f32, xyz_in: vec3f) -> f32 {
+  if (any(xyz_in < vec3f(178.00,0.00,0.0)) || any(xyz_in > vec3f(1082.00,1467.00,height))) { return 0.0; }
+  let xyz = xyz_in - vec3f(178.00,0.00,0.0);
+  return glyph_F_1(xyz);
+}
+
+fn glyph_I_1(xyz: vec3f) -> f32 {
+  if (any(xyz.xy < vec2f(0.00,0.00)) || any(xyz.xy > vec2f(199.00,1467.00))) { return 0.0; }
+  if (xyz.y >= 0.00 && xyz.y <= 1467.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || xyz.x > interpLine(vec2f(199.00,0.00),vec2f(199.00,1467.00),xyz.y))) { return 0.0; }
+  return 1.0;
+}
+
+fn glyph_I(height: f32, xyz_in: vec3f) -> f32 {
+  if (any(xyz_in < vec3f(215.00,0.00,0.0)) || any(xyz_in > vec3f(414.00,1467.00,height))) { return 0.0; }
+  let xyz = xyz_in - vec3f(215.00,0.00,0.0);
+  return glyph_I_1(xyz);
+}
+
+fn glyph_M_1(xyz: vec3f) -> f32 {
+  if (any(xyz.xy < vec2f(0.00,0.00)) || any(xyz.xy > vec2f(1527.00,1467.00))) { return 0.0; }
+
+  if (xyz.y >= 1462.50 && xyz.y <= 1467.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(188.00,1462.00),vec2f(174.00,1467.00),vec2f(147.00,1467.00),xyz.y) && xyz.x < interpQuadratic(vec2f(1339.50,1462.50),vec2f(1354.00,1467.00),vec2f(1381.00,1467.00),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1462.00 && xyz.y < 1462.50 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(188.00,1462.00),vec2f(174.00,1467.00),vec2f(147.00,1467.00),xyz.y) && xyz.x < interpQuadratic(vec2f(1312.00,1434.00),vec2f(1325.00,1458.00),vec2f(1339.50,1462.50),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1434.00 && xyz.y < 1462.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(215.00,1434.00),vec2f(202.00,1457.00),vec2f(188.00,1462.00),xyz.y) && xyz.x < interpQuadratic(vec2f(1312.00,1434.00),vec2f(1325.00,1458.00),vec2f(1339.50,1462.50),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1178.00 && xyz.y < 1434.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpLine(vec2f(722.00,530.00),vec2f(215.00,1434.00),xyz.y) && xyz.x < interpLine(vec2f(815.00,531.00),vec2f(1312.00,1434.00),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1175.00 && xyz.y < 1178.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(172.50,1125.50),vec2f(171.00,1151.00),vec2f(168.00,1178.00),xyz.y) && xyz.x < interpLine(vec2f(682.00,257.00),vec2f(168.00,1178.00),xyz.y)) || (xyz.x > interpLine(vec2f(722.00,530.00),vec2f(215.00,1434.00),xyz.y) && xyz.x < interpLine(vec2f(815.00,531.00),vec2f(1312.00,1434.00),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1125.50 && xyz.y < 1175.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(172.50,1125.50),vec2f(171.00,1151.00),vec2f(168.00,1178.00),xyz.y) && xyz.x < interpLine(vec2f(682.00,257.00),vec2f(168.00,1178.00),xyz.y)) || (xyz.x > interpLine(vec2f(722.00,530.00),vec2f(215.00,1434.00),xyz.y) && xyz.x < interpLine(vec2f(815.00,531.00),vec2f(1312.00,1434.00),xyz.y)) || (xyz.x > interpLine(vec2f(854.00,257.00),vec2f(1357.00,1175.00),xyz.y) && xyz.x < interpQuadratic(vec2f(1354.00,1124.50),vec2f(1355.00,1149.00),vec2f(1357.00,1175.00),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1124.50 && xyz.y < 1125.50 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(174.00,1078.00),vec2f(174.00,1100.00),vec2f(172.50,1125.50),xyz.y) && xyz.x < interpLine(vec2f(682.00,257.00),vec2f(168.00,1178.00),xyz.y)) || (xyz.x > interpLine(vec2f(722.00,530.00),vec2f(215.00,1434.00),xyz.y) && xyz.x < interpLine(vec2f(815.00,531.00),vec2f(1312.00,1434.00),xyz.y)) || (xyz.x > interpLine(vec2f(854.00,257.00),vec2f(1357.00,1175.00),xyz.y) && xyz.x < interpQuadratic(vec2f(1354.00,1124.50),vec2f(1355.00,1149.00),vec2f(1357.00,1175.00),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1078.00 && xyz.y < 1124.50 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(174.00,1078.00),vec2f(174.00,1100.00),vec2f(172.50,1125.50),xyz.y) && xyz.x < interpLine(vec2f(682.00,257.00),vec2f(168.00,1178.00),xyz.y)) || (xyz.x > interpLine(vec2f(722.00,530.00),vec2f(215.00,1434.00),xyz.y) && xyz.x < interpLine(vec2f(815.00,531.00),vec2f(1312.00,1434.00),xyz.y)) || (xyz.x > interpLine(vec2f(854.00,257.00),vec2f(1357.00,1175.00),xyz.y) && xyz.x < interpQuadratic(vec2f(1353.00,1078.00),vec2f(1353.00,1100.00),vec2f(1354.00,1124.50),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 531.00 && xyz.y < 1078.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpLine(vec2f(174.00,0.00),vec2f(174.00,1078.00),xyz.y) && xyz.x < interpLine(vec2f(682.00,257.00),vec2f(168.00,1178.00),xyz.y)) || (xyz.x > interpLine(vec2f(722.00,530.00),vec2f(215.00,1434.00),xyz.y) && xyz.x < interpLine(vec2f(815.00,531.00),vec2f(1312.00,1434.00),xyz.y)) || (xyz.x > interpLine(vec2f(854.00,257.00),vec2f(1357.00,1175.00),xyz.y) && xyz.x < interpLine(vec2f(1353.00,0.00),vec2f(1353.00,1078.00),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 530.00 && xyz.y < 531.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpLine(vec2f(174.00,0.00),vec2f(174.00,1078.00),xyz.y) && xyz.x < interpLine(vec2f(682.00,257.00),vec2f(168.00,1178.00),xyz.y)) || (xyz.x > interpLine(vec2f(722.00,530.00),vec2f(215.00,1434.00),xyz.y) && xyz.x < interpQuadratic(vec2f(789.50,479.00),vec2f(801.00,505.00),vec2f(815.00,531.00),xyz.y)) || (xyz.x > interpLine(vec2f(854.00,257.00),vec2f(1357.00,1175.00),xyz.y) && xyz.x < interpLine(vec2f(1353.00,0.00),vec2f(1353.00,1078.00),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 479.00 && xyz.y < 530.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpLine(vec2f(174.00,0.00),vec2f(174.00,1078.00),xyz.y) && xyz.x < interpLine(vec2f(682.00,257.00),vec2f(168.00,1178.00),xyz.y)) || (xyz.x > interpQuadratic(vec2f(747.00,478.50),vec2f(736.00,505.00),vec2f(722.00,530.00),xyz.y) && xyz.x < interpQuadratic(vec2f(789.50,479.00),vec2f(801.00,505.00),vec2f(815.00,531.00),xyz.y)) || (xyz.x > interpLine(vec2f(854.00,257.00),vec2f(1357.00,1175.00),xyz.y) && xyz.x < interpLine(vec2f(1353.00,0.00),vec2f(1353.00,1078.00),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 478.50 && xyz.y < 479.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpLine(vec2f(174.00,0.00),vec2f(174.00,1078.00),xyz.y) && xyz.x < interpLine(vec2f(682.00,257.00),vec2f(168.00,1178.00),xyz.y)) || (xyz.x > interpQuadratic(vec2f(747.00,478.50),vec2f(736.00,505.00),vec2f(722.00,530.00),xyz.y) && xyz.x < interpQuadratic(vec2f(768.00,424.00),vec2f(778.00,453.00),vec2f(789.50,479.00),xyz.y)) || (xyz.x > interpLine(vec2f(854.00,257.00),vec2f(1357.00,1175.00),xyz.y) && xyz.x < interpLine(vec2f(1353.00,0.00),vec2f(1353.00,1078.00),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 424.00 && xyz.y < 478.50 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpLine(vec2f(174.00,0.00),vec2f(174.00,1078.00),xyz.y) && xyz.x < interpLine(vec2f(682.00,257.00),vec2f(168.00,1178.00),xyz.y)) || (xyz.x > interpQuadratic(vec2f(768.00,424.00),vec2f(758.00,452.00),vec2f(747.00,478.50),xyz.y) && xyz.x < interpQuadratic(vec2f(768.00,424.00),vec2f(778.00,453.00),vec2f(789.50,479.00),xyz.y)) || (xyz.x > interpLine(vec2f(854.00,257.00),vec2f(1357.00,1175.00),xyz.y) && xyz.x < interpLine(vec2f(1353.00,0.00),vec2f(1353.00,1078.00),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 257.00 && xyz.y < 424.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpLine(vec2f(174.00,0.00),vec2f(174.00,1078.00),xyz.y) && xyz.x < interpLine(vec2f(682.00,257.00),vec2f(168.00,1178.00),xyz.y)) || (xyz.x > interpLine(vec2f(854.00,257.00),vec2f(1357.00,1175.00),xyz.y) && xyz.x < interpLine(vec2f(1353.00,0.00),vec2f(1353.00,1078.00),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 211.00 && xyz.y < 257.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpLine(vec2f(174.00,0.00),vec2f(174.00,1078.00),xyz.y) && xyz.x < interpQuadratic(vec2f(754.00,211.00),vec2f(708.00,211.00),vec2f(682.00,257.00),xyz.y)) || (xyz.x > interpQuadratic(vec2f(783.00,211.00),vec2f(828.00,211.00),vec2f(854.00,257.00),xyz.y) && xyz.x < interpLine(vec2f(1353.00,0.00),vec2f(1353.00,1078.00),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 0.00 && xyz.y < 211.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpLine(vec2f(174.00,0.00),vec2f(174.00,1078.00),xyz.y) && xyz.x < interpLine(vec2f(1353.00,0.00),vec2f(1353.00,1078.00),xyz.y)) || xyz.x > interpLine(vec2f(1527.00,0.00),vec2f(1527.00,1467.00),xyz.y))) { return 0.0; }
+  return 1.0;
+}
+
+fn glyph_M(height: f32, xyz_in: vec3f) -> f32 {
+  if (any(xyz_in < vec3f(178.00,0.00,0.0)) || any(xyz_in > vec3f(1705.00,1467.00,height))) { return 0.0; }
+  let xyz = xyz_in - vec3f(178.00,0.00,0.0);
+  return glyph_M_1(xyz);
+}
+
+fn glyph_R_1(xyz: vec3f) -> f32 {
+  if (any(xyz.xy < vec2f(0.00,0.00)) || any(xyz.xy > vec2f(1084.00,1467.00))) { return 0.0; }
+
+  if (xyz.y >= 1439.00 && xyz.y <= 1467.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || xyz.x > interpQuadratic(vec2f(654.50,1439.00),vec2f(553.00,1467.00),vec2f(414.00,1467.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1358.00 && xyz.y < 1439.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || xyz.x > interpQuadratic(vec2f(822.00,1358.00),vec2f(756.00,1411.00),vec2f(654.50,1439.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1229.50 && xyz.y < 1358.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || xyz.x > interpQuadratic(vec2f(920.00,1229.50),vec2f(888.00,1305.00),vec2f(822.00,1358.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1061.00 && xyz.y < 1229.50 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || xyz.x > interpQuadratic(vec2f(952.00,1061.00),vec2f(952.00,1154.00),vec2f(920.00,1229.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 915.50 && xyz.y < 1061.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || xyz.x > interpQuadratic(vec2f(927.50,915.50),vec2f(952.00,983.00),vec2f(952.00,1061.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 794.00 && xyz.y < 915.50 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || xyz.x > interpQuadratic(vec2f(856.50,794.00),vec2f(903.00,848.00),vec2f(927.50,915.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 702.50 && xyz.y < 794.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || xyz.x > interpQuadratic(vec2f(742.50,702.50),vec2f(810.00,740.00),vec2f(856.50,794.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 645.00 && xyz.y < 702.50 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || xyz.x > interpQuadratic(vec2f(591.00,645.00),vec2f(675.00,665.00),vec2f(742.50,702.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 612.00 && xyz.y < 645.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || xyz.x > interpQuadratic(vec2f(656.00,583.00),vec2f(628.00,623.00),vec2f(591.00,645.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 601.50 && xyz.y < 612.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpLine(vec2f(197.00,0.00),vec2f(197.00,612.00),xyz.y) && xyz.x < interpQuadratic(vec2f(409.50,601.50),vec2f(389.00,612.00),vec2f(348.00,612.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(656.00,583.00),vec2f(628.00,623.00),vec2f(591.00,645.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 583.00 && xyz.y < 601.50 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpLine(vec2f(197.00,0.00),vec2f(197.00,612.00),xyz.y) && xyz.x < interpQuadratic(vec2f(447.00,566.00),vec2f(430.00,591.00),vec2f(409.50,601.50),xyz.y)) || xyz.x > interpQuadratic(vec2f(656.00,583.00),vec2f(628.00,623.00),vec2f(591.00,645.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 566.00 && xyz.y < 583.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpLine(vec2f(197.00,0.00),vec2f(197.00,612.00),xyz.y) && xyz.x < interpQuadratic(vec2f(447.00,566.00),vec2f(430.00,591.00),vec2f(409.50,601.50),xyz.y)) || xyz.x > interpLine(vec2f(1084.00,0.00),vec2f(656.00,583.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 42.00 && xyz.y < 566.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpLine(vec2f(197.00,0.00),vec2f(197.00,612.00),xyz.y) && xyz.x < interpLine(vec2f(828.00,42.00),vec2f(447.00,566.00),xyz.y)) || xyz.x > interpLine(vec2f(1084.00,0.00),vec2f(656.00,583.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 0.00 && xyz.y < 42.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1467.00),xyz.y) || (xyz.x > interpLine(vec2f(197.00,0.00),vec2f(197.00,612.00),xyz.y) && xyz.x < interpQuadratic(vec2f(908.00,0.00),vec2f(854.00,0.00),vec2f(828.00,42.00),xyz.y)) || xyz.x > interpLine(vec2f(1084.00,0.00),vec2f(656.00,583.00),xyz.y))) { return 0.0; }
+  return 1.0;
+}
+
+fn glyph_R_2(xyz: vec3f) -> f32 {
+  if (any(xyz.xy < vec2f(197.00,757.00)) || any(xyz.xy > vec2f(758.00,1311.00))) { return 0.0; }
+
+  if (xyz.y >= 1244.50 && xyz.y <= 1311.00 && (xyz.x < interpLine(vec2f(197.00,757.00),vec2f(197.00,1311.00),xyz.y) || xyz.x > interpQuadratic(vec2f(671.50,1244.50),vec2f(585.00,1311.00),vec2f(414.00,1311.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1047.00 && xyz.y < 1244.50 && (xyz.x < interpLine(vec2f(197.00,757.00),vec2f(197.00,1311.00),xyz.y) || xyz.x > interpQuadratic(vec2f(758.00,1047.00),vec2f(758.00,1178.00),vec2f(671.50,1244.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 929.00 && xyz.y < 1047.00 && (xyz.x < interpLine(vec2f(197.00,757.00),vec2f(197.00,1311.00),xyz.y) || xyz.x > interpQuadratic(vec2f(735.50,929.00),vec2f(758.00,982.00),vec2f(758.00,1047.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 837.50 && xyz.y < 929.00 && (xyz.x < interpLine(vec2f(197.00,757.00),vec2f(197.00,1311.00),xyz.y) || xyz.x > interpQuadratic(vec2f(668.50,837.50),vec2f(713.00,876.00),vec2f(735.50,929.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 778.00 && xyz.y < 837.50 && (xyz.x < interpLine(vec2f(197.00,757.00),vec2f(197.00,1311.00),xyz.y) || xyz.x > interpQuadratic(vec2f(558.00,778.00),vec2f(624.00,799.00),vec2f(668.50,837.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 757.00 && xyz.y < 778.00 && (xyz.x < interpLine(vec2f(197.00,757.00),vec2f(197.00,1311.00),xyz.y) || xyz.x > interpQuadratic(vec2f(405.00,757.00),vec2f(492.00,757.00),vec2f(558.00,778.00),xyz.y))) { return 0.0; }
+  return 1.0;
+}
+
+fn glyph_R(height: f32, xyz_in: vec3f) -> f32 {
+  if (any(xyz_in < vec3f(199.00,0.00,0.0)) || any(xyz_in > vec3f(1283.00,1467.00,height))) { return 0.0; }
+  let xyz = xyz_in - vec3f(199.00,0.00,0.0);
+  let result = glyph_R_1(xyz);
+  return result - glyph_R_2(xyz);
+}
+
+fn glyph_f_1(xyz: vec3f) -> f32 {
+  if (any(xyz.xy < vec2f(0.00,0.00)) || any(xyz.xy > vec2f(649.00,1489.00))) { return 0.0; }
+
+  if (xyz.y >= 1468.00 && xyz.y <= 1489.00 && (xyz.x < interpQuadratic(vec2f(372.50,1464.50),vec2f(438.00,1489.00),vec2f(520.00,1489.00),xyz.y) || xyz.x > interpQuadratic(vec2f(649.00,1468.00),vec2f(590.00,1489.00),vec2f(520.00,1489.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1464.50 && xyz.y < 1468.00 && (xyz.x < interpQuadratic(vec2f(372.50,1464.50),vec2f(438.00,1489.00),vec2f(520.00,1489.00),xyz.y) || xyz.x > interpLine(vec2f(645.00,1377.00),vec2f(649.00,1468.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1392.50 && xyz.y < 1464.50 && (xyz.x < interpQuadratic(vec2f(260.50,1392.50),vec2f(307.00,1440.00),vec2f(372.50,1464.50),xyz.y) || xyz.x > interpLine(vec2f(645.00,1377.00),vec2f(649.00,1468.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1377.00 && xyz.y < 1392.50 && (xyz.x < interpQuadratic(vec2f(188.50,1275.50),vec2f(214.00,1345.00),vec2f(260.50,1392.50),xyz.y) || xyz.x > interpLine(vec2f(645.00,1377.00),vec2f(649.00,1468.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1353.00 && xyz.y < 1377.00 && (xyz.x < interpQuadratic(vec2f(188.50,1275.50),vec2f(214.00,1345.00),vec2f(260.50,1392.50),xyz.y) || xyz.x > interpQuadratic(vec2f(627.50,1353.00),vec2f(644.00,1357.00),vec2f(645.00,1377.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1349.00 && xyz.y < 1353.00 && (xyz.x < interpQuadratic(vec2f(188.50,1275.50),vec2f(214.00,1345.00),vec2f(260.50,1392.50),xyz.y) || xyz.x > interpQuadratic(vec2f(581.00,1349.00),vec2f(611.00,1349.00),vec2f(627.50,1353.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1336.50 && xyz.y < 1349.00 && (xyz.x < interpQuadratic(vec2f(188.50,1275.50),vec2f(214.00,1345.00),vec2f(260.50,1392.50),xyz.y) || xyz.x > interpQuadratic(vec2f(464.50,1336.50),vec2f(503.00,1349.00),vec2f(550.00,1349.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1296.50 && xyz.y < 1336.50 && (xyz.x < interpQuadratic(vec2f(188.50,1275.50),vec2f(214.00,1345.00),vec2f(260.50,1392.50),xyz.y) || xyz.x > interpQuadratic(vec2f(398.00,1296.50),vec2f(426.00,1324.00),vec2f(464.50,1336.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1275.50 && xyz.y < 1296.50 && (xyz.x < interpQuadratic(vec2f(188.50,1275.50),vec2f(214.00,1345.00),vec2f(260.50,1392.50),xyz.y) || xyz.x > interpQuadratic(vec2f(355.50,1224.00),vec2f(370.00,1269.00),vec2f(398.00,1296.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1224.00 && xyz.y < 1275.50 && (xyz.x < interpQuadratic(vec2f(163.00,1117.00),vec2f(163.00,1206.00),vec2f(188.50,1275.50),xyz.y) || xyz.x > interpQuadratic(vec2f(355.50,1224.00),vec2f(370.00,1269.00),vec2f(398.00,1296.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1117.00 && xyz.y < 1224.00 && (xyz.x < interpQuadratic(vec2f(163.00,1117.00),vec2f(163.00,1206.00),vec2f(188.50,1275.50),xyz.y) || xyz.x > interpQuadratic(vec2f(341.00,1112.00),vec2f(341.00,1179.00),vec2f(355.50,1224.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1112.00 && xyz.y < 1117.00 && (xyz.x < interpLine(vec2f(163.00,1017.00),vec2f(163.00,1117.00),xyz.y) || xyz.x > interpQuadratic(vec2f(341.00,1112.00),vec2f(341.00,1179.00),vec2f(355.50,1224.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1017.00 && xyz.y < 1112.00 && (xyz.x < interpLine(vec2f(163.00,1017.00),vec2f(163.00,1117.00),xyz.y) || xyz.x > interpLine(vec2f(341.00,1017.00),vec2f(341.00,1112.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 942.00 && xyz.y < 1017.00 && (xyz.x < interpLine(vec2f(0.00,942.00),vec2f(0.00,1017.00),xyz.y) || xyz.x > interpLine(vec2f(641.00,885.00),vec2f(641.00,1017.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 911.00 && xyz.y < 942.00 && (xyz.x < interpQuadratic(vec2f(13.50,911.00),vec2f(0.00,922.00),vec2f(0.00,942.00),xyz.y) || xyz.x > interpLine(vec2f(641.00,885.00),vec2f(641.00,1017.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 895.00 && xyz.y < 911.00 && (xyz.x < interpQuadratic(vec2f(49.00,895.00),vec2f(27.00,900.00),vec2f(13.50,911.00),xyz.y) || xyz.x > interpLine(vec2f(641.00,885.00),vec2f(641.00,1017.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 885.00 && xyz.y < 895.00 && (xyz.x < interpLine(vec2f(163.00,882.00),vec2f(49.00,895.00),xyz.y) || xyz.x > interpLine(vec2f(641.00,885.00),vec2f(641.00,1017.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 882.00 && xyz.y < 885.00 && (xyz.x < interpLine(vec2f(163.00,882.00),vec2f(49.00,895.00),xyz.y) || xyz.x > interpLine(vec2f(347.00,0.00),vec2f(347.00,885.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 0.00 && xyz.y < 882.00 && (xyz.x < interpLine(vec2f(163.00,0.00),vec2f(163.00,882.00),xyz.y) || xyz.x > interpLine(vec2f(347.00,0.00),vec2f(347.00,885.00),xyz.y))) { return 0.0; }
+  return 1.0;
+}
+
+fn glyph_f(height: f32, xyz_in: vec3f) -> f32 {
+  if (any(xyz_in < vec3f(27.00,0.00,0.0)) || any(xyz_in > vec3f(676.00,1489.00,height))) { return 0.0; }
+  let xyz = xyz_in - vec3f(27.00,0.00,0.0);
+  return glyph_f_1(xyz);
+}
+
+fn glyph_n_1(xyz: vec3f) -> f32 {
+  if (any(xyz.xy < vec2f(0.00,0.00)) || any(xyz.xy > vec2f(863.00,1054.00))) { return 0.0; }
+
+  if (xyz.y >= 1037.00 && xyz.y <= 1054.00 && (xyz.x < interpQuadratic(vec2f(323.00,1008.00),vec2f(406.00,1054.00),vec2f(516.00,1054.00),xyz.y) || xyz.x > interpQuadratic(vec2f(666.00,1025.50),vec2f(601.00,1054.00),vec2f(516.00,1054.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1025.50 && xyz.y < 1037.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1037.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(157.00,999.00),vec2f(147.00,1037.00),vec2f(108.00,1037.00),xyz.y) && xyz.x < interpQuadratic(vec2f(323.00,1008.00),vec2f(406.00,1054.00),vec2f(516.00,1054.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(666.00,1025.50),vec2f(601.00,1054.00),vec2f(516.00,1054.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1008.00 && xyz.y < 1025.50 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1037.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(157.00,999.00),vec2f(147.00,1037.00),vec2f(108.00,1037.00),xyz.y) && xyz.x < interpQuadratic(vec2f(323.00,1008.00),vec2f(406.00,1054.00),vec2f(516.00,1054.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(774.50,945.50),vec2f(731.00,997.00),vec2f(666.00,1025.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 999.00 && xyz.y < 1008.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1037.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(157.00,999.00),vec2f(147.00,1037.00),vec2f(108.00,1037.00),xyz.y) && xyz.x < interpQuadratic(vec2f(172.00,887.00),vec2f(240.00,962.00),vec2f(323.00,1008.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(774.50,945.50),vec2f(731.00,997.00),vec2f(666.00,1025.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 945.50 && xyz.y < 999.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1037.00),xyz.y) || (xyz.x > interpLine(vec2f(172.00,887.00),vec2f(157.00,999.00),xyz.y) && xyz.x < interpQuadratic(vec2f(172.00,887.00),vec2f(240.00,962.00),vec2f(323.00,1008.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(774.50,945.50),vec2f(731.00,997.00),vec2f(666.00,1025.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 908.00 && xyz.y < 945.50 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1037.00),xyz.y) || (xyz.x > interpLine(vec2f(172.00,887.00),vec2f(157.00,999.00),xyz.y) && xyz.x < interpQuadratic(vec2f(172.00,887.00),vec2f(240.00,962.00),vec2f(323.00,1008.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(840.50,821.50),vec2f(818.00,894.00),vec2f(774.50,945.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 887.00 && xyz.y < 908.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1037.00),xyz.y) || (xyz.x > interpLine(vec2f(172.00,887.00),vec2f(157.00,999.00),xyz.y) && xyz.x < interpQuadratic(vec2f(172.00,887.00),vec2f(240.00,962.00),vec2f(323.00,1008.00),xyz.y)) || (xyz.x > interpQuadratic(vec2f(311.00,869.00),vec2f(381.00,908.00),vec2f(462.00,908.00),xyz.y) && xyz.x < interpQuadratic(vec2f(626.50,843.00),vec2f(573.00,908.00),vec2f(462.00,908.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(840.50,821.50),vec2f(818.00,894.00),vec2f(774.50,945.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 869.00 && xyz.y < 887.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1037.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(311.00,869.00),vec2f(381.00,908.00),vec2f(462.00,908.00),xyz.y) && xyz.x < interpQuadratic(vec2f(626.50,843.00),vec2f(573.00,908.00),vec2f(462.00,908.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(840.50,821.50),vec2f(818.00,894.00),vec2f(774.50,945.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 843.00 && xyz.y < 869.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1037.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(182.00,764.00),vec2f(241.00,830.00),vec2f(311.00,869.00),xyz.y) && xyz.x < interpQuadratic(vec2f(626.50,843.00),vec2f(573.00,908.00),vec2f(462.00,908.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(840.50,821.50),vec2f(818.00,894.00),vec2f(774.50,945.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 821.50 && xyz.y < 843.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1037.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(182.00,764.00),vec2f(241.00,830.00),vec2f(311.00,869.00),xyz.y) && xyz.x < interpQuadratic(vec2f(680.00,660.00),vec2f(680.00,778.00),vec2f(626.50,843.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(840.50,821.50),vec2f(818.00,894.00),vec2f(774.50,945.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 764.00 && xyz.y < 821.50 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1037.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(182.00,764.00),vec2f(241.00,830.00),vec2f(311.00,869.00),xyz.y) && xyz.x < interpQuadratic(vec2f(680.00,660.00),vec2f(680.00,778.00),vec2f(626.50,843.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(863.00,660.00),vec2f(863.00,749.00),vec2f(840.50,821.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 660.00 && xyz.y < 764.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1037.00),xyz.y) || (xyz.x > interpLine(vec2f(182.00,0.00),vec2f(182.00,764.00),xyz.y) && xyz.x < interpQuadratic(vec2f(680.00,660.00),vec2f(680.00,778.00),vec2f(626.50,843.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(863.00,660.00),vec2f(863.00,749.00),vec2f(840.50,821.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 0.00 && xyz.y < 660.00 && (xyz.x < interpLine(vec2f(0.00,0.00),vec2f(0.00,1037.00),xyz.y) || (xyz.x > interpLine(vec2f(182.00,0.00),vec2f(182.00,764.00),xyz.y) && xyz.x < interpLine(vec2f(680.00,0.00),vec2f(680.00,660.00),xyz.y)) || xyz.x > interpLine(vec2f(863.00,0.00),vec2f(863.00,660.00),xyz.y))) { return 0.0; }
+  return 1.0;
+}
+
+fn glyph_n(height: f32, xyz_in: vec3f) -> f32 {
+  if (any(xyz_in < vec3f(150.00,0.00,0.0)) || any(xyz_in > vec3f(1013.00,1054.00,height))) { return 0.0; }
+  let xyz = xyz_in - vec3f(150.00,0.00,0.0);
+  return glyph_n_1(xyz);
+}
+
+fn glyph_o_1(xyz: vec3f) -> f32 {
+  if (any(xyz.xy < vec2f(0.00,0.00)) || any(xyz.xy > vec2f(989.00,1068.00))) { return 0.0; }
+
+  if (xyz.y >= 1030.00 && xyz.y <= 1068.00 && (xyz.x < interpQuadratic(vec2f(290.00,1030.00),vec2f(382.00,1068.00),vec2f(495.00,1068.00),xyz.y) || xyz.x > interpQuadratic(vec2f(700.50,1030.00),vec2f(609.00,1068.00),vec2f(495.00,1068.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 922.50 && xyz.y < 1030.00 && (xyz.x < interpQuadratic(vec2f(133.50,922.50),vec2f(198.00,992.00),vec2f(290.00,1030.00),xyz.y) || xyz.x > interpQuadratic(vec2f(856.00,922.50),vec2f(792.00,992.00),vec2f(700.50,1030.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 754.00 && xyz.y < 922.50 && (xyz.x < interpQuadratic(vec2f(34.50,754.00),vec2f(69.00,853.00),vec2f(133.50,922.50),xyz.y) || xyz.x > interpQuadratic(vec2f(954.50,754.00),vec2f(920.00,853.00),vec2f(856.00,922.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 533.00 && xyz.y < 754.00 && (xyz.x < interpQuadratic(vec2f(0.00,533.00),vec2f(0.00,655.00),vec2f(34.50,754.00),xyz.y) || xyz.x > interpQuadratic(vec2f(989.00,533.00),vec2f(989.00,655.00),vec2f(954.50,754.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 312.00 && xyz.y < 533.00 && (xyz.x < interpQuadratic(vec2f(34.50,312.00),vec2f(0.00,410.00),vec2f(0.00,533.00),xyz.y) || xyz.x > interpQuadratic(vec2f(954.50,312.00),vec2f(989.00,410.00),vec2f(989.00,533.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 144.00 && xyz.y < 312.00 && (xyz.x < interpQuadratic(vec2f(133.50,144.00),vec2f(69.00,214.00),vec2f(34.50,312.00),xyz.y) || xyz.x > interpQuadratic(vec2f(856.00,144.00),vec2f(920.00,214.00),vec2f(856.00,144.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 37.00 && xyz.y < 144.00 && (xyz.x < interpQuadratic(vec2f(289.50,37.00),vec2f(198.00,74.00),vec2f(133.50,144.00),xyz.y) || xyz.x > interpQuadratic(vec2f(700.50,37.00),vec2f(792.00,74.00),vec2f(856.00,144.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 0.00 && xyz.y < 37.00 && (xyz.x < interpQuadratic(vec2f(495.00,0.00),vec2f(381.00,0.00),vec2f(289.50,37.00),xyz.y) || xyz.x > interpQuadratic(vec2f(495.00,0.00),vec2f(609.00,0.00),vec2f(700.50,37.00),xyz.y))) { return 0.0; }
+  return 1.0;
+}
+
+fn glyph_o_2(xyz: vec3f) -> f32 {
+  if (any(xyz.xy < vec2f(188.00,142.00)) || any(xyz.xy > vec2f(800.00,924.00))) { return 0.0; }
+
+  if (xyz.y >= 897.50 && xyz.y <= 924.00 && (xyz.x < interpQuadratic(vec2f(360.00,897.50),vec2f(417.00,924.00),vec2f(495.00,924.00),xyz.y) || xyz.x > interpQuadratic(vec2f(724.50,820.50),vec2f(649.00,924.00),vec2f(495.00,924.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 821.00 && xyz.y < 897.50 && (xyz.x < interpQuadratic(vec2f(264.50,821.00),vec2f(303.00,871.00),vec2f(360.00,897.50),xyz.y) || xyz.x > interpQuadratic(vec2f(724.50,820.50),vec2f(649.00,924.00),vec2f(495.00,924.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 820.50 && xyz.y < 821.00 && (xyz.x < interpQuadratic(vec2f(207.00,697.50),vec2f(226.00,771.00),vec2f(264.50,821.00),xyz.y) || xyz.x > interpQuadratic(vec2f(724.50,820.50),vec2f(649.00,924.00),vec2f(495.00,924.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 697.50 && xyz.y < 820.50 && (xyz.x < interpQuadratic(vec2f(207.00,697.50),vec2f(226.00,771.00),vec2f(264.50,821.00),xyz.y) || xyz.x > interpQuadratic(vec2f(800.00,532.00),vec2f(800.00,717.00),vec2f(724.50,820.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 532.00 && xyz.y < 697.50 && (xyz.x < interpQuadratic(vec2f(188.00,532.00),vec2f(188.00,624.00),vec2f(207.00,697.50),xyz.y) || xyz.x > interpQuadratic(vec2f(800.00,532.00),vec2f(800.00,717.00),vec2f(724.50,820.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 367.50 && xyz.y < 532.00 && (xyz.x < interpQuadratic(vec2f(207.00,367.50),vec2f(188.00,440.00),vec2f(188.00,532.00),xyz.y) || xyz.x > interpQuadratic(vec2f(724.50,245.00),vec2f(800.00,348.00),vec2f(800.00,532.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 245.00 && xyz.y < 367.50 && (xyz.x < interpQuadratic(vec2f(264.50,245.00),vec2f(226.00,295.00),vec2f(207.00,367.50),xyz.y) || xyz.x > interpQuadratic(vec2f(724.50,245.00),vec2f(800.00,348.00),vec2f(800.00,532.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 168.50 && xyz.y < 245.00 && (xyz.x < interpQuadratic(vec2f(360.50,168.50),vec2f(303.00,195.00),vec2f(264.50,245.00),xyz.y) || xyz.x > interpQuadratic(vec2f(495.00,142.00),vec2f(649.00,142.00),vec2f(724.50,245.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 142.00 && xyz.y < 168.50 && (xyz.x < interpQuadratic(vec2f(495.00,142.00),vec2f(418.00,142.00),vec2f(360.50,168.50),xyz.y) || xyz.x > interpQuadratic(vec2f(495.00,142.00),vec2f(649.00,142.00),vec2f(724.50,245.00),xyz.y))) { return 0.0; }
+  return 1.0;
+}
+
+fn glyph_o(height: f32, xyz_in: vec3f) -> f32 {
+  if (any(xyz_in < vec3f(74.00,-14.00,0.0)) || any(xyz_in > vec3f(1063.00,1054.00,height))) { return 0.0; }
+  let xyz = xyz_in - vec3f(74.00,-14.00,0.0);
+  let result = glyph_o_1(xyz);
+  return result - glyph_o_2(xyz);
+}
+
+fn glyph_s_1(xyz: vec3f) -> f32 {
+  if (any(xyz.xy < vec2f(0.00,0.00)) || any(xyz.xy > vec2f(739.00,1070.00))) { return 0.0; }
+
+  if (xyz.y >= 1045.50 && xyz.y <= 1070.00 && (xyz.x < interpQuadratic(vec2f(240.00,1045.50),vec2f(309.00,1070.00),vec2f(397.00,1070.00),xyz.y) || xyz.x > interpQuadratic(vec2f(580.50,1037.50),vec2f(499.00,1070.00),vec2f(397.00,1070.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1037.50 && xyz.y < 1045.50 && (xyz.x < interpQuadratic(vec2f(124.00,979.50),vec2f(171.00,1021.00),vec2f(240.00,1045.50),xyz.y) || xyz.x > interpQuadratic(vec2f(580.50,1037.50),vec2f(499.00,1070.00),vec2f(397.00,1070.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 979.50 && xyz.y < 1037.50 && (xyz.x < interpQuadratic(vec2f(124.00,979.50),vec2f(171.00,1021.00),vec2f(240.00,1045.50),xyz.y) || xyz.x > interpQuadratic(vec2f(721.00,949.00),vec2f(662.00,1005.00),vec2f(580.50,1037.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 949.00 && xyz.y < 979.50 && (xyz.x < interpQuadratic(vec2f(52.50,883.00),vec2f(77.00,938.00),vec2f(124.00,979.50),xyz.y) || xyz.x > interpQuadratic(vec2f(721.00,949.00),vec2f(662.00,1005.00),vec2f(580.50,1037.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 934.00 && xyz.y < 949.00 && (xyz.x < interpQuadratic(vec2f(52.50,883.00),vec2f(77.00,938.00),vec2f(124.00,979.50),xyz.y) || xyz.x > interpLine(vec2f(680.00,882.00),vec2f(721.00,949.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 922.00 && xyz.y < 934.00 && (xyz.x < interpQuadratic(vec2f(52.50,883.00),vec2f(77.00,938.00),vec2f(124.00,979.50),xyz.y) || (xyz.x > interpQuadratic(vec2f(318.00,922.00),vec2f(355.00,934.00),vec2f(401.00,934.00),xyz.y) && xyz.x < interpQuadratic(vec2f(493.00,922.00),vec2f(454.00,934.00),vec2f(401.00,934.00),xyz.y)) || xyz.x > interpLine(vec2f(680.00,882.00),vec2f(721.00,949.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 896.00 && xyz.y < 922.00 && (xyz.x < interpQuadratic(vec2f(52.50,883.00),vec2f(77.00,938.00),vec2f(124.00,979.50),xyz.y) || (xyz.x > interpQuadratic(vec2f(255.00,889.50),vec2f(281.00,910.00),vec2f(318.00,922.00),xyz.y) && xyz.x < interpQuadratic(vec2f(560.00,896.00),vec2f(532.00,910.00),vec2f(493.00,922.00),xyz.y)) || xyz.x > interpLine(vec2f(680.00,882.00),vec2f(721.00,949.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 889.50 && xyz.y < 896.00 && (xyz.x < interpQuadratic(vec2f(52.50,883.00),vec2f(77.00,938.00),vec2f(124.00,979.50),xyz.y) || (xyz.x > interpQuadratic(vec2f(255.00,889.50),vec2f(281.00,910.00),vec2f(318.00,922.00),xyz.y) && xyz.x < interpQuadratic(vec2f(608.00,871.00),vec2f(588.00,882.00),vec2f(560.00,896.00),xyz.y)) || xyz.x > interpLine(vec2f(680.00,882.00),vec2f(721.00,949.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 883.00 && xyz.y < 889.50 && (xyz.x < interpQuadratic(vec2f(52.50,883.00),vec2f(77.00,938.00),vec2f(124.00,979.50),xyz.y) || (xyz.x > interpQuadratic(vec2f(215.00,842.00),vec2f(229.00,869.00),vec2f(255.00,889.50),xyz.y) && xyz.x < interpQuadratic(vec2f(608.00,871.00),vec2f(588.00,882.00),vec2f(560.00,896.00),xyz.y)) || xyz.x > interpLine(vec2f(680.00,882.00),vec2f(721.00,949.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 882.00 && xyz.y < 883.00 && (xyz.x < interpQuadratic(vec2f(28.00,769.00),vec2f(28.00,828.00),vec2f(52.50,883.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(215.00,842.00),vec2f(229.00,869.00),vec2f(255.00,889.50),xyz.y) && xyz.x < interpQuadratic(vec2f(608.00,871.00),vec2f(588.00,882.00),vec2f(560.00,896.00),xyz.y)) || xyz.x > interpLine(vec2f(680.00,882.00),vec2f(721.00,949.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 871.00 && xyz.y < 882.00 && (xyz.x < interpQuadratic(vec2f(28.00,769.00),vec2f(28.00,828.00),vec2f(52.50,883.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(215.00,842.00),vec2f(229.00,869.00),vec2f(255.00,889.50),xyz.y) && xyz.x < interpQuadratic(vec2f(608.00,871.00),vec2f(588.00,882.00),vec2f(560.00,896.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(643.00,860.00),vec2f(668.00,859.00),vec2f(680.00,882.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 860.00 && xyz.y < 871.00 && (xyz.x < interpQuadratic(vec2f(28.00,769.00),vec2f(28.00,828.00),vec2f(52.50,883.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(215.00,842.00),vec2f(229.00,869.00),vec2f(255.00,889.50),xyz.y) && xyz.x < interpQuadratic(vec2f(643.00,860.00),vec2f(628.00,860.00),vec2f(608.00,871.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(643.00,860.00),vec2f(668.00,859.00),vec2f(680.00,882.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 859.00 && xyz.y < 860.00 && (xyz.x < interpQuadratic(vec2f(28.00,769.00),vec2f(28.00,828.00),vec2f(52.50,883.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(215.00,842.00),vec2f(229.00,869.00),vec2f(255.00,889.50),xyz.y) && xyz.x < interpQuadratic(vec2f(643.00,860.00),vec2f(668.00,859.00),vec2f(680.00,882.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(643.00,860.00),vec2f(668.00,859.00),vec2f(680.00,882.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 842.00 && xyz.y < 859.00 && (xyz.x < interpQuadratic(vec2f(28.00,769.00),vec2f(28.00,828.00),vec2f(52.50,883.00),xyz.y) || xyz.x > interpQuadratic(vec2f(215.00,842.00),vec2f(229.00,869.00),vec2f(255.00,889.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 783.00 && xyz.y < 842.00 && (xyz.x < interpQuadratic(vec2f(28.00,769.00),vec2f(28.00,828.00),vec2f(52.50,883.00),xyz.y) || xyz.x > interpQuadratic(vec2f(201.00,783.00),vec2f(201.00,815.00),vec2f(215.00,842.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 769.00 && xyz.y < 783.00 && (xyz.x < interpQuadratic(vec2f(28.00,769.00),vec2f(28.00,828.00),vec2f(52.50,883.00),xyz.y) || xyz.x > interpQuadratic(vec2f(224.00,716.50),vec2f(201.00,743.00),vec2f(201.00,783.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 716.50 && xyz.y < 769.00 && (xyz.x < interpQuadratic(vec2f(51.00,655.50),vec2f(28.00,702.00),vec2f(28.00,769.00),xyz.y) || xyz.x > interpQuadratic(vec2f(224.00,716.50),vec2f(201.00,743.00),vec2f(201.00,783.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 670.50 && xyz.y < 716.50 && (xyz.x < interpQuadratic(vec2f(51.00,655.50),vec2f(28.00,702.00),vec2f(28.00,769.00),xyz.y) || xyz.x > interpQuadratic(vec2f(285.00,670.50),vec2f(247.00,690.00),vec2f(224.00,716.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 655.50 && xyz.y < 670.50 && (xyz.x < interpQuadratic(vec2f(51.00,655.50),vec2f(28.00,702.00),vec2f(28.00,769.00),xyz.y) || xyz.x > interpQuadratic(vec2f(371.00,636.00),vec2f(323.00,651.00),vec2f(285.00,670.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 636.00 && xyz.y < 655.50 && (xyz.x < interpQuadratic(vec2f(112.00,577.00),vec2f(74.00,609.00),vec2f(51.00,655.50),xyz.y) || xyz.x > interpQuadratic(vec2f(371.00,636.00),vec2f(323.00,651.00),vec2f(285.00,670.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 604.00 && xyz.y < 636.00 && (xyz.x < interpQuadratic(vec2f(112.00,577.00),vec2f(74.00,609.00),vec2f(51.00,655.50),xyz.y) || xyz.x > interpQuadratic(vec2f(470.00,604.00),vec2f(419.00,621.00),vec2f(371.00,636.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 577.00 && xyz.y < 604.00 && (xyz.x < interpQuadratic(vec2f(112.00,577.00),vec2f(74.00,609.00),vec2f(51.00,655.50),xyz.y) || xyz.x > interpQuadratic(vec2f(569.00,566.50),vec2f(521.00,587.00),vec2f(470.00,604.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 566.50 && xyz.y < 577.00 && (xyz.x < interpQuadratic(vec2f(198.50,524.00),vec2f(150.00,545.00),vec2f(112.00,577.00),xyz.y) || xyz.x > interpQuadratic(vec2f(569.00,566.50),vec2f(521.00,587.00),vec2f(470.00,604.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 524.00 && xyz.y < 566.50 && (xyz.x < interpQuadratic(vec2f(198.50,524.00),vec2f(150.00,545.00),vec2f(112.00,577.00),xyz.y) || xyz.x > interpQuadratic(vec2f(655.00,515.50),vec2f(617.00,546.00),vec2f(569.00,566.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 515.50 && xyz.y < 524.00 && (xyz.x < interpQuadratic(vec2f(298.00,487.00),vec2f(247.00,503.00),vec2f(198.50,524.00),xyz.y) || xyz.x > interpQuadratic(vec2f(655.00,515.50),vec2f(617.00,546.00),vec2f(569.00,566.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 487.00 && xyz.y < 515.50 && (xyz.x < interpQuadratic(vec2f(298.00,487.00),vec2f(247.00,503.00),vec2f(198.50,524.00),xyz.y) || xyz.x > interpQuadratic(vec2f(716.00,440.50),vec2f(693.00,485.00),vec2f(655.00,515.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 456.00 && xyz.y < 487.00 && (xyz.x < interpQuadratic(vec2f(397.50,456.00),vec2f(349.00,471.00),vec2f(298.00,487.00),xyz.y) || xyz.x > interpQuadratic(vec2f(716.00,440.50),vec2f(693.00,485.00),vec2f(655.00,515.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 440.50 && xyz.y < 456.00 && (xyz.x < interpQuadratic(vec2f(484.00,421.00),vec2f(446.00,441.00),vec2f(397.50,456.00),xyz.y) || xyz.x > interpQuadratic(vec2f(716.00,440.50),vec2f(693.00,485.00),vec2f(655.00,515.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 421.00 && xyz.y < 440.50 && (xyz.x < interpQuadratic(vec2f(484.00,421.00),vec2f(446.00,441.00),vec2f(397.50,456.00),xyz.y) || xyz.x > interpQuadratic(vec2f(739.00,333.00),vec2f(739.00,396.00),vec2f(716.00,440.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 373.00 && xyz.y < 421.00 && (xyz.x < interpQuadratic(vec2f(545.00,373.00),vec2f(522.00,401.00),vec2f(484.00,421.00),xyz.y) || xyz.x > interpQuadratic(vec2f(739.00,333.00),vec2f(739.00,396.00),vec2f(716.00,440.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 333.00 && xyz.y < 373.00 && (xyz.x < interpQuadratic(vec2f(568.00,302.00),vec2f(568.00,345.00),vec2f(545.00,373.00),xyz.y) || xyz.x > interpQuadratic(vec2f(739.00,333.00),vec2f(739.00,396.00),vec2f(716.00,440.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 302.00 && xyz.y < 333.00 && (xyz.x < interpQuadratic(vec2f(568.00,302.00),vec2f(568.00,345.00),vec2f(545.00,373.00),xyz.y) || xyz.x > interpQuadratic(vec2f(713.50,200.50),vec2f(739.00,261.00),vec2f(739.00,333.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 236.00 && xyz.y < 302.00 && (xyz.x < interpQuadratic(vec2f(555.00,236.00),vec2f(568.00,267.00),vec2f(568.00,302.00),xyz.y) || xyz.x > interpQuadratic(vec2f(713.50,200.50),vec2f(739.00,261.00),vec2f(739.00,333.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 223.00 && xyz.y < 236.00 && (xyz.x < interpQuadratic(vec2f(515.50,181.50),vec2f(542.00,205.00),vec2f(555.00,236.00),xyz.y) || xyz.x > interpQuadratic(vec2f(713.50,200.50),vec2f(739.00,261.00),vec2f(739.00,333.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 215.50 && xyz.y < 223.00 && (xyz.x < interpQuadratic(vec2f(62.50,215.50),vec2f(74.00,223.00),vec2f(93.00,223.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(131.50,208.50),vec2f(111.00,223.00),vec2f(93.00,223.00),xyz.y) && xyz.x < interpQuadratic(vec2f(515.50,181.50),vec2f(542.00,205.00),vec2f(555.00,236.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(713.50,200.50),vec2f(739.00,261.00),vec2f(739.00,333.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 208.50 && xyz.y < 215.50 && (xyz.x < interpQuadratic(vec2f(43.00,195.00),vec2f(51.00,208.00),vec2f(62.50,215.50),xyz.y) || (xyz.x > interpQuadratic(vec2f(131.50,208.50),vec2f(111.00,223.00),vec2f(93.00,223.00),xyz.y) && xyz.x < interpQuadratic(vec2f(515.50,181.50),vec2f(542.00,205.00),vec2f(555.00,236.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(713.50,200.50),vec2f(739.00,261.00),vec2f(739.00,333.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 200.50 && xyz.y < 208.50 && (xyz.x < interpQuadratic(vec2f(43.00,195.00),vec2f(51.00,208.00),vec2f(62.50,215.50),xyz.y) || (xyz.x > interpQuadratic(vec2f(181.00,176.50),vec2f(152.00,194.00),vec2f(131.50,208.50),xyz.y) && xyz.x < interpQuadratic(vec2f(515.50,181.50),vec2f(542.00,205.00),vec2f(555.00,236.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(713.50,200.50),vec2f(739.00,261.00),vec2f(739.00,333.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 195.00 && xyz.y < 200.50 && (xyz.x < interpQuadratic(vec2f(43.00,195.00),vec2f(51.00,208.00),vec2f(62.50,215.50),xyz.y) || (xyz.x > interpQuadratic(vec2f(181.00,176.50),vec2f(152.00,194.00),vec2f(131.50,208.50),xyz.y) && xyz.x < interpQuadratic(vec2f(515.50,181.50),vec2f(542.00,205.00),vec2f(555.00,236.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(637.50,95.50),vec2f(688.00,140.00),vec2f(713.50,200.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 181.50 && xyz.y < 195.00 && (xyz.x < interpLine(vec2f(0.00,126.00),vec2f(43.00,195.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(181.00,176.50),vec2f(152.00,194.00),vec2f(131.50,208.50),xyz.y) && xyz.x < interpQuadratic(vec2f(515.50,181.50),vec2f(542.00,205.00),vec2f(555.00,236.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(637.50,95.50),vec2f(688.00,140.00),vec2f(713.50,200.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 176.50 && xyz.y < 181.50 && (xyz.x < interpLine(vec2f(0.00,126.00),vec2f(43.00,195.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(181.00,176.50),vec2f(152.00,194.00),vec2f(131.50,208.50),xyz.y) && xyz.x < interpQuadratic(vec2f(449.00,144.50),vec2f(489.00,158.00),vec2f(515.50,181.50),xyz.y)) || xyz.x > interpQuadratic(vec2f(637.50,95.50),vec2f(688.00,140.00),vec2f(713.50,200.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 145.00 && xyz.y < 176.50 && (xyz.x < interpLine(vec2f(0.00,126.00),vec2f(43.00,195.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(251.50,145.00),vec2f(210.00,159.00),vec2f(181.00,176.50),xyz.y) && xyz.x < interpQuadratic(vec2f(449.00,144.50),vec2f(489.00,158.00),vec2f(515.50,181.50),xyz.y)) || xyz.x > interpQuadratic(vec2f(637.50,95.50),vec2f(688.00,140.00),vec2f(713.50,200.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 144.50 && xyz.y < 145.00 && (xyz.x < interpLine(vec2f(0.00,126.00),vec2f(43.00,195.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(356.00,131.00),vec2f(293.00,131.00),vec2f(251.50,145.00),xyz.y) && xyz.x < interpQuadratic(vec2f(449.00,144.50),vec2f(489.00,158.00),vec2f(515.50,181.50),xyz.y)) || xyz.x > interpQuadratic(vec2f(637.50,95.50),vec2f(688.00,140.00),vec2f(713.50,200.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 131.00 && xyz.y < 144.50 && (xyz.x < interpLine(vec2f(0.00,126.00),vec2f(43.00,195.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(356.00,131.00),vec2f(293.00,131.00),vec2f(251.50,145.00),xyz.y) && xyz.x < interpQuadratic(vec2f(356.00,131.00),vec2f(409.00,131.00),vec2f(449.00,144.50),xyz.y)) || xyz.x > interpQuadratic(vec2f(637.50,95.50),vec2f(688.00,140.00),vec2f(713.50,200.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 126.00 && xyz.y < 131.00 && (xyz.x < interpLine(vec2f(0.00,126.00),vec2f(43.00,195.00),xyz.y) || xyz.x > interpQuadratic(vec2f(637.50,95.50),vec2f(688.00,140.00),vec2f(713.50,200.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 95.50 && xyz.y < 126.00 && (xyz.x < interpQuadratic(vec2f(149.50,35.50),vec2f(61.00,71.00),vec2f(0.00,126.00),xyz.y) || xyz.x > interpQuadratic(vec2f(637.50,95.50),vec2f(688.00,140.00),vec2f(713.50,200.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 35.50 && xyz.y < 95.50 && (xyz.x < interpQuadratic(vec2f(149.50,35.50),vec2f(61.00,71.00),vec2f(0.00,126.00),xyz.y) || xyz.x > interpQuadratic(vec2f(514.50,25.50),vec2f(587.00,51.00),vec2f(637.50,95.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 25.50 && xyz.y < 35.50 && (xyz.x < interpQuadratic(vec2f(347.00,0.00),vec2f(238.00,0.00),vec2f(149.50,35.50),xyz.y) || xyz.x > interpQuadratic(vec2f(514.50,25.50),vec2f(587.00,51.00),vec2f(637.50,95.50),xyz.y))) { return 0.0; }
+  if (xyz.y >= 0.00 && xyz.y < 25.50 && (xyz.x < interpQuadratic(vec2f(347.00,0.00),vec2f(238.00,0.00),vec2f(149.50,35.50),xyz.y) || xyz.x > interpQuadratic(vec2f(347.00,0.00),vec2f(442.00,0.00),vec2f(514.50,25.50),xyz.y))) { return 0.0; }
+  return 1.0;
+}
+
+fn glyph_s(height: f32, xyz_in: vec3f) -> f32 {
+  if (any(xyz_in < vec3f(63.00,-16.00,0.0)) || any(xyz_in > vec3f(802.00,1054.00,height))) { return 0.0; }
+  let xyz = xyz_in - vec3f(63.00,-16.00,0.0);
+  return glyph_s_1(xyz);
+}
+
+fn glyph_t_1(xyz: vec3f) -> f32 {
+  if (any(xyz.xy < vec2f(0.00,0.00)) || any(xyz.xy > vec2f(670.00,1390.00))) { return 0.0; }
+
+  if (xyz.y >= 1380.00 && xyz.y <= 1390.00 && (xyz.x < interpQuadratic(vec2f(225.50,1380.00),vec2f(237.00,1390.00),vec2f(254.00,1390.00),xyz.y) || xyz.x > interpLine(vec2f(346.00,1033.00),vec2f(346.00,1390.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1355.00 && xyz.y < 1380.00 && (xyz.x < interpQuadratic(vec2f(212.00,1355.00),vec2f(214.00,1370.00),vec2f(225.50,1380.00),xyz.y) || xyz.x > interpLine(vec2f(346.00,1033.00),vec2f(346.00,1390.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1035.00 && xyz.y < 1355.00 && (xyz.x < interpLine(vec2f(170.00,1035.00),vec2f(212.00,1355.00),xyz.y) || xyz.x > interpLine(vec2f(346.00,1033.00),vec2f(346.00,1390.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1033.00 && xyz.y < 1035.00 && (xyz.x < interpLine(vec2f(0.00,1013.00),vec2f(170.00,1035.00),xyz.y) || xyz.x > interpLine(vec2f(346.00,1033.00),vec2f(346.00,1390.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 1013.00 && xyz.y < 1033.00 && (xyz.x < interpLine(vec2f(0.00,1013.00),vec2f(170.00,1035.00),xyz.y) || xyz.x > interpLine(vec2f(643.00,901.00),vec2f(643.00,1033.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 941.00 && xyz.y < 1013.00 && (xyz.x < interpLine(vec2f(0.00,941.00),vec2f(0.00,1013.00),xyz.y) || xyz.x > interpLine(vec2f(643.00,901.00),vec2f(643.00,1033.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 911.00 && xyz.y < 941.00 && (xyz.x < interpQuadratic(vec2f(11.50,911.00),vec2f(0.00,921.00),vec2f(0.00,941.00),xyz.y) || xyz.x > interpLine(vec2f(643.00,901.00),vec2f(643.00,1033.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 901.00 && xyz.y < 911.00 && (xyz.x < interpQuadratic(vec2f(39.00,901.00),vec2f(23.00,901.00),vec2f(11.50,911.00),xyz.y) || xyz.x > interpLine(vec2f(643.00,901.00),vec2f(643.00,1033.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 278.00 && xyz.y < 901.00 && (xyz.x < interpLine(vec2f(164.00,266.00),vec2f(164.00,901.00),xyz.y) || xyz.x > interpLine(vec2f(346.00,278.00),vec2f(346.00,901.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 266.00 && xyz.y < 278.00 && (xyz.x < interpLine(vec2f(164.00,266.00),vec2f(164.00,901.00),xyz.y) || xyz.x > interpQuadratic(vec2f(378.00,180.50),vec2f(346.00,212.00),vec2f(346.00,278.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 198.00 && xyz.y < 266.00 && (xyz.x < interpQuadratic(vec2f(230.00,68.50),vec2f(164.00,137.00),vec2f(164.00,266.00),xyz.y) || xyz.x > interpQuadratic(vec2f(378.00,180.50),vec2f(346.00,212.00),vec2f(346.00,278.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 190.50 && xyz.y < 198.00 && (xyz.x < interpQuadratic(vec2f(230.00,68.50),vec2f(164.00,137.00),vec2f(164.00,266.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(378.00,180.50),vec2f(346.00,212.00),vec2f(346.00,278.00),xyz.y) && xyz.x < interpQuadratic(vec2f(572.00,190.50),vec2f(583.00,198.00),vec2f(591.00,198.00),xyz.y)) || xyz.x > interpQuadratic(vec2f(617.00,181.00),vec2f(605.00,198.00),vec2f(591.00,198.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 181.00 && xyz.y < 190.50 && (xyz.x < interpQuadratic(vec2f(230.00,68.50),vec2f(164.00,137.00),vec2f(164.00,266.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(378.00,180.50),vec2f(346.00,212.00),vec2f(346.00,278.00),xyz.y) && xyz.x < interpQuadratic(vec2f(545.50,173.50),vec2f(561.00,183.00),vec2f(572.00,190.50),xyz.y)) || xyz.x > interpQuadratic(vec2f(617.00,181.00),vec2f(605.00,198.00),vec2f(591.00,198.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 180.50 && xyz.y < 181.00 && (xyz.x < interpQuadratic(vec2f(230.00,68.50),vec2f(164.00,137.00),vec2f(164.00,266.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(378.00,180.50),vec2f(346.00,212.00),vec2f(346.00,278.00),xyz.y) && xyz.x < interpQuadratic(vec2f(545.50,173.50),vec2f(561.00,183.00),vec2f(572.00,190.50),xyz.y)) || xyz.x > interpLine(vec2f(670.00,94.00),vec2f(617.00,181.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 173.50 && xyz.y < 180.50 && (xyz.x < interpQuadratic(vec2f(230.00,68.50),vec2f(164.00,137.00),vec2f(164.00,266.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(460.00,149.00),vec2f(410.00,149.00),vec2f(378.00,180.50),xyz.y) && xyz.x < interpQuadratic(vec2f(545.50,173.50),vec2f(561.00,183.00),vec2f(572.00,190.50),xyz.y)) || xyz.x > interpLine(vec2f(670.00,94.00),vec2f(617.00,181.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 156.50 && xyz.y < 173.50 && (xyz.x < interpQuadratic(vec2f(230.00,68.50),vec2f(164.00,137.00),vec2f(164.00,266.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(460.00,149.00),vec2f(410.00,149.00),vec2f(378.00,180.50),xyz.y) && xyz.x < interpQuadratic(vec2f(509.50,156.50),vec2f(530.00,164.00),vec2f(545.50,173.50),xyz.y)) || xyz.x > interpLine(vec2f(670.00,94.00),vec2f(617.00,181.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 149.00 && xyz.y < 156.50 && (xyz.x < interpQuadratic(vec2f(230.00,68.50),vec2f(164.00,137.00),vec2f(164.00,266.00),xyz.y) || (xyz.x > interpQuadratic(vec2f(460.00,149.00),vec2f(410.00,149.00),vec2f(378.00,180.50),xyz.y) && xyz.x < interpQuadratic(vec2f(460.00,149.00),vec2f(489.00,149.00),vec2f(509.50,156.50),xyz.y)) || xyz.x > interpLine(vec2f(670.00,94.00),vec2f(617.00,181.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 94.00 && xyz.y < 149.00 && (xyz.x < interpQuadratic(vec2f(230.00,68.50),vec2f(164.00,137.00),vec2f(164.00,266.00),xyz.y) || xyz.x > interpLine(vec2f(670.00,94.00),vec2f(617.00,181.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 68.50 && xyz.y < 94.00 && (xyz.x < interpQuadratic(vec2f(230.00,68.50),vec2f(164.00,137.00),vec2f(164.00,266.00),xyz.y) || xyz.x > interpQuadratic(vec2f(556.50,25.00),vec2f(623.00,50.00),vec2f(670.00,94.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 25.00 && xyz.y < 68.50 && (xyz.x < interpQuadratic(vec2f(419.00,0.00),vec2f(296.00,0.00),vec2f(230.00,68.50),xyz.y) || xyz.x > interpQuadratic(vec2f(556.50,25.00),vec2f(623.00,50.00),vec2f(670.00,94.00),xyz.y))) { return 0.0; }
+  if (xyz.y >= 0.00 && xyz.y < 25.00 && (xyz.x < interpQuadratic(vec2f(419.00,0.00),vec2f(296.00,0.00),vec2f(230.00,68.50),xyz.y) || xyz.x > interpQuadratic(vec2f(419.00,0.00),vec2f(490.00,0.00),vec2f(556.50,25.00),xyz.y))) { return 0.0; }
+  return 1.0;
+}
+
+fn glyph_t(height: f32, xyz_in: vec3f) -> f32 {
+  if (any(xyz_in < vec3f(45.00,-16.00,0.0)) || any(xyz_in > vec3f(715.00,1374.00,height))) { return 0.0; }
+  let xyz = xyz_in - vec3f(45.00,-16.00,0.0);
+  return glyph_t_1(xyz);
+}
+
+fn textMessage(emSize: f32, height: f32, xyz_orig: vec3f) -> f32 {
+  let xyz = xyz_orig * vec3f(1649.00/emSize, 1649.00/emSize, 1.0);
+  var result = 0.0;
+  result += glyph_I(height, xyz-vec3f(0.00,0.0,0.0));
+  result += glyph_R(height, xyz-vec3f(628.00,0.0,0.0));
+  result += glyph_M(height, xyz-vec3f(2146.00,0.0,0.0));
+  result += glyph_F(height, xyz-vec3f(4030.00,0.0,0.0));
+  result += glyph_f(height, xyz-vec3f(5584.00,0.0,0.0));
+  result += glyph_o(height, xyz-vec3f(6274.00,0.0,0.0));
+  result += glyph_n(height, xyz-vec3f(7412.00,0.0,0.0));
+  result += glyph_t(height, xyz-vec3f(8550.00,0.0,0.0));
+  result += glyph_s(height, xyz-vec3f(9313.00,0.0,0.0));
+  return result;
+}
+
+fn mainModel4(xyz_in: vec3f) -> vec4f {
+  var xyz = xyz_in;
+  xyz += vec3f(3.0, 0.0, 1.5);
+  var materials = vec4f(0.0);
+  materials[0] = textMessage(1.0, 0.5, xyz);
+  return materials;
+}

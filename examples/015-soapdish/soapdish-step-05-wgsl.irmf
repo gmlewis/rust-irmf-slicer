@@ -1,0 +1,63 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-07-19",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA1"],
+  "max": [42.5,42.5,12],
+  "min": [-42.5,-42.5,-12],
+  "notes": "One step in soapdish tutorial.",
+  "options": {},
+  "title": "soapdish",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const M_PI = 3.1415926535897932384626433832795;
+
+fn halfTorus(majorRadius: f32, minorRadius: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  if (xyz.z > minorRadius || xyz.z < 0.0) { return 0.0; } 
+  if (r > majorRadius + minorRadius || r < majorRadius - minorRadius) { return 0.0; }
+  
+  let angle = atan2(xyz.y, xyz.x);
+  let center = vec3f(majorRadius * cos(angle), majorRadius * sin(angle), 0.0);
+  let v = xyz - center;
+  let r2 = length(v);
+  if (r2 > minorRadius) { return 0.0; }
+  
+  return 1.0;
+}
+
+fn cone(radius: f32, height: f32, xyz: vec3f) -> f32 {
+  if (xyz.z > height || xyz.z < 0.0) { return 0.0; }
+  let r = length(xyz.xy);
+  if (r > radius - (height - xyz.z)) { return 0.0; }
+  return 1.0;
+}
+
+fn base(radius: f32, baseHeight: f32, xyz: vec3f) -> f32 {
+  if (xyz.z > baseHeight || xyz.z < 0.0) { return 0.0; }
+  let r = length(xyz.xy);
+  if (r > radius) { return 0.0; }
+  return 1.0;
+}
+
+fn soapdish(xyz: vec3f) -> f32 {
+  let width = 105.0;
+  let depth = 82.0;
+  let height = 24.0;
+  let baseHeight = 6.0;
+  let squish = vec3f(1.0, width / depth, 1.0);
+  var result = cone(0.5 * width, height - baseHeight, xyz * squish);
+  result += halfTorus(0.5 * width - 3.0, 3.0, xyz * squish - vec3f(0.0, 0.0, height - baseHeight));
+  result += base(0.5 * width - height + baseHeight, baseHeight, xyz * squish + vec3f(0.0, 0.0, baseHeight));
+  return result;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = soapdish(xyz + vec3f(0.0, 0.0, 12.0));
+  return materials;
+}

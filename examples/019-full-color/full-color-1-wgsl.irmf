@@ -1,0 +1,44 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-02-13",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA.H","PLA.S","PLA.V"],
+  "max": [5,5,3.5],
+  "min": [-5,-5,-3.5],
+  "notes": "Full-color (HSV) IRMF Shader - coil with square cross-section face.",
+  "options": {},
+  "title": "Full-color model",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const M_PI = 3.1415926535897932384626433832795;
+
+fn coilSquareFace(radius: f32, size: f32, gap: f32, nTurns: f32, xyz: vec3f) -> f32 {
+  if (xyz.z < -0.5 * size || xyz.z > nTurns * (size + gap) + 0.5 * size) { return 0.0; }
+  let rxy = length(xyz.xy);
+  if (rxy < radius - 0.5 * size || rxy > radius + 0.5 * size) { return 0.0; }
+  var angle = atan2(xyz.y, xyz.x) / (2.0 * M_PI);
+  if (angle < 0.0) { angle += 1.0; }
+  let dz = xyz.z - (size + gap) * floor(xyz.z / (size + gap));
+  var lastHelixZ = angle * (size + gap);
+  var coilNum = 0.0;
+  if (lastHelixZ > dz) {
+    lastHelixZ -= (size + gap);
+    coilNum = -1.0;
+  }
+  let nextHelixZ = lastHelixZ + (size + gap);
+  if (dz > lastHelixZ + 0.5 * size && dz < nextHelixZ - 0.5 * size) { return 0.0; }
+  coilNum += floor((xyz.z + (0.5 * size) - lastHelixZ) / (size + gap));
+  if (coilNum < 0.0 || coilNum >= nTurns) { return 0.0; }
+  return 1.0;
+}
+
+fn mainModel4(xyz_in: vec3f) -> vec4f {
+  var xyz = xyz_in;
+  xyz.z += 3.0;
+  let coil = coilSquareFace(4.0, 1.0, 2.0, 2.0, xyz);
+  return vec4f(xyz.z/7.0, coil, coil, 1.0);
+}

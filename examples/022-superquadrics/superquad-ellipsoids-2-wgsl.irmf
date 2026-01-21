@@ -1,0 +1,38 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-04-13",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["Red","Green"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Figure 7 from: https://authors.library.caltech.edu/9756.",
+  "options": {},
+  "title": "Superquadric ellipsoids",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn wgsl_mod(x: f32, y: f32) -> f32 {
+  return x - y * floor(x / y);
+}
+
+fn superquad2(slices: f32, e1: f32, e2: f32, xyz_in: vec3f) -> vec2f {
+  let xyz = abs(xyz_in);
+  let f = pow(pow(xyz.x, 2.0 / e2) + pow(xyz.y, 2.0 / e2), e2 / e1) + pow(xyz.z, 2.0 / e1);
+  if (f > 1.0) { return vec2f(0.0); }
+  return select(vec2f(0.0, 1.0), vec2f(1.0, 0.0), wgsl_mod(abs(xyz.z) * slices, 1.0) <= 0.5);
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var mat_xy = vec2f(0.0);
+  let e = vec4f(0.1, 1.0, 2.0, 3.0);
+  let o = vec4f(-3.4, - 1.2, 1.2, 3.4);
+  for(var i = 0; i < 4; i ++ ) {
+    for(var j = 0; j < 4; j ++ ) {
+      mat_xy += superquad2(6.0, e[i], e[j], xyz - vec3f(o[j], 0.0, o[3 - i]));
+    }
+  }
+  return vec4f(mat_xy, 0.0, 0.0);
+}

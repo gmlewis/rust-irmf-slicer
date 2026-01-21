@@ -1,0 +1,108 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-07-19",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA1"],
+  "max": [57.5,57.5,18],
+  "min": [-57.5,-57.5,-12],
+  "notes": "One step in soapdish tutorial.",
+  "options": {},
+  "title": "soapdish",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const M_PI = 3.1415926535897932384626433832795;
+
+fn halfTorus(majorRadius: f32, minorRadius: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  if (xyz.z > minorRadius || xyz.z < 0.0) { return 0.0; }
+  if (r > majorRadius + minorRadius || r < majorRadius - minorRadius) { return 0.0; }
+  
+  let angle = atan2(xyz.y, xyz.x);
+  let center = vec3f(majorRadius * cos(angle), majorRadius * sin(angle), 0.0);
+  let v = xyz - center;
+  let r2 = length(v);
+  if (r2 > minorRadius) { return 0.0; }
+  
+  return 1.0;
+}
+
+fn cone(radius: f32, height: f32, xyz: vec3f) -> f32 {
+  if (xyz.z > height || xyz.z < 0.0) { return 0.0; }
+  let r = length(xyz.xy);
+  if (r > radius - (height - xyz.z)) { return 0.0; }
+  return 1.0;
+}
+
+fn sphere(radius: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  if (r > radius) { return 0.0; }
+  return 1.0;
+}
+
+fn post(xyz: vec3f) -> f32 {
+  let height = 5.0;
+  let radius = 5.0;
+  let result = sphere(radius, xyz - vec3f(0.0, 0.0, height));
+  if (xyz.z > height || xyz.z < 0.0) { return result; }
+  let r = length(xyz.xy);
+  if (r > radius) { return result; }
+  return 1.0;
+}
+
+fn drain(xyz: vec3f) -> f32 {
+  let r3 = length(xyz - vec3f(0.0, 0.0, 0.5));
+  if (r3 <= 3.0) { return 1.0; }
+  let r = length(xyz.xy);
+  if (r > 2.0) { return 0.0; }
+  return 1.0;
+}
+
+fn base(radius: f32, baseHeight: f32, xyz: vec3f) -> f32 {
+  if (xyz.z > baseHeight || xyz.z < 0.0) { return 0.0; }
+  let r = length(xyz.xy);
+  if (r > radius) { return 0.0; }
+  return 1.0;
+}
+
+fn baseDrain(radius: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz.xz);
+  if (r > radius) { return 0.0; }
+  return 1.0;
+}
+
+fn soapdish(width: f32, depth: f32, height: f32, xyz: vec3f) -> f32 {
+  let baseHeight = 6.0;
+  let separation = 3.0;
+  let squish = vec3f(1.0, width / depth, 1.0);
+  var result = cone(0.5 * width, height - baseHeight, xyz * squish);
+  result += halfTorus(0.5 * width - separation, separation, xyz * squish - vec3f(0.0, 0.0, height - baseHeight));
+  result += base(0.5 * width - height + baseHeight, baseHeight, xyz * squish + vec3f(0.0, 0.0, baseHeight));
+  result -= cone(0.5 * width, height - baseHeight, xyz * squish - vec3f(0.0, 0.0, separation));
+  
+  let offset = vec3f(12.5, 12.5, separation);
+  for(var i = -1; i <= 1; i ++ ) {
+    for(var j = -1; j <= 1; j ++ ) {
+      result += post(xyz - offset * vec3f(f32(i), f32(j), 1.0));
+    }
+  }
+  result += post(xyz - vec3f(-25.0, 0.0, separation));
+  result += post(xyz - vec3f(25.0, 0.0, separation));
+  
+  for(var i = -2; i < 2; i ++ ) {
+    result -= drain(xyz - offset * vec3f(f32(i), - 1.0, 1.0) - vec3f(6.25, 6.25, 0.0));
+    result -= drain(xyz - offset * vec3f(f32(i), 0.0, 1.0) - vec3f(6.25, 6.25, 0.0));
+    result -= baseDrain(4.0, xyz - offset * vec3f(f32(i), 0.0, 0.0) + vec3f(-6.25, 0.0, baseHeight));
+  }
+  
+  return result;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = soapdish(105.0, 82.0, 24.0, xyz + vec3f(0.0, 0.0, 6.0));
+  return materials;
+}

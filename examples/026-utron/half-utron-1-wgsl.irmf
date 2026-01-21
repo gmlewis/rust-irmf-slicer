@@ -1,0 +1,49 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-10-14",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["copper"],
+  "max": [36,36,46],
+  "min": [-36,-36,0],
+  "notes": "Simple IRMF shader - half-utron.",
+  "options": {},
+  "title": "half-utron",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn cone(xyz: vec3f) -> f32 {
+  if (xyz.z < 0.0 || xyz.z > 1.0) { return 0.0; }
+  let zsize = mix(1.0, 0.0, xyz.z);
+  let r = length(xyz.xy);
+  if (r > zsize) { return 0.0; }
+  return 1.0;
+}
+
+fn sphere(radius: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  return select(0.0, 1.0, r <= radius);
+}
+
+fn cylinder(radius: f32, height: f32, xyz: vec3f) -> f32 {
+  if (xyz.z < 0.0 || xyz.z > height) { return 0.0; }
+  let rxy = length(xyz.xy);
+  if (rxy > radius) { return 0.0; }
+  return 1.0;
+}
+
+fn halfUtron(sphereDiam: f32, edgeLen: f32, shaftDiam: f32, shaftHeight: f32, xyz: vec3f) -> f32 {
+    let h = sqrt(edgeLen*edgeLen/2.0);
+    let r = sphereDiam/2.0;
+    let shaftR = shaftDiam/2.0;
+    let shaftPos = vec3f(0.0, 0.0, h-shaftR);
+    return cone(xyz/h) + cylinder(shaftR, shaftHeight, xyz-shaftPos) - sphere(1.0, xyz/r);
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = halfUtron(44.0, 50.0, 4.98, 10.0, xyz);
+  return materials;
+}

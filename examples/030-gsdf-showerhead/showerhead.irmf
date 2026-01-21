@@ -1,0 +1,807 @@
+/*{
+  "irmf": "1.0",
+  "language": "glsl",
+  "materials": ["material0"],
+  "max": [36.8,36.8,2.5],
+  "min": [-36.8,-36.8,-4],
+  "units": "mm"
+}*/
+
+vec2 gsdfWinding(vec2 p,vec2 v1,vec2 v2,vec2 d_s){
+  vec2 e=v2-v1;
+  vec2 w=p-v1;
+  vec2 b=w-e*clamp(dot(w,e)/dot(e,e),0.,1.);
+  d_s.x=min(d_s.x,dot(b,b));
+  // winding number from http://geomalgorithms.com/a03-_inclusion.html
+  bvec3 cond=bvec3(p.y>=v1.y,
+    p.y<v2.y,
+  e.x*w.y>e.y*w.x);
+  if(all(cond)||all(not(cond))){
+    d_s.y=-d_s.y;
+  }
+  return d_s;
+}
+
+float gsdfCylinder3D(vec3 p,float radius,float h,float round){
+  p=p.xzy;
+  vec2 d=vec2(length(p.xz)-radius+round,abs(p.y)-h);
+  return min(max(d.x,d.y),0.)+length(max(d,0.))-round;
+}
+float poly2Dbhq9sj4grnkj2mp7tj8(vec2 p){
+  vec2[5]v=vec2[5](vec2(.5,0.),vec2(.5,36.5),vec2(0.,36.799999237),vec2(-.5,36.5),vec2(-.5,0.));
+  const int num=v.length();
+  vec2 d_s=vec2(dot(p-v[0],p-v[0]),1.);
+  for(int i=0,j=num-1;i<num;j=i,i++)
+  {
+    d_s=gsdfWinding(p,v[i],v[j],d_s);
+  }
+  return d_s.y*sqrt(d_s.x);
+  
+}
+float cyl0p800000092vksqn8de8a8(vec3 p){
+  return gsdfCylinder3D(p,.800000012,12.5,0.);
+}
+float screw_1d229dfhrcovai6hfu4(vec3 p){
+  float lead=229.;
+  float pitch=1.;
+  float taper=0.;
+  float L=1.5;
+  
+  #define Pi 3.1415926535897932384626433832795
+  float y=length(p.xy);
+  if(taper!=0.){
+    y+=p.z*atan(taper);
+  }
+  float theta=atan(p.y,p.x);
+  float z=p.z+lead*theta/(2.*Pi);
+  float sawt=(z+pitch/2.)/pitch;
+  float saw=pitch*(sawt-floor(sawt))-.5*pitch;
+  vec2 p2=vec2(saw,y);
+  float d2=poly2Dbhq9sj4grnkj2mp7tj8(p2);
+  float d3=abs(p.z)-L;
+  return max(d2,d3);
+}
+float screw_1dn229c9ffhrbo4hivt(vec3 p){
+  float lead=-229.;
+  float pitch=1.;
+  float taper=0.;
+  float L=1.5;
+  
+  #define Pi 3.1415926535897932384626433832795
+  float y=length(p.xy);
+  if(taper!=0.){
+    y+=p.z*atan(taper);
+  }
+  float theta=atan(p.y,p.x);
+  float z=p.z+lead*theta/(2.*Pi);
+  float sawt=(z+pitch/2.)/pitch;
+  float saw=pitch*(sawt-floor(sawt))-.5*pitch;
+  vec2 p2=vec2(saw,y);
+  float d2=poly2Dbhq9sj4grnkj2mp7tj8(p2);
+  float d3=abs(p.z)-L;
+  return max(d2,d3);
+}
+float translaten23894rdherj2mqi(vec3 p){
+  vec3 t=vec3(-23.935707092,-17.295139313,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten24aju13fs9m9q66(vec3 p){
+  vec3 t=vec3(-24.726015091,15.934364319,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate5p88vmfd6qkg7kqa(vec3 p){
+  vec3 t=vec3(5.816504478,28.717384338,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate28pa91rngulm3ea7(vec3 p){
+  vec3 t=vec3(28.750326157,5.017833233,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate15p1rnrp6taj2eon(vec3 p){
+  vec3 t=vec3(15.080307961,-24.851243973,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten17e3g15uvap4guj(vec3 p){
+  vec3 t=vec3(-17.584774017,-23.000339508,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten27buei3vk51rf5s(vec3 p){
+  vec3 t=vec3(-27.711502075,7.971986294,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten2p9kgok2c6aostd(vec3 p){
+  vec3 t=vec3(-2.65265274,28.595161438,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate25p5b209osqc5b5g(vec3 p){
+  vec3 t=vec3(25.561609268,12.828252792,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate21pdfq1mbf1kqoe7(vec3 p){
+  vec3 t=vec3(21.166007996,-19.057811737,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten105nhri74io3t90(vec3 p){
+  vec3 t=vec3(-10.00215435,-26.540475845,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten2824qehv4nci0tq(vec3 p){
+  vec3 t=vec3(-28.241117477,-.345306188,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten104mtuldh5u78nh(vec3 p){
+  vec3 t=vec3(-10.558233261,26.066141129,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate20pbss0o7380dbev(vec3 p){
+  vec3 t=vec3(20.346179962,19.2403965,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate25p8e9d96gubpaq7(vec3 p){
+  vec3 t=vec3(25.217945099,-11.893498421,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten1p4h2hrdktkpmdg(vec3 p){
+  vec3 t=vec3(-1.888008595,-27.696126938,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten269f1v7dblqeplu(vec3 p){
+  vec3 t=vec3(-26.366373062,-8.288201332,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten17dafjc9d5c92ap(vec3 p){
+  vec3 t=vec3(-17.2417202,21.443948746,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate13pfu9d82n1kesog(vec3 p){
+  vec3 t=vec3(13.633903503,23.758718491,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate26p7dhf6io9ua623(vec3 p){
+  vec3 t=vec3(26.969501495,-4.030626297,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate6p0fa3jcriq73i3a(vec3 p){
+  vec3 t=vec3(6.037049294,-26.464958191,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten221lg12jbtnqtc3(vec3 p){
+  vec3 t=vec3(-22.347633362,-15.187600136,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten22f4dr0ujossjo2(vec3 p){
+  vec3 t=vec3(-22.17795372,15.213755608,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate6p05g2p8i0ehni8j(vec3 p){
+  vec3 t=vec3(6.066878319,26.07207489,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate26p4ikmvlcbv4c52(vec3 p){
+  vec3 t=vec3(26.366342545,3.823080778,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate13p9ecmt8ut5jmqm(vec3 p){
+  vec3 t=vec3(13.096826553,-23.054567337,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten166jefjl86fnaon(vec3 p){
+  vec3 t=vec3(-16.623622894,-20.492319107,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten25dndrhfvu75vp(vec3 p){
+  vec3 t=vec3(-25.015707016,7.983376503,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten1p4r7rtrvj6ujcf(vec3 p){
+  vec3 t=vec3(-1.663667321,26.076660156,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate23pdc76bi8ej8it7(vec3 p){
+  vec3 t=vec3(23.563966751,10.988150597,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate18p9iu1sqotksg8q(vec3 p){
+  vec3 t=vec3(18.718618393,-17.856462479,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten9pf4qlibdqmevrp(vec3 p){
+  vec3 t=vec3(-9.766500473,-23.813764572,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten257jk5pdrr63ha7(vec3 p){
+  vec3 t=vec3(-25.603513718,.424275696,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten8p3igvhqsj40kap(vec3 p){
+  vec3 t=vec3(-8.87991333,23.876916885,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate18pbeot3t8ridfdh(vec3 p){
+  vec3 t=vec3(18.906187057,16.874717712,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate22p5osrb9qsqrv60(vec3 p){
+  vec3 t=vec3(22.480419159,-11.404858589,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten2p8d3j2jqv36fau(vec3 p){
+  vec3 t=vec3(-2.424615622,-24.955986023,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten23c2hgjo7h2bi6p(vec3 p){
+  vec3 t=vec3(-23.996042252,-6.790430546,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten1454rarfnn4cdao(vec3 p){
+  vec3 t=vec3(-14.978205681,19.769001007,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate12pfhp89sbpb7eql(vec3 p){
+  vec3 t=vec3(12.887684822,21.031108856,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate24pi699mdqf8a0p(vec3 p){
+  vec3 t=vec3(24.144481659,-4.322485924,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate4p78qckdct12lmvd(vec3 p){
+  vec3 t=vec3(4.737512112,-23.925634384,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten207ihur23lm1904(vec3 p){
+  vec3 t=vec3(-20.441772461,-13.048138618,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten192go9vs70lr3fl(vec3 p){
+  vec3 t=vec3(-19.481693268,14.206463814,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate6p1doau0ltnrfdv9(vec3 p){
+  vec3 t=vec3(6.102908134,23.180906296,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate23p4bm6rn1sq8qb4(vec3 p){
+  vec3 t=vec3(23.671470642,2.738874435,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate11p55tgu4edrpj7q(vec3 p){
+  vec3 t=vec3(11.102383614,-20.924077988,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten157m15ucjoco4ma(vec3 p){
+  vec3 t=vec3(-15.352782249,-17.849710464,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten223ov2u4lvqcb4m(vec3 p){
+  vec3 t=vec3(-22.078184128,7.753307343,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten0p9lln06anf6q5b(vec3 p){
+  vec3 t=vec3(-.811651647,23.240936279,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate21paq2igtskuf9st(vec3 p){
+  vec3 t=vec3(21.216623306,9.159410477,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate16pa0umiv8sgm1jr(vec3 p){
+  vec3 t=vec3(16.151882172,-16.321660995,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten9p9n9r48rqs38kd(vec3 p){
+  vec3 t=vec3(-9.261406898,-20.850570679,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten227ddf30plhurjl(vec3 p){
+  vec3 t=vec3(-22.642946243,1.028085113,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten7p1rqevdag0j5ob(vec3 p){
+  vec3 t=vec3(-7.237754822,21.32170105,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate17p5ggv1mjoqkc5i(vec3 p){
+  vec3 t=vec3(17.108221054,14.406552315,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate19p9onvsc2hk72pk(vec3 p){
+  vec3 t=vec3(19.513206482,-10.616719246,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten2pf06v2046a052r(vec3 p){
+  vec3 t=vec3(-2.764883518,-21.887788773,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten211102rj99b24u0(vec3 p){
+  vec3 t=vec3(-21.24325943,-5.355727673,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten12c4u5bmhas3sth(vec3 p){
+  vec3 t=vec3(-12.632096291,17.709604263,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate11p6tkgpa9kpti31(vec3 p){
+  vec3 t=vec3(11.810049057,18.082107544,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate20p15ksc4phmnc6h(vec3 p){
+  vec3 t=vec3(20.987112045,-4.384186745,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate3p5ag129c5bhfsus(vec3 p){
+  vec3 t=vec3(3.530978918,-20.986951828,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten188r7m3ru98vsra(vec3 p){
+  vec3 t=vec3(-18.12446022,-10.847300529,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten16d6i4b98v5vcf8(vec3 p){
+  vec3 t=vec3(-16.574382782,12.833151817,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate5p879csna1aapgms(vec3 p){
+  vec3 t=vec3(5.872569084,19.953767776,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate20p4mt4uj019ooqu(vec3 p){
+  vec3 t=vec3(20.55988884,1.780713797,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate9p06gkv6lcmrhf4f(vec3 p){
+  vec3 t=vec3(9.070817947,-18.353206635,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten13fjai2suehhbe2(vec3 p){
+  vec3 t=vec3(-13.679740906,-15.007486343,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten18f30s5uo6vdcfe(vec3 p){
+  vec3 t=vec3(-18.801870346,7.217319965,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten0p88jsbs6cgl8ls(vec3 p){
+  vec3 t=vec3(-.122086443,19.97060585,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate18p1vc1itmui87em(vec3 p){
+  vec3 t=vec3(18.397768021,7.321352005,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate13p2bbnncii3bo4o(vec3 p){
+  vec3 t=vec3(13.399888992,-14.344439507,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten8p7sp43rggg2hda(vec3 p){
+  vec3 t=vec3(-8.406842232,-17.546649933,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten19sd3plgns4386(vec3 p){
+  vec3 t=vec3(-19.229091644,1.428970933,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten5p58l8gjdcjc8nk(vec3 p){
+  vec3 t=vec3(-5.617985725,18.261384964,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate14p82b36mnggg1ke(vec3 p){
+  vec3 t=vec3(14.823646545,11.770278931,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate16p1t2k5l89m1dgn(vec3 p){
+  vec3 t=vec3(16.204172134,-9.431050301,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten2p9mummu7dr5tmq(vec3 p){
+  vec3 t=vec3(-2.856557369,-18.346662521,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten17ee2gva5cd0os7(vec3 p){
+  vec3 t=vec3(-17.948976517,-3.979222536,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten109urtn7o2fbjp3(vec3 p){
+  vec3 t=vec3(-10.137838364,15.115032196,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate10p4qoegpi7nkkqu(vec3 p){
+  vec3 t=vec3(10.280404091,14.791660309,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate17p66kd17144qalk(vec3 p){
+  vec3 t=vec3(17.335836411,-4.145934105,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate2p4cccb6qoq90e41(vec3 p){
+  vec3 t=vec3(2.423784256,-17.466690063,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten1516anq3q968cb5(vec3 p){
+  vec3 t=vec3(-15.217461586,-8.522255898,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten13503fdnn3fsfo(vec3 p){
+  vec3 t=vec3(-13.326934814,10.946818352,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate5p2acap9okfh7si2(vec3 p){
+  vec3 t=vec3(5.282729149,16.210266113,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate16p7fekgs8tijes6(vec3 p){
+  vec3 t=vec3(16.821985245,.969946682,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate6p9ffrlbt5ijacum(vec3 p){
+  vec3 t=vec3(6.943595409,-15.130976677,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten116q12u1ue32cbk(vec3 p){
+  vec3 t=vec3(-11.422838211,-11.828726768,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten14eda0fmbr6l1es(vec3 p){
+  vec3 t=vec3(-14.984731674,6.252820969,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate0p33tka8g4ic170b(vec3 p){
+  vec3 t=vec3(.363576502,16.023351669,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate14p3e6kged593531(vec3 p){
+  vec3 t=vec3(14.856675148,5.422101498,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate10pc0lflbdkp194k(vec3 p){
+  vec3 t=vec3(10.316514015,-11.701687813,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten7p3gfat2bsbclgo(vec3 p){
+  vec3 t=vec3(-7.042938709,-13.674685478,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten1529detceitjh3p(vec3 p){
+  vec3 t=vec3(-15.0801754,1.558297873,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten3p2aonbq0eflvgh(vec3 p){
+  vec3 t=vec3(-3.978883982,14.396126747,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate11pagthpju41ho4g(vec3 p){
+  vec3 t=vec3(11.776983261,8.810370445,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate12pa83njr79a0a1u(vec3 p){
+  vec3 t=vec3(12.296560287,-7.639017582,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten2pbri6f6sgk26tf(vec3 p){
+  vec3 t=vec3(-2.595163822,-14.002326012,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten13flphi9gv0udo1(vec3 p){
+  vec3 t=vec3(-13.75112915,-2.635604143,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten7p689vqk4oanm93(vec3 p){
+  vec3 t=vec3(-7.331290245,11.641828537,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate8p05o4bspt8o3c61(vec3 p){
+  vec3 t=vec3(8.02655983,10.867120743,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate12pdu0414t9pn2kc(vec3 p){
+  vec3 t=vec3(12.799705505,-3.453624725,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate1p49t3d1pj526bi9(vec3 p){
+  vec3 t=vec3(1.415279746,-12.9227314,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten116of7oa8n7pmta(vec3 p){
+  vec3 t=vec3(-11.287873268,-5.901179314,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten9p2hdis03pe9uct(vec3 p){
+  vec3 t=vec3(-9.4034729,8.188694,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate4p1eh9h0gr9ganjk(vec3 p){
+  vec3 t=vec3(4.110891342,11.481313705,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate11p1pb048uslj7u4(vec3 p){
+  vec3 t=vec3(11.909755707,.343070209,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate4p5613ljrl8r85r8(vec3 p){
+  vec3 t=vec3(4.543253899,-10.703215599,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten8p4a0tcvdg7olqe(vec3 p){
+  vec3 t=vec3(-8.104123116,-7.922322273,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten108arps9fkkpogl(vec3 p){
+  vec3 t=vec3(-10.053575516,4.539338112,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate0p5a0irc0r1iq482(vec3 p){
+  vec3 t=vec3(.551672459,10.705869675,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate9p8b7mscth0r2pgm(vec3 p){
+  vec3 t=vec3(9.868304253,3.282766342,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate6p49gu7h2rh8fb7l(vec3 p){
+  vec3 t=vec3(6.438998699,-7.742046833,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten4p4ga8q010498t3(vec3 p){
+  vec3 t=vec3(-4.701509953,-8.516795158,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten9pfmt74075nkd21(vec3 p){
+  vec3 t=vec3(-9.293162346,1.231718898,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten2prn2lhtuj4rmt(vec3 p){
+  vec3 t=vec3(-2.148397207,8.746677399,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate7p0bvrcjfrlsed59(vec3 p){
+  vec3 t=vec3(7.050756454,4.964558125,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate6p89l4p4vc96814s(vec3 p){
+  vec3 t=vec3(6.856145859,-4.537980556,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten1pfudfks8es9skt(vec3 p){
+  vec3 t=vec3(-1.641671538,-7.625280857,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten7p7sun69ibnntfk(vec3 p){
+  vec3 t=vec3(-7.259310246,-1.175757885,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten3pftqpndf2aaun2(vec3 p){
+  vec3 t=vec3(-3.496507406,5.924055099,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate3p9d9qbnp228oda3(vec3 p){
+  vec3 t=vec3(3.92969799,5.011733532,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate5p555b2l3kmch9cn(vec3 p){
+  vec3 t=vec3(5.567106247,-1.675507784,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate0p452a7tsbck7hqu(vec3 p){
+  vec3 t=vec3(.417036533,-5.18324995,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten4paivt0fc1emg9g(vec3 p){
+  vec3 t=vec3(-4.04928875,-1.970598578,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translaten2pchm4bkjspa40t(vec3 p){
+  vec3 t=vec3(-2.702248335,2.493561983,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate0p9dn138os7vduu6(vec3 p){
+  vec3 t=vec3(.946566522,2.42157197,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float translate0p0b4ivk422sqfac(vec3 p){
+  vec3 t=vec3(0.,0.,0.);
+  return cyl0p800000092vksqn8de8a8(p-t);
+}
+float cyl36p52p50p12cvca3tot4tp(vec3 p){
+  return gsdfCylinder3D(p,36.5,1.25,0.);
+}
+float poly2Dflu90us9o605e0v55l(vec2 p){
+  vec2[22]v=vec2[22](vec2(1.666666627,0.),vec2(1.666666627,32.5),vec2(.877321661,32.5),vec2(.853514671,32.496528625),vec2(.8316921,32.48639679),vec2(.81367296,32.47045517),vec2(.800959289,32.450031281),vec2(.794609487,32.426822662),vec2(.713538587,31.766551971),vec2(.676014841,31.662326813),vec2(.597140431,31.584547043),vec2(.492401183,31.548482895),vec2(.382361054,31.561214447),vec2(.28862524,31.620243073),vec2(-.517907739,32.426776886),vec2(-.547738194,32.452255249),vec2(-.581186891,32.472751617),
+  vec2(-.617430329,32.487762451),vec2(-.655575991,32.496921539),vec2(-.694684446,32.5),vec2(-1.666666627,32.5),vec2(-1.666666627,0.));
+  const int num=v.length();
+  vec2 d_s=vec2(dot(p-v[0],p-v[0]),1.);
+  for(int i=0,j=num-1;i<num;j=i,i++)
+  {
+    d_s=gsdfWinding(p,v[i],v[j],d_s);
+  }
+  return d_s.y*sqrt(d_s.x);
+  
+}
+float intersect_sc2sh57uuaij919(vec3 p){
+  return max(screw_1dn229c9ffhrbo4hivt(p),screw_1d229dfhrcovai6hfu4(p));
+}
+float cyl36p55p1p8dcddpfjg3l3pc(vec3 p){
+  return gsdfCylinder3D(p,36.5,.674999952,1.825000048);
+}
+float union_cyl0p8607sbjinkp0qa(vec3 p){
+  float d=cyl0p800000092vksqn8de8a8(p);
+  d=min(d,translate0p0b4ivk422sqfac(p));
+  d=min(d,translate0p9dn138os7vduu6(p));
+  d=min(d,translaten2pchm4bkjspa40t(p));
+  d=min(d,translaten4paivt0fc1emg9g(p));
+  d=min(d,translate0p452a7tsbck7hqu(p));
+  d=min(d,translate5p555b2l3kmch9cn(p));
+  d=min(d,translate3p9d9qbnp228oda3(p));
+  d=min(d,translaten3pftqpndf2aaun2(p));
+  d=min(d,translaten7p7sun69ibnntfk(p));
+  d=min(d,translaten1pfudfks8es9skt(p));
+  d=min(d,translate6p89l4p4vc96814s(p));
+  d=min(d,translate7p0bvrcjfrlsed59(p));
+  d=min(d,translaten2prn2lhtuj4rmt(p));
+  d=min(d,translaten9pfmt74075nkd21(p));
+  d=min(d,translaten4p4ga8q010498t3(p));
+  d=min(d,translate6p49gu7h2rh8fb7l(p));
+  d=min(d,translate9p8b7mscth0r2pgm(p));
+  d=min(d,translate0p5a0irc0r1iq482(p));
+  d=min(d,translaten108arps9fkkpogl(p));
+  d=min(d,translaten8p4a0tcvdg7olqe(p));
+  d=min(d,translate4p5613ljrl8r85r8(p));
+  d=min(d,translate11p1pb048uslj7u4(p));
+  d=min(d,translate4p1eh9h0gr9ganjk(p));
+  d=min(d,translaten9p2hdis03pe9uct(p));
+  d=min(d,translaten116of7oa8n7pmta(p));
+  d=min(d,translate1p49t3d1pj526bi9(p));
+  d=min(d,translate12pdu0414t9pn2kc(p));
+  d=min(d,translate8p05o4bspt8o3c61(p));
+  d=min(d,translaten7p689vqk4oanm93(p));
+  d=min(d,translaten13flphi9gv0udo1(p));
+  d=min(d,translaten2pbri6f6sgk26tf(p));
+  d=min(d,translate12pa83njr79a0a1u(p));
+  d=min(d,translate11pagthpju41ho4g(p));
+  d=min(d,translaten3p2aonbq0eflvgh(p));
+  d=min(d,translaten1529detceitjh3p(p));
+  d=min(d,translaten7p3gfat2bsbclgo(p));
+  d=min(d,translate10pc0lflbdkp194k(p));
+  d=min(d,translate14p3e6kged593531(p));
+  d=min(d,translate0p33tka8g4ic170b(p));
+  d=min(d,translaten14eda0fmbr6l1es(p));
+  d=min(d,translaten116q12u1ue32cbk(p));
+  d=min(d,translate6p9ffrlbt5ijacum(p));
+  d=min(d,translate16p7fekgs8tijes6(p));
+  d=min(d,translate5p2acap9okfh7si2(p));
+  d=min(d,translaten13503fdnn3fsfo(p));
+  d=min(d,translaten1516anq3q968cb5(p));
+  d=min(d,translate2p4cccb6qoq90e41(p));
+  d=min(d,translate17p66kd17144qalk(p));
+  d=min(d,translate10p4qoegpi7nkkqu(p));
+  d=min(d,translaten109urtn7o2fbjp3(p));
+  d=min(d,translaten17ee2gva5cd0os7(p));
+  d=min(d,translaten2p9mummu7dr5tmq(p));
+  d=min(d,translate16p1t2k5l89m1dgn(p));
+  d=min(d,translate14p82b36mnggg1ke(p));
+  d=min(d,translaten5p58l8gjdcjc8nk(p));
+  d=min(d,translaten19sd3plgns4386(p));
+  d=min(d,translaten8p7sp43rggg2hda(p));
+  d=min(d,translate13p2bbnncii3bo4o(p));
+  d=min(d,translate18p1vc1itmui87em(p));
+  d=min(d,translaten0p88jsbs6cgl8ls(p));
+  d=min(d,translaten18f30s5uo6vdcfe(p));
+  d=min(d,translaten13fjai2suehhbe2(p));
+  d=min(d,translate9p06gkv6lcmrhf4f(p));
+  d=min(d,translate20p4mt4uj019ooqu(p));
+  d=min(d,translate5p879csna1aapgms(p));
+  d=min(d,translaten16d6i4b98v5vcf8(p));
+  d=min(d,translaten188r7m3ru98vsra(p));
+  d=min(d,translate3p5ag129c5bhfsus(p));
+  d=min(d,translate20p15ksc4phmnc6h(p));
+  d=min(d,translate11p6tkgpa9kpti31(p));
+  d=min(d,translaten12c4u5bmhas3sth(p));
+  d=min(d,translaten211102rj99b24u0(p));
+  d=min(d,translaten2pf06v2046a052r(p));
+  d=min(d,translate19p9onvsc2hk72pk(p));
+  d=min(d,translate17p5ggv1mjoqkc5i(p));
+  d=min(d,translaten7p1rqevdag0j5ob(p));
+  d=min(d,translaten227ddf30plhurjl(p));
+  d=min(d,translaten9p9n9r48rqs38kd(p));
+  d=min(d,translate16pa0umiv8sgm1jr(p));
+  d=min(d,translate21paq2igtskuf9st(p));
+  d=min(d,translaten0p9lln06anf6q5b(p));
+  d=min(d,translaten223ov2u4lvqcb4m(p));
+  d=min(d,translaten157m15ucjoco4ma(p));
+  d=min(d,translate11p55tgu4edrpj7q(p));
+  d=min(d,translate23p4bm6rn1sq8qb4(p));
+  d=min(d,translate6p1doau0ltnrfdv9(p));
+  d=min(d,translaten192go9vs70lr3fl(p));
+  d=min(d,translaten207ihur23lm1904(p));
+  d=min(d,translate4p78qckdct12lmvd(p));
+  d=min(d,translate24pi699mdqf8a0p(p));
+  d=min(d,translate12pfhp89sbpb7eql(p));
+  d=min(d,translaten1454rarfnn4cdao(p));
+  d=min(d,translaten23c2hgjo7h2bi6p(p));
+  d=min(d,translaten2p8d3j2jqv36fau(p));
+  d=min(d,translate22p5osrb9qsqrv60(p));
+  d=min(d,translate18pbeot3t8ridfdh(p));
+  d=min(d,translaten8p3igvhqsj40kap(p));
+  d=min(d,translaten257jk5pdrr63ha7(p));
+  d=min(d,translaten9pf4qlibdqmevrp(p));
+  d=min(d,translate18p9iu1sqotksg8q(p));
+  d=min(d,translate23pdc76bi8ej8it7(p));
+  d=min(d,translaten1p4r7rtrvj6ujcf(p));
+  d=min(d,translaten25dndrhfvu75vp(p));
+  d=min(d,translaten166jefjl86fnaon(p));
+  d=min(d,translate13p9ecmt8ut5jmqm(p));
+  d=min(d,translate26p4ikmvlcbv4c52(p));
+  d=min(d,translate6p05g2p8i0ehni8j(p));
+  d=min(d,translaten22f4dr0ujossjo2(p));
+  d=min(d,translaten221lg12jbtnqtc3(p));
+  d=min(d,translate6p0fa3jcriq73i3a(p));
+  d=min(d,translate26p7dhf6io9ua623(p));
+  d=min(d,translate13pfu9d82n1kesog(p));
+  d=min(d,translaten17dafjc9d5c92ap(p));
+  d=min(d,translaten269f1v7dblqeplu(p));
+  d=min(d,translaten1p4h2hrdktkpmdg(p));
+  d=min(d,translate25p8e9d96gubpaq7(p));
+  d=min(d,translate20pbss0o7380dbev(p));
+  d=min(d,translaten104mtuldh5u78nh(p));
+  d=min(d,translaten2824qehv4nci0tq(p));
+  d=min(d,translaten105nhri74io3t90(p));
+  d=min(d,translate21pdfq1mbf1kqoe7(p));
+  d=min(d,translate25p5b209osqc5b5g(p));
+  d=min(d,translaten2p9kgok2c6aostd(p));
+  d=min(d,translaten27buei3vk51rf5s(p));
+  d=min(d,translaten17e3g15uvap4guj(p));
+  d=min(d,translate15p1rnrp6taj2eon(p));
+  d=min(d,translate28pa91rngulm3ea7(p));
+  d=min(d,translate5p88vmfd6qkg7kqa(p));
+  d=min(d,translaten24aju13fs9m9q66(p));
+  d=min(d,translaten23894rdherj2mqi(p));
+  return d;
+}
+float translate0p02ohbg1oga3qju(vec3 p){
+  vec3 t=vec3(0.,0.,-2.75);
+  return cyl36p52p50p12cvca3tot4tp(p-t);
+}
+float screw_1d666662kba3e1tsiks(vec3 p){
+  float lead=-1.666666627;
+  float pitch=1.666666627;
+  float taper=0.;
+  float L=2.75;
+  
+  #define Pi 3.1415926535897932384626433832795
+  float y=length(p.xy);
+  if(taper!=0.){
+    y+=p.z*atan(taper);
+  }
+  float theta=atan(p.y,p.x);
+  float z=p.z+lead*theta/(2.*Pi);
+  float sawt=(z+pitch/2.)/pitch;
+  float saw=pitch*(sawt-floor(sawt))-.5*pitch;
+  vec2 p2=vec2(saw,y);
+  float d2=poly2Dflu90us9o605e0v55l(p2);
+  float d3=abs(p.z)-L;
+  return max(d2,d3);
+}
+float union_cyl36pe6ggbr31te9b0(vec3 p){
+  float d=cyl36p55p1p8dcddpfjg3l3pc(p);
+  d=min(d,intersect_sc2sh57uuaij919(p));
+  return d;
+}
+float diff_transla7ai1r9b9fmnmh(vec3 p){
+  float a=translate0p02ohbg1oga3qju(p);
+  float b=union_cyl0p8607sbjinkp0qa(p);
+  return max(a,-b);
+}
+float diff_union_cp189fanbi3gf(vec3 p){
+  float a=union_cyl36pe6ggbr31te9b0(p);
+  float b=screw_1d666662kba3e1tsiks(p);
+  return max(a,-b);
+}
+float union_diff_uglpkhp1bft17(vec3 p){
+  float d=diff_union_cp189fanbi3gf(p);
+  d=min(d,diff_transla7ai1r9b9fmnmh(p));
+  return d;
+}
+
+void mainModel4(out vec4 materials,in vec3 xyz){
+  float d=union_diff_uglpkhp1bft17(xyz);
+  materials=vec4(d<=0.?1.:0.,0.,0.,0.);
+}

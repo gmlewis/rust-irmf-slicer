@@ -1,0 +1,36 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-06-30",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA1","PLA2"],
+  "max": [7,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Partial sphere function.",
+  "options": {},
+  "title": "Two Sphere Slices",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const M_PI: f32 = 3.14159265358979323846;
+
+fn sphere(radius: f32, fromDeg: f32, toDeg: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  if (r > radius) { return 0.0; }
+  
+  let angleDeg = (360.0 + atan2(xyz.y, xyz.x) * 180.0 / M_PI) % 360.0;
+  if (fromDeg < toDeg && (angleDeg < fromDeg || angleDeg > toDeg)) { return 0.0; }
+  if (fromDeg > toDeg && angleDeg < fromDeg && angleDeg > toDeg) { return 0.0; }
+  
+  return 1.0;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let radius = 5.0;
+  var materials = vec4f(0.0);
+  materials[0] = sphere(radius, 45.0, 315.0, xyz);
+  materials[1] = sphere(radius, 315.0, 45.0, xyz - vec3f(2.0, 0.0, 0.0));
+  return materials;
+}

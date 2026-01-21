@@ -1,0 +1,53 @@
+/*{
+  "irmf": "1.0",
+  "language": "glsl",
+  "materials": ["material0"],
+  "max": [82.31442,52.15,0.5],
+  "min": [-82.31442,-52.15,-0.5],
+  "units": "mm"
+}*/
+
+vec2 gsdfWinding(vec2 p,vec2 v1,vec2 v2,vec2 d_s){
+  vec2 e=v2-v1;
+  vec2 w=p-v1;
+  vec2 b=w-e*clamp(dot(w,e)/dot(e,e),0.,1.);
+  d_s.x=min(d_s.x,dot(b,b));
+  // winding number from http://geomalgorithms.com/a03-_inclusion.html
+  bvec3 cond=bvec3(p.y>=v1.y,
+    p.y<v2.y,
+  e.x*w.y>e.y*w.x);
+  if(all(cond)||all(not(cond))){
+    d_s.y=-d_s.y;
+  }
+  return d_s;
+}
+float poly2Dfl0321fsmoato6v1fak(vec2 p){
+  vec2[26]v=vec2[26](vec2(78.,-1.799999952),vec2(78.13885498,6.164907455),vec2(78.10824585,14.130966187),vec2(77.90814209,22.09457016),vec2(77.538665771,30.052112579),vec2(77.,38.),vec2(76.659255981,40.588191986),vec2(75.660255432,43.),vec2(74.07106781,45.07106781),vec2(72.,46.660255432),vec2(69.588188171,47.659255981),vec2(67.,48.),vec2(-1.799999952,48.),vec2(-1.799999952,52.150001526),vec2(67.,52.150001526),vec2(70.349639893,51.627998352),vec2(73.496131897,50.366188049),vec2(76.278327942,48.42918396),
+  vec2(78.553741455,45.916202545),vec2(80.205833435,42.955936432),vec2(81.150001526,39.700000763),vec2(81.714202881,31.412776947),vec2(82.096466064,23.115169525),vec2(82.296569824,14.811170578),vec2(82.314422607,6.504780769),vec2(82.150001526,-1.799999952));
+  const int num=v.length();
+  vec2 d_s=vec2(dot(p-v[0],p-v[0]),1.);
+  for(int i=0,j=num-1;i<num;j=i,i++)
+  {
+    d_s=gsdfWinding(p,v[i],v[j],d_s);
+  }
+  return d_s.y*sqrt(d_s.x);
+  
+}
+float symmetry2DXY3s528b1b3gft0(vec2 p){
+  p.xy=abs(p.xy);
+  return poly2Dfl0321fsmoato6v1fak(p);
+}
+float offset2D0p805pf623kt04f4o(vec2 p){
+  return symmetry2DXY3s528b1b3gft0(p)+(.800000012);
+}
+float extrusion_of6olmg3srnceka(vec3 p){
+  float h=.5;
+  float d=offset2D0p805pf623kt04f4o(p.xy);
+  vec2 w=vec2(d,abs(p.z)-h);
+  return min(max(w.x,w.y),0.)+length(max(w,0.));
+}
+
+void mainModel4(out vec4 materials,in vec3 xyz){
+  float d=extrusion_of6olmg3srnceka(xyz);
+  materials=vec4(d<=0.?1.:0.,0.,0.,0.);
+}

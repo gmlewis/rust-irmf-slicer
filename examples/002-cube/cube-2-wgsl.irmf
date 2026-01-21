@@ -1,0 +1,27 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-06-30",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Simple IRMF shader - cube function",
+  "options": {},
+  "title": "10mm diameter Cube",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn cube(size: f32, xyz_in: vec3f) -> f32 {
+  let xyz = xyz_in / size; // Scale local coordinate system.
+  if (any(abs(xyz) > vec3f(0.5))) { return 0.0; }
+  return 1.0;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = cube(10.0, xyz);
+  return materials;
+}

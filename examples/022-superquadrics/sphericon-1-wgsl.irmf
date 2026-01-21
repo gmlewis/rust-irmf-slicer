@@ -1,0 +1,35 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-04-12",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Sphericon using two half superquadrics.",
+  "options": {},
+  "title": "Sphericon",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn superquad(e1: f32, e2: f32, xyz_in: vec3f) -> f32 {
+  let xyz = abs(xyz_in);
+  let f = pow(pow(xyz.x, 2.0 / e2) + pow(xyz.y, 2.0 / e2), e2 / e1) + pow(xyz.z, 2.0 / e1);
+  return select(0.0, 1.0, f <= 1.0);
+}
+
+fn sphericon(xyz: vec3f) -> f32 {
+  if (xyz.x <= 0.0) {
+    return superquad(2.0, 1.0, xyz);
+  }
+  return superquad(2.0, 1.0, xyz.xzy);
+}
+
+fn mainModel4(xyz_in: vec3f) -> vec4f {
+  let xyz = xyz_in / 5.0;
+  var materials = vec4f(0.0);
+  materials[0] = sphericon(xyz);
+  return materials;
+}

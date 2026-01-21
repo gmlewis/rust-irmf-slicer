@@ -1,0 +1,32 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-03-11",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["AISI1018steel"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Simple CSG IRMF shader - IRMF logo model 2.",
+  "options": {},
+  "title": "Constructive Solid Geometry example",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn sphere(radius: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  return select(0.0, 1.0, r <= radius);
+}
+
+fn cyl(radius: f32, uv: vec2f) -> f32 {
+  let r = length(uv);
+  return select(0.0, 1.0, r <= radius);
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let r2 = 3.3;
+  var materials = vec4f(0.0);
+  materials[0] = sphere(6.3, xyz) - sphere(5.6, xyz) - cyl(r2, xyz.yz) - cyl(r2, xyz.xz) - cyl(r2, xyz.xy);
+  return materials;
+}

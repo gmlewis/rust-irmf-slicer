@@ -1,0 +1,39 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-04-14",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["Red","Green"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "IRMF logo model 1 with cubed pattern.",
+  "options": {},
+  "title": "Constructive Solid Geometry example",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn sphere(radius: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  return select(0.0, 1.0, r <= radius);
+}
+
+fn cyl(radius: f32, uv: vec2f) -> f32 {
+  let r = length(uv);
+  return select(0.0, 1.0, r <= radius);
+}
+
+fn cubed(value: f32, xyz: vec3f) -> vec2f {
+  let v = step(vec3f(0.5), xyz - floor(xyz));
+  let count = i32(v.x + v.y + v.z);
+  return select(vec2f(0.0, value), vec2f(value, 0.0), count == 0 || count == 2);
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let radius = 5.6;
+  let r2 = 3.3;
+  let value = 1.0 - sphere(radius, xyz) - cyl(r2, xyz.yz) - cyl(r2, xyz.xz) - cyl(r2, xyz.xy);
+  let res = cubed(value, xyz - vec3f(0.6));
+  return vec4f(res, 0.0, 0.0);
+}

@@ -1,0 +1,41 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2022-07-15",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA1"],
+  "max": [2,2,2],
+  "min": [-2,-2,-2],
+  "notes": "Based on libfive example.",
+  "options": {
+    "color1": [255,255,255,1]
+  },
+  "title": "libfive-3",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn sphere(radius: f32, center: vec3f, xyz: vec3f) -> f32 {
+  return length(center-xyz) - radius;
+}
+
+fn blend(a: f32, b: f32, m: f32) -> f32 {
+  let v = sqrt(abs(a)) + sqrt(abs(b)) - m;
+  return min(a, min(b, v));
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let v =
+    blend(
+      blend(
+        sphere(1.0, vec3f(0.0, -1.0, -1.0), xyz),
+        sphere(1.0, vec3f(0.0, 1.0, -1.0), xyz), 0.75),
+      blend(
+        sphere(1.0, vec3f(0.0, -1.0, 1.0), xyz),
+        sphere(1.0, vec3f(0.0, 1.0, 1.0), xyz), 0.75),
+      0.75);
+  var m = vec4f(0.0);
+  m[0] = select(1.0, 0.0, v > 0.01);
+  return m;
+}

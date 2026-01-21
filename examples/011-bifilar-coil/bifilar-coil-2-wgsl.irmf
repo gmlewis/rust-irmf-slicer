@@ -1,0 +1,96 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-02-13",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["copper","copper","dielectric"],
+  "max": [22,22,0.425],
+  "min": [-22,-22,-0.425],
+  "notes": "Simple IRMF shader - bifilar-coil.",
+  "options": {},
+  "title": "bifilar-coil with dielectric",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const M_PI = 3.1415926535897932384626433832795;
+
+fn spiralSquareFace(startRadius: f32, size: f32, gap: f32, nTurns: f32, xyz: vec3f) -> f32 {
+  // First, trivial reject above and below the spiral.
+  if (xyz.z < -0.5 * size || xyz.z > 0.5 * size) { return 0.0; }
+  
+  let r = length(xyz.xy);
+  if (r < startRadius - 0.5 * size || r > startRadius + 0.5 * size + (size + gap) * nTurns) { return 0.0; }
+  
+  // If the current point is between the spirals, return no material:
+  var angle = atan2(xyz.y, xyz.x) / (2.0 * M_PI);
+  if (angle < 0.0) { angle += 1.0; } // 0 <= angle <= 1 between spirals from center to center.
+  let dr = (r - startRadius) - (size + gap) * floor((r - startRadius) / (size + gap)); // 0 <= dr <= (size+gap) between spirals from center to center.
+  
+  var coilNum = 0.0;
+  var lastSpiralR = angle * (size + gap);
+  if (lastSpiralR > dr) {
+    lastSpiralR -= (size + gap);  // center of current coil.
+    coilNum = -1.0;
+  }
+  let nextSpiralR = lastSpiralR + (size + gap);  // center of next outer coil.
+  
+  // If the current point is within the gap between the two coils, reject it.
+  if (dr > lastSpiralR + 0.5 * size && dr < nextSpiralR - 0.5 * size) { return 0.0; }
+  
+  coilNum += floor((r - startRadius + (0.5 * size) - lastSpiralR) / (size + gap));
+
+  // If the current point is in a coil numbered outside the current range, reject it.
+  if (coilNum < 0.0 || coilNum >= nTurns) { return 0.0; }
+
+  return 1.0;
+}
+
+fn rotAxis(axis: vec3f, a: f32) -> mat3x3f {
+  let s = sin(a);
+  let c = cos(a);
+  let oc = 1.0 - c;
+  let as_ = axis * s;
+  let p = mat3x3f(axis.x * axis, axis.y * axis, axis.z * axis);
+  let q = mat3x3f(c, as_.z, -as_.y, -as_.z, c, as_.x, as_.y, -as_.x, c);
+  return p * oc + q;
+}
+
+fn mat3ToMat4(m: mat3x3f) -> mat4x4f {
+  return mat4x4f(
+    vec4f(m[0], 0.0),
+    vec4f(m[1], 0.0),
+    vec4f(m[2], 0.0),
+    vec4f(0.0, 0.0, 0.0, 1.0)
+  );
+}
+
+fn cylinder(radius: f32, height: f32, xyz: vec3f) -> f32 {
+  // First, trivial reject on the two ends of the cylinder.
+  if (xyz.z < 0.0 || xyz.z > height) { return 0.0; }
+  
+  // Then, constrain radius of the cylinder:
+  let rxy = length(xyz.xy);
+  if (rxy > radius) { return 0.0; }
+  
+  return 1.0;
+}
+
+fn bifilarCoilWithDielectric(startRadius: f32, size: f32, gap: f32, nTurns: f32, xyz: vec3f) -> vec3f {
+  let coil1 = spiralSquareFace(startRadius, size, (size + 2.0 * gap), nTurns, xyz);
+  let rot180Z = mat3ToMat4(rotAxis(vec3f(0, 0, 1), M_PI));
+  let xyz180Z = (rot180Z * vec4f(xyz, 1.0)).xyz;
+  let coil2 = spiralSquareFace(startRadius, size, (size + 2.0 * gap), nTurns, xyz180Z);
+  let dielectric = cylinder(startRadius + size + 2.0 * (size + gap) * nTurns, size, xyz+vec3f(0,0,0.5*size));
+  return vec3f(coil1, coil2, clamp(dielectric - (coil1 + coil2), 0.0, 1.0));
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  let coils = bifilarCoilWithDielectric(3.0, 0.85, 0.15, 9.0, xyz);
+  materials[0] = coils.x;
+  materials[1] = coils.y;
+  materials[2] = coils.z;
+  return materials;
+}

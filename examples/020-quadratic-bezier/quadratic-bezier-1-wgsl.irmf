@@ -1,0 +1,40 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-08-24",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,0],
+  "notes": "Revolved quadratic Bezier spline.",
+  "options": {},
+  "title": "Quadratic Bezier",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn interpQuadratic(p0: vec2f, p1: vec2f, p2: vec2f, y: f32) -> f32 {
+  let a = p2.y + p0.y - 2.0*p1.y;
+  let b = 2.0 * (p1.y - p0.y);
+  let c = p0.y - y;
+  if (b*b < 4.0*a*c) { return 0.0; }
+  let det = sqrt(b*b - 4.0*a*c);
+  let t = (-b + det) / (2.0 * a);
+  let x = (1.0-t)*(1.0-t)*p0.x + 2.0*(1.0-t)*t*p1.x + t*t*p2.x;
+  return x;
+}
+
+fn qBezier(p0: vec2f, p1: vec2f, p2: vec2f, xyz: vec3f) -> f32 {
+  let r = length(xyz.xy);
+  if (r > interpQuadratic(p0, p1, p2, xyz.z)) { return 0.0; }
+  return 1.0;
+}
+
+fn mainModel4(xyz_in: vec3f) -> vec4f {
+  var xyz = xyz_in;
+  xyz.z += 1.0;
+  var materials = vec4f(0.0);
+  materials[0] = qBezier(vec2f(-2.0, 2.0), vec2f(0.0, 0.0), vec2f(2.0, 2.0), xyz);
+  return materials;
+}

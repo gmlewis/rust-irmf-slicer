@@ -1,0 +1,32 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2022-07-15",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA1"],
+  "max": [3,3,3],
+  "min": [-3,-3,-3],
+  "notes": "Based on libfive example.",
+  "options": {
+    "resolution": 2048,
+    "color1": [255,255,255,1]
+  },
+  "title": "libfive-2",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn cube(xyz: vec3f) -> f32 {
+  if (any(abs(xyz) > vec3f(1.0))) { return 0.0; }
+  return 1.0;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let cz = cos(xyz.z);
+  let sz = sin(xyz.z);
+  let twist = vec3f(cz*xyz.x + sz*xyz.y, cz*xyz.y-sz*xyz.x, xyz.z);
+  var m = vec4f(0.0);
+  m[0] = cube(twist);
+  return m;
+}

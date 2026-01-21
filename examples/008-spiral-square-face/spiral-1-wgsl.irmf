@@ -1,0 +1,54 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-02-13",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA"],
+  "max": [5.5,5.5,0.5],
+  "min": [-5.5,-5.5,-0.5],
+  "notes": "Simple IRMF shader - spiral with square cross-section face.",
+  "options": {},
+  "title": "spiral",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const M_PI = 3.1415926535897932384626433832795;
+
+fn spiralSquareFace(startRadius: f32, size: f32, gap: f32, nTurns: f32, xyz: vec3f) -> f32 {
+  // First, trivial reject above and below the spiral.
+  if (xyz.z < -0.5 * size || xyz.z > 0.5 * size) { return 0.0; }
+  
+  let r = length(xyz.xy);
+  if (r < startRadius - 0.5 * size || r > startRadius + 0.5 * size + (size + gap) * nTurns) { return 0.0; }
+  
+  // If the current point is between the spirals, return no material:
+  var angle = atan2(xyz.y, xyz.x) / (2.0 * M_PI);
+  if (angle < 0.0) { angle += 1.0; } // 0 <= angle <= 1 between spirals from center to center.
+  let dr = (r - startRadius) - (size + gap) * floor((r - startRadius) / (size + gap)); // 0 <= dr <= (size+gap) between spirals from center to center.
+  
+  var coilNum = 0.0;
+  var lastSpiralR = angle * (size + gap);
+  if (lastSpiralR > dr) {
+    lastSpiralR -= (size + gap);  // center of current coil.
+    coilNum = -1.0;
+  }
+  let nextSpiralR = lastSpiralR + (size + gap);  // center of next outer coil.
+  
+  // If the current point is within the gap between the two coils, reject it.
+  if (dr > lastSpiralR + 0.5 * size && dr < nextSpiralR - 0.5 * size) { return 0.0; }
+  
+  coilNum += floor((r - startRadius + (0.5 * size) - lastSpiralR) / (size + gap));
+
+  // If the current point is in a coil numbered outside the current range, reject it.
+  if (coilNum < 0.0 || coilNum >= nTurns) { return 0.0; }
+
+  return 1.0;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = spiralSquareFace(3.0, 0.85, 0.15, 2.0, xyz);
+  return materials;
+}

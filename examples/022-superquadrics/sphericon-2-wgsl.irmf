@@ -1,0 +1,49 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-04-12",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["Red","Green"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Sphericon using two half superquadrics.",
+  "options": {
+    "resolution": 2048,
+    "color1": [255,0,0,1],
+    "color2": [0,255,0,1]
+  },
+  "title": "Sphericon",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn superquad(e1: f32, e2: f32, xyz_in: vec3f) -> f32 {
+  let xyz = abs(xyz_in);
+  let f = pow(pow(xyz.x, 2.0 / e2) + pow(xyz.y, 2.0 / e2), e2 / e1) + pow(xyz.z, 2.0 / e1);
+  return select(0.0, 1.0, f <= 1.0);
+}
+
+fn wgsl_mod(x: f32, y: f32) -> f32 {
+  return x - y * floor(x / y);
+}
+
+fn sphericon2(slices: f32, xyz: vec3f) -> vec2f {
+  if (xyz.x <= 0.0) {
+    let v = superquad(2.0, 1.0, xyz);
+    if (wgsl_mod(abs(xyz.z) * slices, 1.0) <= 0.5) { return vec2f(v, 0.0); }
+    return vec2f(0.0, v);
+  }
+  let v = superquad(2.0, 1.0, xyz.xzy);
+  if (wgsl_mod(-abs(xyz.y) * slices, 1.0) <= 0.5) { return vec2f(v, 0.0); }
+  return vec2f(0.0, v);
+}
+
+fn mainModel4(xyz_in: vec3f) -> vec4f {
+  let xyz = xyz_in / 5.0;
+  var materials = vec4f(0.0);
+  let res = sphericon2(6.0, xyz);
+  materials[0] = res.x;
+  materials[1] = res.y;
+  return materials;
+}

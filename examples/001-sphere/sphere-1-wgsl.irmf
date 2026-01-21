@@ -1,0 +1,23 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-06-30",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["AISI 1018 steel"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Simple IRMF shader - Hello, Sphere!",
+  "options": {},
+  "title": "10mm diameter Sphere",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let radius = 5.0; // 10mm diameter sphere.
+  let r = length(xyz); // distance from origin.
+  var materials = vec4f(0.0);
+  materials[0] = select(0.0, 1.0, r <= radius); // Only materials[0] is used; the others are ignored.
+  return materials;
+}

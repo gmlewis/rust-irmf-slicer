@@ -1,0 +1,36 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-06-30",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA1"],
+  "max": [15,15,3],
+  "min": [-15,-15,-3],
+  "notes": "Torus.",
+  "options": {},
+  "title": "Torus",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const M_PI = 3.1415926535897932384626433832795;
+
+fn torus(majorRadius: f32, minorRadius: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  if (r > majorRadius + minorRadius || r < majorRadius - minorRadius) { return 0.0; }
+  
+  let angle = atan2(xyz.y, xyz.x);
+  let center = vec3f(majorRadius * cos(angle), majorRadius * sin(angle), 0.0);
+  let v = xyz - center;
+  let r2 = length(v);
+  if (r2 > minorRadius) { return 0.0; }
+  
+  return 1.0;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = torus(9.0, 3.0, xyz);
+  return materials;
+}

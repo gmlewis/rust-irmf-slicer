@@ -1,0 +1,27 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-04-12",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Simple IRMF shader - gyroid infill.",
+  "options": {},
+  "title": "Gyroid infill example",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+fn gyroid(scale: f32, xyz_in: vec3f) -> f32 {
+  let xyz = xyz_in / scale;
+  let v = sin(xyz.x) * cos(xyz.y) + sin(xyz.y) * cos(xyz.z) + sin(xyz.z) * cos(xyz.x);
+  return select(0.0, 1.0, abs(v) < 0.2);
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = gyroid(0.5, xyz);
+  return materials;
+}

@@ -63,7 +63,8 @@ where
         })
         .map_err(|e| anyhow::anyhow!("render_z_slices: {}", e))?;
 
-    zip.finish().map_err(|e| anyhow::anyhow!("zip.finish: {}", e))?;
+    zip.finish()
+        .map_err(|e| anyhow::anyhow!("zip.finish: {}", e))?;
 
     Ok(())
 }

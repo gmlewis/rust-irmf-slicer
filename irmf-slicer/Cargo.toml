@@ -10,7 +10,8 @@ rust-version.workspace = true
 description.workspace = true
 readme.workspace = true
 keywords.workspace = true
-categories.workspace = true
+categories = ["embedded"]
+
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

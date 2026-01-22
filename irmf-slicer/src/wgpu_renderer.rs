@@ -682,5 +682,83 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
         // Corner pixel (0, 0) should be black (outside sphere)
         let corner_pixel = rgba.get_pixel(0, 0);
         assert_eq!(corner_pixel[0], 0);
+
+        use std::hash::{Hash, Hasher};
+        let mut hasher = rustc_hash::FxHasher::default();
+        rgba.as_raw().hash(&mut hasher);
+        let checksum = hasher.finish();
+        // println!("GOLDEN_IMAGE_CHECKSUM: {:016x}", checksum);
+        assert_eq!(checksum, 0x1ce5e17b8c3936cc);
+    }
+
+    #[test]
+    fn test_wgpu_renderer_golden_image_wgsl() {
+        let renderer_res = block_on(WgpuRenderer::new());
+        let mut renderer = match renderer_res {
+            Ok(r) => r,
+            Err(IrmfError::WgpuAdapterError) => {
+                println!("Skipping WGPU test: No suitable adapter found.");
+                return;
+            }
+            Err(e) => panic!("Failed to create WgpuRenderer: {:?}", e),
+        };
+
+        let data = b"/*{
+  \"irmf\": \"1.0\",
+  \"language\": \"wgsl\",
+  \"materials\": [\"PLA\"],
+  \"max\": [5,5,5],
+  \"min\": [-5,-5,-5],
+  \"units\": \"mm\"
+}*/
+fn mainModel4(xyz: vec3f) -> vec4f {
+  // 5mm cube at origin
+  let is_inside = all(xyz >= vec3f(-2.5) && xyz <= vec3f(2.5));
+  return select(vec4f(0.0), vec4f(1.0, 0.0, 0.0, 0.0), is_inside);
+}";
+        let model = IrmfModel::new(data).unwrap();
+
+        let width = 100;
+        let height = 100;
+        renderer.init(width, height).unwrap();
+
+        let left = -5.0;
+        let right = 5.0;
+        let bottom = -5.0;
+        let top = 5.0;
+        let vertices = [
+            left, bottom, 0.0, right, bottom, 0.0, left, top, 0.0, right, bottom, 0.0, right, top,
+            0.0, left, top, 0.0,
+        ];
+        let projection = glam::Mat4::orthographic_rh(left, right, bottom, top, 0.1, 100.0);
+        let camera = glam::Mat4::look_at_rh(
+            glam::vec3(0.0, 0.0, 3.0),
+            glam::vec3(0.0, 0.0, 0.0),
+            glam::vec3(0.0, 1.0, 0.0),
+        );
+        let model_matrix = glam::Mat4::IDENTITY;
+        let vec3_str = "fragVert.xy, u_slice";
+
+        renderer
+            .prepare(
+                &model,
+                &vertices,
+                projection,
+                camera,
+                model_matrix,
+                vec3_str,
+            )
+            .unwrap();
+
+        // Render middle slice (z=0)
+        let img = renderer.render(0.0, 1).unwrap();
+        let rgba = img.to_rgba8();
+
+        use std::hash::{Hash, Hasher};
+        let mut hasher = rustc_hash::FxHasher::default();
+        rgba.as_raw().hash(&mut hasher);
+        let checksum = hasher.finish();
+        // println!("GOLDEN_IMAGE_CHECKSUM_WGSL: {:016x}", checksum);
+        assert_eq!(checksum, 7845210651492792762);
     }
 }

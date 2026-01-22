@@ -1,7 +1,7 @@
-use irmf_slicer::{Slicer, Renderer, IrmfResult};
+use image::RgbaImage;
+use irmf_slicer::{IrmfResult, Renderer, Slicer};
 use std::fs::File;
-use std::io::{Write, Seek, SeekFrom};
-use image::{RgbaImage};
+use std::io::{Seek, SeekFrom, Write};
 
 const SCREEN_WIDTH: u32 = 0xa00;
 const SCREEN_HEIGHT: u32 = 0x5a0;
@@ -69,23 +69,32 @@ struct LayerHeader {
     field_20: u32,
 }
 
-pub fn slice_to_photon<R: Renderer>(slicer: &mut Slicer<R>, material_num: usize, filename: &str, z_res: f32) -> IrmfResult<()> {
+pub fn slice_to_photon<R: Renderer>(
+    slicer: &mut Slicer<R>,
+    material_num: usize,
+    filename: &str,
+    z_res: f32,
+) -> IrmfResult<()> {
     let mut file = File::create(filename).map_err(|e| anyhow::anyhow!("File::create: {}", e))?;
     let num_slices = slicer.num_z_slices();
 
     println!("Rendering Z-slices for Photon...");
-    slicer.prepare_render_z().map_err(|e| anyhow::anyhow!("prepare_render_z: {}", e))?;
+    slicer
+        .prepare_render_z()
+        .map_err(|e| anyhow::anyhow!("prepare_render_z: {}", e))?;
 
     let mut layer_headers = Vec::with_capacity(num_slices);
     let mut current_pos = 0u32;
-    
+
     let mut header = FileHeader {
         magic1: 0x12FD0019,
         magic2: 0x01,
         plate_x: 68.04,
         plate_y: 120.96,
         plate_z: 150.0,
-        field_14: 0, field_18: 0, field_1c: 0,
+        field_14: 0,
+        field_18: 0,
+        field_1c: 0,
         layer_thickness: z_res / 1000.0,
         normal_exposure_time: 6.0,
         bottom_exposure_time: 50.0,
@@ -99,73 +108,102 @@ pub fn slice_to_photon<R: Renderer>(slicer: &mut Slicer<R>, material_num: usize,
         preview_thumbnail_header_offset: 0,
         field_4c: 0,
         light_curing_type: 1,
-        field_54: 0, field_58: 0, field_60: 0, field_5c: 0, field_64: 0, field_68: 0,
+        field_54: 0,
+        field_58: 0,
+        field_60: 0,
+        field_5c: 0,
+        field_64: 0,
+        field_68: 0,
     };
-    
+
     file.write_all(bytemuck::bytes_of(&header))?;
     current_pos += std::mem::size_of::<FileHeader>() as u32;
 
     let first_img = slicer.render_z_slice(0, material_num)?;
     let rgba = first_img.to_rgba8();
-    
+
     let preview_data = encode_preview(PREVIEW_WIDTH, PREVIEW_HEIGHT, &rgba);
     let thumbnail_data = encode_preview(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, &rgba);
-    
+
     header.preview_header_offset = current_pos;
     let preview_header = PreviewHeader {
         width: PREVIEW_WIDTH,
         height: PREVIEW_HEIGHT,
         preview_data_offset: current_pos + std::mem::size_of::<PreviewHeader>() as u32,
         preview_data_size: preview_data.len() as u32,
-        field_10: 0, field_14: 0, field_18: 0, field_1c: 0,
+        field_10: 0,
+        field_14: 0,
+        field_18: 0,
+        field_1c: 0,
     };
     file.write_all(bytemuck::bytes_of(&preview_header))?;
     file.write_all(&preview_data)?;
     current_pos += (std::mem::size_of::<PreviewHeader>() + preview_data.len()) as u32;
-    
+
     header.preview_thumbnail_header_offset = current_pos;
     let thumbnail_header = PreviewHeader {
         width: THUMBNAIL_WIDTH,
         height: THUMBNAIL_HEIGHT,
         preview_data_offset: current_pos + std::mem::size_of::<PreviewHeader>() as u32,
         preview_data_size: thumbnail_data.len() as u32,
-        field_10: 0, field_14: 0, field_18: 0, field_1c: 0,
+        field_10: 0,
+        field_14: 0,
+        field_18: 0,
+        field_1c: 0,
     };
     file.write_all(bytemuck::bytes_of(&thumbnail_header))?;
     file.write_all(&thumbnail_data)?;
     current_pos += (std::mem::size_of::<PreviewHeader>() + thumbnail_data.len()) as u32;
-    
+
     header.layer_headers_offset = current_pos;
     let layer_headers_start = current_pos;
     for _ in 0..num_slices {
         file.write_all(bytemuck::bytes_of(&LayerHeader {
-            absolute_height: 0.0, exposure_time: 0.0, per_layer_off_time: 0.0,
-            image_data_offset: 0, image_data_size: 0, field_14: 0, field_18: 0, field_1c: 0, field_20: 0,
+            absolute_height: 0.0,
+            exposure_time: 0.0,
+            per_layer_off_time: 0.0,
+            image_data_offset: 0,
+            image_data_size: 0,
+            field_14: 0,
+            field_18: 0,
+            field_1c: 0,
+            field_20: 0,
         }))?;
         current_pos += std::mem::size_of::<LayerHeader>() as u32;
     }
-    
+
     for i in 0..num_slices {
-        let img = if i == 0 { first_img.clone() } else { slicer.render_z_slice(i, material_num)? };
+        let img = if i == 0 {
+            first_img.clone()
+        } else {
+            slicer.render_z_slice(i, material_num)?
+        };
         let layer_data = encode_layer_image_data(&img.to_rgba8());
-        
-        let exp_time = if i < header.bottom_layers as usize { header.bottom_exposure_time } else { header.normal_exposure_time };
+
+        let exp_time = if i < header.bottom_layers as usize {
+            header.bottom_exposure_time
+        } else {
+            header.normal_exposure_time
+        };
         layer_headers.push(LayerHeader {
             absolute_height: (i as f32) * z_res / 1000.0,
             exposure_time: exp_time,
             per_layer_off_time: header.off_time,
             image_data_offset: current_pos,
             image_data_size: layer_data.len() as u32,
-            field_14: 0, field_18: 0, field_1c: 0, field_20: 0,
+            field_14: 0,
+            field_18: 0,
+            field_1c: 0,
+            field_20: 0,
         });
-        
+
         file.write_all(&layer_data)?;
         current_pos += layer_data.len() as u32;
     }
-    
+
     file.seek(SeekFrom::Start(0))?;
     file.write_all(bytemuck::bytes_of(&header))?;
-    
+
     file.seek(SeekFrom::Start(layer_headers_start as u64))?;
     for lh in layer_headers {
         file.write_all(bytemuck::bytes_of(&lh))?;
@@ -178,8 +216,16 @@ fn encode_layer_image_data(img: &RgbaImage) -> Vec<u8> {
     const FLAG_SET_PIXELS: u8 = 0x80;
     let mut output = Vec::new();
 
-    let x_offset = if img.width() < SCREEN_WIDTH { (SCREEN_WIDTH - img.width()) / 2 } else { 0 };
-    let y_offset = if img.height() < SCREEN_HEIGHT { (SCREEN_HEIGHT - img.height()) / 2 } else { 0 };
+    let x_offset = if img.width() < SCREEN_WIDTH {
+        (SCREEN_WIDTH - img.width()) / 2
+    } else {
+        0
+    };
+    let y_offset = if img.height() < SCREEN_HEIGHT {
+        (SCREEN_HEIGHT - img.height()) / 2
+    } else {
+        0
+    };
 
     let mut unset_count = 0u8;
     let mut set_count = 0u8;
@@ -188,7 +234,11 @@ fn encode_layer_image_data(img: &RgbaImage) -> Vec<u8> {
         let y = pixel_index % SCREEN_HEIGHT;
         let x = pixel_index / SCREEN_HEIGHT;
 
-        let pixel_on = if x >= x_offset && x < x_offset + img.width() && y >= y_offset && y < y_offset + img.height() {
+        let pixel_on = if x >= x_offset
+            && x < x_offset + img.width()
+            && y >= y_offset
+            && y < y_offset + img.height()
+        {
             img.get_pixel(x - x_offset, y - y_offset)[0] > 0
         } else {
             false
@@ -217,8 +267,12 @@ fn encode_layer_image_data(img: &RgbaImage) -> Vec<u8> {
         }
     }
 
-    if set_count != 0 { output.push(set_count | FLAG_SET_PIXELS); }
-    if unset_count != 0 { output.push(unset_count); }
+    if set_count != 0 {
+        output.push(set_count | FLAG_SET_PIXELS);
+    }
+    if unset_count != 0 {
+        output.push(unset_count);
+    }
 
     output
 }
@@ -244,9 +298,12 @@ fn encode_preview(image_width: u32, image_height: u32, img: &RgbaImage) -> Vec<u
     let mut pi = 0u32;
     while pi < max_pixel_index {
         let p = pixel_at(pi);
-        
+
         let mut skip_count = 1u32;
-        while pi + skip_count < max_pixel_index && skip_count < 0xFFF && pixel_at(pi + skip_count) == p {
+        while pi + skip_count < max_pixel_index
+            && skip_count < 0xFFF
+            && pixel_at(pi + skip_count) == p
+        {
             skip_count += 1;
         }
 

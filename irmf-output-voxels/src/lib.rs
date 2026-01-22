@@ -1,8 +1,9 @@
-pub mod zip_out;
 pub mod binvox_out;
 pub mod photon_out;
+pub mod svx_out;
+pub mod zip_out;
 
-use std::io::{Write};
+use std::io::Write;
 
 pub struct BinVox {
     pub nx: usize,
@@ -14,7 +15,7 @@ pub struct BinVox {
     pub max_x: f64,
     pub max_y: f64,
     pub max_z: f64,
-    pub scale: f64, // Used for standard binvox format
+    pub scale: f64,    // Used for standard binvox format
     pub data: Vec<u8>, // Bitset
 }
 
@@ -68,8 +69,19 @@ impl BinVox {
                     let fx = self.min_x + (x as f64) * dx;
                     let fy = self.min_y + (y as f64) * dy;
                     let fz = self.min_z + (z as f64) * dz;
-                    
-                    self.add_cube(&mut triangles, fx as f32, fy as f32, fz as f32, dx as f32, dy as f32, dz as f32, x, y, z);
+
+                    self.add_cube(
+                        &mut triangles,
+                        fx as f32,
+                        fy as f32,
+                        fz as f32,
+                        dx as f32,
+                        dy as f32,
+                        dz as f32,
+                        x,
+                        y,
+                        z,
+                    );
                 }
             }
         }
@@ -77,36 +89,108 @@ impl BinVox {
         Mesh { triangles }
     }
 
-    fn add_cube(&self, tris: &mut Vec<Triangle>, x: f32, y: f32, z: f32, dx: f32, dy: f32, dz: f32, ix: usize, iy: usize, iz: usize) {
+    fn add_cube(
+        &self,
+        tris: &mut Vec<Triangle>,
+        x: f32,
+        y: f32,
+        z: f32,
+        dx: f32,
+        dy: f32,
+        dz: f32,
+        ix: usize,
+        iy: usize,
+        iz: usize,
+    ) {
         // -X
         if ix == 0 || !self.get(ix - 1, iy, iz) {
-            tris.push(Triangle::new([x, y, z], [x, y + dy, z + dz], [x, y, z + dz], [-1.0, 0.0, 0.0]));
-            tris.push(Triangle::new([x, y, z], [x, y + dy, z], [x, y + dy, z + dz], [-1.0, 0.0, 0.0]));
+            tris.push(Triangle::new(
+                [x, y, z],
+                [x, y + dy, z + dz],
+                [x, y, z + dz],
+                [-1.0, 0.0, 0.0],
+            ));
+            tris.push(Triangle::new(
+                [x, y, z],
+                [x, y + dy, z],
+                [x, y + dy, z + dz],
+                [-1.0, 0.0, 0.0],
+            ));
         }
         // +X
         if ix == self.nx - 1 || !self.get(ix + 1, iy, iz) {
-            tris.push(Triangle::new([x + dx, y, z], [x + dx, y, z + dz], [x + dx, y + dy, z + dz], [1.0, 0.0, 0.0]));
-            tris.push(Triangle::new([x + dx, y, z], [x + dx, y + dy, z + dz], [x + dx, y + dy, z], [1.0, 0.0, 0.0]));
+            tris.push(Triangle::new(
+                [x + dx, y, z],
+                [x + dx, y, z + dz],
+                [x + dx, y + dy, z + dz],
+                [1.0, 0.0, 0.0],
+            ));
+            tris.push(Triangle::new(
+                [x + dx, y, z],
+                [x + dx, y + dy, z + dz],
+                [x + dx, y + dy, z],
+                [1.0, 0.0, 0.0],
+            ));
         }
         // -Y
         if iy == 0 || !self.get(ix, iy - 1, iz) {
-            tris.push(Triangle::new([x, y, z], [x, y, z + dz], [x + dx, y, z + dz], [0.0, -1.0, 0.0]));
-            tris.push(Triangle::new([x, y, z], [x + dx, y, z + dz], [x + dx, y, z], [0.0, -1.0, 0.0]));
+            tris.push(Triangle::new(
+                [x, y, z],
+                [x, y, z + dz],
+                [x + dx, y, z + dz],
+                [0.0, -1.0, 0.0],
+            ));
+            tris.push(Triangle::new(
+                [x, y, z],
+                [x + dx, y, z + dz],
+                [x + dx, y, z],
+                [0.0, -1.0, 0.0],
+            ));
         }
         // +Y
         if iy == self.ny - 1 || !self.get(ix, iy + 1, iz) {
-            tris.push(Triangle::new([x, y + dy, z], [x + dx, y + dy, z + dz], [x, y + dy, z + dz], [0.0, 1.0, 0.0]));
-            tris.push(Triangle::new([x, y + dy, z], [x + dx, y + dy, z], [x + dx, y + dy, z + dz], [0.0, 1.0, 0.0]));
+            tris.push(Triangle::new(
+                [x, y + dy, z],
+                [x + dx, y + dy, z + dz],
+                [x, y + dy, z + dz],
+                [0.0, 1.0, 0.0],
+            ));
+            tris.push(Triangle::new(
+                [x, y + dy, z],
+                [x + dx, y + dy, z],
+                [x + dx, y + dy, z + dz],
+                [0.0, 1.0, 0.0],
+            ));
         }
         // -Z
         if iz == 0 || !self.get(ix, iy, iz - 1) {
-            tris.push(Triangle::new([x, y, z], [x + dx, y, z], [x + dx, y + dy, z], [0.0, 0.0, -1.0]));
-            tris.push(Triangle::new([x, y, z], [x + dx, y + dy, z], [x, y + dy, z], [0.0, 0.0, -1.0]));
+            tris.push(Triangle::new(
+                [x, y, z],
+                [x + dx, y, z],
+                [x + dx, y + dy, z],
+                [0.0, 0.0, -1.0],
+            ));
+            tris.push(Triangle::new(
+                [x, y, z],
+                [x + dx, y + dy, z],
+                [x, y + dy, z],
+                [0.0, 0.0, -1.0],
+            ));
         }
         // +Z
         if iz == self.nz - 1 || !self.get(ix, iy, iz + 1) {
-            tris.push(Triangle::new([x, y, z + dz], [x + dx, y, z + dz], [x + dx, y + dy, z + dz], [0.0, 0.0, 1.0]));
-            tris.push(Triangle::new([x, y, z + dz], [x, y + dy, z + dz], [x + dx, y + dy, z + dz], [0.0, 0.0, 1.0]));
+            tris.push(Triangle::new(
+                [x, y, z + dz],
+                [x + dx, y, z + dz],
+                [x + dx, y + dy, z + dz],
+                [0.0, 0.0, 1.0],
+            ));
+            tris.push(Triangle::new(
+                [x, y, z + dz],
+                [x, y + dy, z + dz],
+                [x + dx, y + dy, z + dz],
+                [0.0, 0.0, 1.0],
+            ));
         }
     }
 

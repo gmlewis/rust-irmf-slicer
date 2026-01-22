@@ -42,7 +42,9 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     if !args.binvox && !args.dlp && !args.stl && !args.svx && !args.zip {
-        println!("-binvox, -dlp, -stl, -svx, or -zip must be supplied to generate output. Testing IRMF shader compilation only.");
+        println!(
+            "-binvox, -dlp, -stl, -svx, or -zip must be supplied to generate output. Testing IRMF shader compilation only."
+        );
     }
 
     let (x_res, y_res, z_res) = match () {
@@ -55,7 +57,10 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    println!("Resolution in microns: X: {}, Y: {}, Z: {}", x_res, y_res, z_res);
+    println!(
+        "Resolution in microns: X: {}, Y: {}, Z: {}",
+        x_res, y_res, z_res
+    );
 
     for file_path in args.files {
         if file_path.extension().and_then(|s| s.to_str()) != Some("irmf") {
@@ -65,48 +70,73 @@ async fn main() -> anyhow::Result<()> {
 
         println!("Processing IRMF shader {:?}...", file_path);
         let data = tokio::fs::read(&file_path).await?;
-        
+
         let mut model = irmf_slicer::IrmfModel::new(&data)
             .map_err(|e| anyhow::anyhow!("IrmfModel::new: {}", e))?;
-        
+
         println!("Resolving includes for {}...", file_path.display());
-        model.shader = irmf_include_resolver::resolve_includes(&model.shader).await
+        model.shader = irmf_include_resolver::resolve_includes(&model.shader)
+            .await
             .map_err(|e| anyhow::anyhow!("resolve_includes: {}", e))?;
 
         let base_name = file_path.file_stem().unwrap().to_str().unwrap();
 
-        let renderer = irmf_slicer::WgpuRenderer::new().await
+        let renderer = irmf_slicer::WgpuRenderer::new()
+            .await
             .map_err(|e| anyhow::anyhow!("WgpuRenderer::new: {}", e))?;
-        let mut slicer = irmf_slicer::Slicer::new(model, renderer, x_res as f32, y_res as f32, z_res as f32);
+        let mut slicer =
+            irmf_slicer::Slicer::new(model, renderer, x_res as f32, y_res as f32, z_res as f32);
 
         for material_num in 1..=slicer.model.header.materials.len() {
             let material_name = slicer.model.header.materials[material_num - 1].replace(" ", "-");
-            
+
             if args.stl {
-                let filename = format!("{}-mat{:02}-{}.stl", base_name, material_num, material_name);
+                let filename =
+                    format!("{}-mat{:02}-{}.stl", base_name, material_num, material_name);
                 irmf_output_stl::slice_to_stl(&mut slicer, material_num, &filename)
                     .map_err(|e| anyhow::anyhow!("slice_to_stl: {}", e))?;
             }
 
             if args.zip {
-                let filename = format!("{}-mat{:02}-{}.zip", base_name, material_num, material_name);
+                let filename =
+                    format!("{}-mat{:02}-{}.zip", base_name, material_num, material_name);
                 irmf_output_voxels::zip_out::slice_to_zip(&mut slicer, material_num, &filename)
                     .map_err(|e| anyhow::anyhow!("slice_to_zip: {}", e))?;
             }
 
             if args.binvox {
-                let filename = format!("{}-mat{:02}-{}.binvox", base_name, material_num, material_name);
-                irmf_output_voxels::binvox_out::slice_to_binvox(&mut slicer, material_num, &filename)
-                    .map_err(|e| anyhow::anyhow!("slice_to_binvox: {}", e))?;
+                let filename = format!(
+                    "{}-mat{:02}-{}.binvox",
+                    base_name, material_num, material_name
+                );
+                irmf_output_voxels::binvox_out::slice_to_binvox(
+                    &mut slicer,
+                    material_num,
+                    &filename,
+                )
+                .map_err(|e| anyhow::anyhow!("slice_to_binvox: {}", e))?;
             }
 
             if args.dlp {
-                let filename = format!("{}-mat{:02}-{}.cbddlp", base_name, material_num, material_name);
-                irmf_output_voxels::photon_out::slice_to_photon(&mut slicer, material_num, &filename, z_res as f32)
-                    .map_err(|e| anyhow::anyhow!("slice_to_photon: {}", e))?;
+                let filename = format!(
+                    "{}-mat{:02}-{}.cbddlp",
+                    base_name, material_num, material_name
+                );
+                irmf_output_voxels::photon_out::slice_to_photon(
+                    &mut slicer,
+                    material_num,
+                    &filename,
+                    z_res as f32,
+                )
+                .map_err(|e| anyhow::anyhow!("slice_to_photon: {}", e))?;
             }
-            
-            // TODO: svx
+
+            if args.svx {
+                let filename =
+                    format!("{}-mat{:02}-{}.svx", base_name, material_num, material_name);
+                irmf_output_voxels::svx_out::slice_to_svx(&mut slicer, material_num, &filename)
+                    .map_err(|e| anyhow::anyhow!("slice_to_svx: {}", e))?;
+            }
         }
     }
 

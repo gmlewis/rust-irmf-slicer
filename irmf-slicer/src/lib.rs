@@ -398,7 +398,8 @@ mod tests {
 
         // Test Z-slicing
         slicer.prepare_render_z().unwrap();
-        let mvp = slicer.renderer.projection * slicer.renderer.camera * slicer.renderer.model_matrix;
+        let mvp =
+            slicer.renderer.projection * slicer.renderer.camera * slicer.renderer.model_matrix;
 
         // Bottom-left corner of Z-slice (min_x, min_y, 0)
         let p_bl = mvp * glam::vec4(-5.0, -5.0, 0.0, 1.0);
@@ -414,7 +415,8 @@ mod tests {
 
         // Test Y-slicing
         slicer.prepare_render_y().unwrap();
-        let mvp_y = slicer.renderer.projection * slicer.renderer.camera * slicer.renderer.model_matrix;
+        let mvp_y =
+            slicer.renderer.projection * slicer.renderer.camera * slicer.renderer.model_matrix;
 
         // Bottom-left corner of Y-slice (min_x, 0, min_z)
         let p_bl_y = mvp_y * glam::vec4(-5.0, 0.0, -5.0, 1.0);
@@ -430,7 +432,8 @@ mod tests {
 
         // Test X-slicing
         slicer.prepare_render_x().unwrap();
-        let mvp_x = slicer.renderer.projection * slicer.renderer.camera * slicer.renderer.model_matrix;
+        let mvp_x =
+            slicer.renderer.projection * slicer.renderer.camera * slicer.renderer.model_matrix;
 
         // Bottom-left corner of X-slice (0, min_y, min_z)
         let p_bl_x = mvp_x * glam::vec4(0.0, -5.0, -5.0, 1.0);

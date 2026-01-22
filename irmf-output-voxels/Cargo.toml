@@ -16,7 +16,7 @@ categories.workspace = true
 bytemuck = { version = "1.16", features = ["derive"] }
 zip = "2.2"
 image = "0.25"
-irmf-slicer = { path = "../irmf-slicer" }
+irmf-slicer = { version = "0.1.0", path = "../irmf-slicer" }
 anyhow = "1.0"
 chrono = "0.4"
 wgpu = "24.0"

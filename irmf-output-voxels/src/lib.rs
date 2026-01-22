@@ -55,39 +55,39 @@ impl BinVox {
 
     pub fn marching_cubes<P: FnMut(usize, usize)>(&self, mut on_progress: Option<P>) -> Mesh {
         let mut triangles = Vec::new();
-        let dx = (self.max_x - self.min_x) / (self.nx as f64 - 1.0);
-        let dy = (self.max_y - self.min_y) / (self.ny as f64 - 1.0);
-        let dz = (self.max_z - self.min_z) / (self.nz as f64 - 1.0);
+        let dx = (self.max_x - self.min_x) / (self.nx as f64);
+        let dy = (self.max_y - self.min_y) / (self.ny as f64);
+        let dz = (self.max_z - self.min_z) / (self.nz as f64);
 
-        for z in 0..self.nz - 1 {
+        for z in -1..self.nz as i32 {
             if let Some(ref mut p) = on_progress {
-                p(z + 1, self.nz - 1);
+                p((z + 1) as usize, self.nz + 1);
             }
-            for y in 0..self.ny - 1 {
-                for x in 0..self.nx - 1 {
+            for y in -1..self.ny as i32 {
+                for x in -1..self.nx as i32 {
                     let mut cube_index = 0;
-                    if self.get(x, y, z) {
+                    if self.get_i32(x, y, z) {
                         cube_index |= 1;
                     }
-                    if self.get(x + 1, y, z) {
+                    if self.get_i32(x + 1, y, z) {
                         cube_index |= 2;
                     }
-                    if self.get(x + 1, y + 1, z) {
+                    if self.get_i32(x + 1, y + 1, z) {
                         cube_index |= 4;
                     }
-                    if self.get(x, y + 1, z) {
+                    if self.get_i32(x, y + 1, z) {
                         cube_index |= 8;
                     }
-                    if self.get(x, y, z + 1) {
+                    if self.get_i32(x, y, z + 1) {
                         cube_index |= 16;
                     }
-                    if self.get(x + 1, y, z + 1) {
+                    if self.get_i32(x + 1, y, z + 1) {
                         cube_index |= 32;
                     }
-                    if self.get(x + 1, y + 1, z + 1) {
+                    if self.get_i32(x + 1, y + 1, z + 1) {
                         cube_index |= 64;
                     }
-                    if self.get(x, y + 1, z + 1) {
+                    if self.get_i32(x, y + 1, z + 1) {
                         cube_index |= 128;
                     }
 
@@ -124,11 +124,18 @@ impl BinVox {
         Mesh { triangles }
     }
 
+    fn get_i32(&self, x: i32, y: i32, z: i32) -> bool {
+        if x < 0 || y < 0 || z < 0 || x >= self.nx as i32 || y >= self.ny as i32 || z >= self.nz as i32 {
+            return false;
+        }
+        self.get(x as usize, y as usize, z as usize)
+    }
+
     fn interp_edge(
         &self,
-        x: usize,
-        y: usize,
-        z: usize,
+        x: i32,
+        y: i32,
+        z: i32,
         edge: i32,
         dx: f64,
         dy: f64,
@@ -162,9 +169,9 @@ impl BinVox {
         ];
         let p1 = p[v1_idx];
         let p2 = p[v2_idx];
-        let mx = self.min_x + (p1[0] as f64 + p2[0] as f64) * 0.5 * dx;
-        let my = self.min_y + (p1[1] as f64 + p2[1] as f64) * 0.5 * dy;
-        let mz = self.min_z + (p1[2] as f64 + p2[2] as f64) * 0.5 * dz;
+        let mx = self.min_x + (p1[0] as f64 + 0.5 + p2[0] as f64 + 0.5) * 0.5 * dx;
+        let my = self.min_y + (p1[1] as f64 + 0.5 + p2[1] as f64 + 0.5) * 0.5 * dy;
+        let mz = self.min_z + (p1[2] as f64 + 0.5 + p2[2] as f64 + 0.5) * 0.5 * dz;
         [mx as f32, my as f32, mz as f32]
     }
 
@@ -499,45 +506,47 @@ mod tests {
         let mut b = BinVox::new(2, 2, 2, [0.0, 0.0, 0.0], [2.0, 2.0, 2.0]);
         b.set(0, 0, 0); // Only V0 is solid
         let mesh = b.marching_cubes::<fn(usize, usize)>(None);
-        // Case 1 (V0 set) should produce 1 triangle: edges 0, 8, 3
-        assert_eq!(mesh.triangles.len(), 1);
-        let tri = &mesh.triangles[0];
-        // dx=2.0, dy=2.0, dz=2.0. min=0.0.
-        // interp_edge(0,0,0, edge, 2, 2, 2)
-        // edge 0 (v0-v1): x=(0+1)*0.5*2 = 1.0, y=0, z=0. => [1.0, 0.0, 0.0]
-        // edge 8 (v0-v4): x=0, y=0, z=(0+1)*0.5*2 = 1.0. => [0.0, 0.0, 1.0]
-        // edge 3 (v3-v0): x=0, y=(1+0)*0.5*2 = 1.0, z=0. => [0.0, 1.0, 0.0]
-        assert_eq!(tri.v1, [1.0, 0.0, 0.0]);
-        assert_eq!(tri.v2, [0.0, 0.0, 1.0]);
-        assert_eq!(tri.v3, [0.0, 1.0, 0.0]);
-    }
-
-    #[test]
-    fn test_marching_cubes_octahedron() {
-        // 3x3x3 grid, points at 0.0, 1.0, 2.0
-        let mut b = BinVox::new(3, 3, 3, [0.0, 0.0, 0.0], [2.0, 2.0, 2.0]);
-        b.set(1, 1, 1); // Central point is solid
-        let mesh = b.marching_cubes::<fn(usize, usize)>(None);
         // A single point solid in the middle of a grid should be surrounded by 8 cubes.
         // Each cube has one corner solid, so each should produce 1 triangle.
         // Total 8 triangles forming an octahedron.
         assert_eq!(mesh.triangles.len(), 8);
 
-        // All vertices should be midpoints of edges connected to (1,1,1).
-        // These edges are:
-        // (0,1,1)-(1,1,1), (2,1,1)-(1,1,1)
-        // (1,0,1)-(1,1,1), (1,2,1)-(1,1,1)
-        // (1,1,0)-(1,1,1), (1,1,2)-(1,1,1)
-        // Midpoints (dx=1.0):
-        // (0.5, 1.0, 1.0), (1.5, 1.0, 1.0)
-        // (1.0, 0.5, 1.0), (1.0, 1.5, 1.0)
-        // (1.0, 1.0, 0.5), (1.0, 1.0, 1.5)
-
+        // Voxel (0,0,0) is centered at (0.5, 0.5, 0.5) with dx=1.0.
+        // Grid points are at -0.5, 0.5, 1.5, 2.5.
+        // Point (0,0,0) at index 0 is at (0.5, 0.5, 0.5).
+        // It is solid. Neighbors are empty.
+        // Surface should cross edges between index 0 and -1, and 0 and 1.
+        // Edge between -1 and 0 is at 0.0.
+        // Edge between 0 and 1 is at 1.0.
+        // So vertices should be at 0.0 or 1.0.
         for tri in &mesh.triangles {
             for v in &[tri.v1, tri.v2, tri.v3] {
-                let ok = (v[0] == 0.5 || v[0] == 1.5 || v[0] == 1.0)
-                    && (v[1] == 0.5 || v[1] == 1.5 || v[1] == 1.0)
-                    && (v[2] == 0.5 || v[2] == 1.5 || v[2] == 1.0);
+                let ok = (v[0] == 0.0 || v[0] == 1.0 || v[0] == 0.5)
+                    && (v[1] == 0.0 || v[1] == 1.0 || v[1] == 0.5)
+                    && (v[2] == 0.0 || v[2] == 1.0 || v[2] == 0.5);
+                assert!(ok, "Vertex {:?} is not at a boundary or midpoint", v);
+            }
+        }
+    }
+
+    #[test]
+    fn test_marching_cubes_octahedron() {
+        // 3x3x3 grid, points at 0.0, 1.0, 2.0
+        let mut b = BinVox::new(3, 3, 3, [0.0, 0.0, 0.0], [3.0, 3.0, 3.0]);
+        b.set(1, 1, 1); // Central point is solid
+        let mesh = b.marching_cubes::<fn(usize, usize)>(None);
+        // A single point solid in the middle of a grid should be surrounded by 8 cubes.
+        // Total 8 triangles forming an octahedron.
+        assert_eq!(mesh.triangles.len(), 8);
+
+        // dx=1.0. Voxel (1,1,1) is at (1.5, 1.5, 1.5).
+        // Edges between 0 and 1 are at 1.0.
+        // Edges between 1 and 2 are at 2.0.
+        for tri in &mesh.triangles {
+            for v in &[tri.v1, tri.v2, tri.v3] {
+                let ok = (v[0] == 1.0 || v[0] == 2.0 || v[0] == 1.5)
+                    && (v[1] == 1.0 || v[1] == 2.0 || v[1] == 1.5)
+                    && (v[2] == 1.0 || v[2] == 2.0 || v[2] == 1.5);
                 assert!(
                     ok,
                     "Vertex {:?} is not a midpoint of an edge connected to (1,1,1)",
@@ -549,7 +558,7 @@ mod tests {
 
     #[test]
     fn test_marching_cubes_full_cube() {
-        let mut b = BinVox::new(2, 2, 2, [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let mut b = BinVox::new(2, 2, 2, [0.0, 0.0, 0.0], [2.0, 2.0, 2.0]);
         for x in 0..2 {
             for y in 0..2 {
                 for z in 0..2 {
@@ -558,8 +567,9 @@ mod tests {
             }
         }
         let mesh = b.marching_cubes::<fn(usize, usize)>(None);
-        // A fully solid cube should produce 0 triangles (index 255 -> no triangles)
-        assert_eq!(mesh.triangles.len(), 0);
+        // A fully solid 2x2x2 cube should produce a 2x2x2 box mesh.
+        // It produces 44 triangles because of the subdivided boundary cubes.
+        assert_eq!(mesh.triangles.len(), 44);
     }
 
     #[test]

@@ -1,32 +1,28 @@
 use regex::Regex;
-use std::collections::HashSet;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ResolverError {
     #[error("Network error: {0}")]
     NetworkError(#[from] reqwest::Error),
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
 }
 
 pub async fn resolve_includes(source: &str) -> Result<String, ResolverError> {
     let mut resolved_source = String::new();
-    let include_re = Regex::new(r#"^#include\s+"([^"]+)""#).unwrap();
-    let mut visited = HashSet::new();
+    let include_re = Regex::new(r"^#include\s+\"([^\"]+)\\"" ).unwrap();
 
     for line in source.lines() {
         let trimmed = line.trim();
         if let Some(caps) = include_re.captures(trimmed) {
             let inc = &caps[1];
-            if !visited.contains(inc) {
-                visited.insert(inc.to_string());
-                if let Some(url) = parse_include_url(inc) {
-                    let content = fetch_url(&url).await?;
+            if let Some(url) = parse_include_url(inc) {
+                if let Ok(content) = fetch_url(&url).await {
                     resolved_source.push_str(&content);
                     resolved_source.push('\n');
-                    continue;
                 }
+                // Go implementation continues here, effectively dropping the line
+                // if it was recognized as a URL (whether fetch succeeded or failed).
+                continue;
             }
         }
         resolved_source.push_str(line);

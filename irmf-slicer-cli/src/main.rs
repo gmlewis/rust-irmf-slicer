@@ -1,3 +1,19 @@
+//! # IRMF Slicer CLI
+//!
+//! A powerful command-line utility for slicing Infinite Resolution Materials Format (IRMF) models.
+//!
+//! This tool renders 3D models defined by IRMF shaders into various formats suitable for
+//! 3D printing, visualization, and further processing.
+//!
+//! ## Key Features
+//! - **Multiple Output Formats:** Generate STL, BinVox, SVX, and DLP/Photon files.
+//! - **Real-time Visualization:** Optional live preview of the slicing process.
+//! - **GPU Acceleration:** High-performance rendering using `wgpu`.
+//! - **Flexible Resolution:** Customizable slicing resolution in microns.
+//!
+//! For more information about the IRMF format and its capabilities, visit the
+//! [official IRMF website](https://irmf.io).
+
 use clap::Parser;
 use image::DynamicImage;
 use indicatif::{ProgressBar, ProgressStyle};

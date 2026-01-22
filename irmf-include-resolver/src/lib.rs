@@ -2,6 +2,9 @@
 //!
 //! This crate provides logic to fetch remote includes from `lygia.xyz`
 //! and `github.com`, supporting both GLSL and WGSL shaders.
+//!
+//! For more information about the IRMF format and its capabilities, visit the
+//! [official IRMF website](https://irmf.io).
 
 use regex::Regex;
 use thiserror::Error;

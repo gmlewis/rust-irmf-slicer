@@ -2,6 +2,9 @@
 //!
 //! This crate provides functionality to slice an IRMF model and generate
 //! an STL file using a Marching Cubes algorithm based on the generated voxels.
+//!
+//! For more information about the IRMF format and its capabilities, visit the
+//! [official IRMF website](https://irmf.io).
 
 use image::GenericImageView;
 use irmf_output_voxels::BinVox;

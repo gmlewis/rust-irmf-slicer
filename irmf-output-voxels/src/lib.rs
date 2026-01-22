@@ -3,6 +3,9 @@
 //! This crate provides a central `BinVox` struct for representing a 3D voxel grid
 //! and implementations for various output formats like Binvox, ZIP, SVX, and DLP.
 //! It also includes a Marching Cubes algorithm to convert voxels to a mesh.
+//!
+//! For more information about the IRMF format and its capabilities, visit the
+//! [official IRMF website](https://irmf.io).
 
 pub mod binvox_out;
 pub mod gpu_mc;

@@ -2,6 +2,9 @@
 //!
 //! This crate provides the core logic for parsing, rendering, and slicing
 //! Infinite Resolution Materials Format (IRMF) models.
+//!
+//! For more information about the IRMF format and its capabilities, visit the
+//! [official IRMF website](https://irmf.io).
 
 pub mod irmf;
 pub mod mock_renderer;

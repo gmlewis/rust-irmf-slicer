@@ -46,7 +46,16 @@ pub trait Renderer {
     ///
     /// * `slice_depth` - The depth (Z-coordinate, or relevant axis) of the slice.
     /// * `material_num` - The index of the material to render.
-    fn render(&mut self, slice_depth: f32, material_num: usize) -> IrmfResult<DynamicImage>;
+    fn render(&mut self, slice_depth: f32, material_num: usize) -> IrmfResult<DynamicImage> {
+        self.render_start(slice_depth, material_num)?;
+        self.render_finish()
+    }
+
+    /// Starts an asynchronous render of a single slice.
+    fn render_start(&mut self, slice_depth: f32, material_num: usize) -> IrmfResult<()>;
+
+    /// Waits for the current asynchronous render to complete and returns the image.
+    fn render_finish(&mut self) -> IrmfResult<DynamicImage>;
 }
 
 /// A slicer that orchestrates the rendering of multiple slices of an IRMF model.
@@ -313,9 +322,26 @@ impl<R: Renderer> Slicer<R> {
         let voxel_radius_x = 0.5 * delta_x;
         let min_x = self.model.header.min[0];
 
+        if num_slices == 0 {
+            return Ok(());
+        }
+
+        // Start the first slice
+        let x0 = min_x + voxel_radius_x;
+        self.renderer.render_start(x0, material_num)?;
+
         for n in 0..num_slices {
             let x = min_x + voxel_radius_x + (n as f32) * delta_x;
-            let img = self.renderer.render(x, material_num)?;
+            // Wait for the current slice
+            let img = self.renderer.render_finish()?;
+
+            // Start the next slice if any
+            if n + 1 < num_slices {
+                let x_next = min_x + voxel_radius_x + ((n + 1) as f32) * delta_x;
+                self.renderer.render_start(x_next, material_num)?;
+            }
+
+            // Process the current slice while the next one is rendering
             f(n, x, voxel_radius_x, img)?;
         }
 
@@ -332,9 +358,26 @@ impl<R: Renderer> Slicer<R> {
         let voxel_radius_y = 0.5 * delta_y;
         let min_y = self.model.header.min[1];
 
+        if num_slices == 0 {
+            return Ok(());
+        }
+
+        // Start the first slice
+        let y0 = min_y + voxel_radius_y;
+        self.renderer.render_start(y0, material_num)?;
+
         for n in 0..num_slices {
             let y = min_y + voxel_radius_y + (n as f32) * delta_y;
-            let img = self.renderer.render(y, material_num)?;
+            // Wait for the current slice
+            let img = self.renderer.render_finish()?;
+
+            // Start the next slice if any
+            if n + 1 < num_slices {
+                let y_next = min_y + voxel_radius_y + ((n + 1) as f32) * delta_y;
+                self.renderer.render_start(y_next, material_num)?;
+            }
+
+            // Process the current slice while the next one is rendering
             f(n, y, voxel_radius_y, img)?;
         }
 
@@ -351,9 +394,26 @@ impl<R: Renderer> Slicer<R> {
         let voxel_radius_z = 0.5 * delta_z;
         let min_z = self.model.header.min[2];
 
+        if num_slices == 0 {
+            return Ok(());
+        }
+
+        // Start the first slice
+        let z0 = min_z + voxel_radius_z;
+        self.renderer.render_start(z0, material_num)?;
+
         for n in 0..num_slices {
             let z = min_z + voxel_radius_z + (n as f32) * delta_z;
-            let img = self.renderer.render(z, material_num)?;
+            // Wait for the current slice
+            let img = self.renderer.render_finish()?;
+
+            // Start the next slice if any
+            if n + 1 < num_slices {
+                let z_next = min_z + voxel_radius_z + ((n + 1) as f32) * delta_z;
+                self.renderer.render_start(z_next, material_num)?;
+            }
+
+            // Process the current slice while the next one is rendering
             f(n, z, voxel_radius_z, img)?;
         }
 

@@ -63,7 +63,11 @@ impl Renderer for MockRenderer {
         Ok(())
     }
 
-    fn render(&mut self, _slice_depth: f32, _material_num: usize) -> IrmfResult<DynamicImage> {
+    fn render_start(&mut self, _slice_depth: f32, _material_num: usize) -> IrmfResult<()> {
+        Ok(())
+    }
+
+    fn render_finish(&mut self) -> IrmfResult<DynamicImage> {
         let mut img = RgbaImage::new(self.width, self.height);
         // Generate a simple pattern: a solid white pixel if we "think" we are inside a 10mm sphere
         // This is just a mock, so we don't need real shader logic.

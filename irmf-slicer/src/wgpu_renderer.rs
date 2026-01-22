@@ -33,7 +33,8 @@ pub struct WgpuRenderer {
     uniform_buffer: Option<wgpu::Buffer>,
     vertex_buffer: Option<wgpu::Buffer>,
     target_texture: Option<wgpu::Texture>,
-    read_buffer: Option<wgpu::Buffer>,
+    read_buffers: [Option<wgpu::Buffer>; 2],
+    current_buffer: usize,
     width: u32,
     height: u32,
 
@@ -64,7 +65,8 @@ impl WgpuRenderer {
             uniform_buffer: None,
             vertex_buffer: None,
             target_texture: None,
-            read_buffer: None,
+            read_buffers: [None, None],
+            current_buffer: 0,
             width: 0,
             height: 0,
             projection: glam::Mat4::IDENTITY,
@@ -98,15 +100,24 @@ impl Renderer for WgpuRenderer {
 
         let bytes_per_row = (width * 4 + 255) & !255;
         let output_buffer_size = (bytes_per_row * height) as wgpu::BufferAddress;
-        let read_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Read Buffer"),
-            size: output_buffer_size,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
+
+        self.read_buffers = [
+            Some(self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Read Buffer 0"),
+                size: output_buffer_size,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            })),
+            Some(self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Read Buffer 1"),
+                size: output_buffer_size,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            })),
+        ];
+        self.current_buffer = 0;
 
         self.target_texture = Some(texture);
-        self.read_buffer = Some(read_buffer);
 
         Ok(())
     }
@@ -218,7 +229,7 @@ void main() {
         }
     }
 
-    fn render(&mut self, slice_depth: f32, material_num: usize) -> IrmfResult<DynamicImage> {
+    fn render_start(&mut self, slice_depth: f32, material_num: usize) -> IrmfResult<()> {
         let pipeline = self
             .pipeline
             .as_ref()
@@ -239,12 +250,17 @@ void main() {
             .ok_or(IrmfError::RendererError(
                 "Target texture not initialized".into(),
             ))?;
-        let read_buffer = self.read_buffer.as_ref().ok_or(IrmfError::RendererError(
-            "Read buffer not initialized".into(),
-        ))?;
         let vertex_buffer = self.vertex_buffer.as_ref().ok_or(IrmfError::RendererError(
             "Vertex buffer not prepared".into(),
         ))?;
+
+        // Use the active buffer for the current render command
+        let read_buffer =
+            self.read_buffers[self.current_buffer]
+                .as_ref()
+                .ok_or(IrmfError::RendererError(
+                    "Read buffer not initialized".into(),
+                ))?;
 
         let uniforms = Uniforms {
             projection: self.projection.to_cols_array_2d(),
@@ -312,13 +328,26 @@ void main() {
 
         self.queue.submit(Some(encoder.finish()));
 
+        // Map the buffer for reading after the GPU is done
         let buffer_slice = read_buffer.slice(..);
-        let (tx, rx) = std::sync::mpsc::channel();
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            tx.send(result).unwrap();
-        });
+        buffer_slice.map_async(wgpu::MapMode::Read, |_| {});
+
+        Ok(())
+    }
+
+    fn render_finish(&mut self) -> IrmfResult<DynamicImage> {
+        let read_buffer =
+            self.read_buffers[self.current_buffer]
+                .as_ref()
+                .ok_or(IrmfError::RendererError(
+                    "Read buffer not initialized".into(),
+                ))?;
+
+        // Wait for the GPU to finish and the buffer to be mapped
         self.device.poll(wgpu::Maintain::Wait);
-        rx.recv()?.map_err(IrmfError::WgpuBufferError)?;
+
+        let bytes_per_row = (self.width * 4 + 255) & !255;
+        let buffer_slice = read_buffer.slice(..);
 
         let data = buffer_slice.get_mapped_range();
         let mut rgba = RgbaImage::new(self.width, self.height);
@@ -337,6 +366,9 @@ void main() {
         }
         drop(data);
         read_buffer.unmap();
+
+        // Switch to the other buffer for the next render
+        self.current_buffer = (self.current_buffer + 1) % 2;
 
         Ok(DynamicImage::ImageRgba8(rgba))
     }

@@ -53,13 +53,16 @@ impl BinVox {
         (self.data[index / 8] & (1 << (index % 8))) != 0
     }
 
-    pub fn marching_cubes(&self) -> Mesh {
+    pub fn marching_cubes<P: FnMut(usize, usize)>(&self, mut on_progress: Option<P>) -> Mesh {
         let mut triangles = Vec::new();
         let dx = (self.max_x - self.min_x) / (self.nx as f64 - 1.0);
         let dy = (self.max_y - self.min_y) / (self.ny as f64 - 1.0);
         let dz = (self.max_z - self.min_z) / (self.nz as f64 - 1.0);
 
         for z in 0..self.nz - 1 {
+            if let Some(ref mut p) = on_progress {
+                p(z + 1, self.nz - 1);
+            }
             for y in 0..self.ny - 1 {
                 for x in 0..self.nx - 1 {
                     let mut cube_index = 0;
@@ -495,7 +498,7 @@ mod tests {
     fn test_marching_cubes_single_voxel() {
         let mut b = BinVox::new(2, 2, 2, [0.0, 0.0, 0.0], [2.0, 2.0, 2.0]);
         b.set(0, 0, 0); // Only V0 is solid
-        let mesh = b.marching_cubes();
+        let mesh = b.marching_cubes::<fn(usize, usize)>(None);
         // Case 1 (V0 set) should produce 1 triangle: edges 0, 8, 3
         assert_eq!(mesh.triangles.len(), 1);
         let tri = &mesh.triangles[0];
@@ -514,7 +517,7 @@ mod tests {
         // 3x3x3 grid, points at 0.0, 1.0, 2.0
         let mut b = BinVox::new(3, 3, 3, [0.0, 0.0, 0.0], [2.0, 2.0, 2.0]);
         b.set(1, 1, 1); // Central point is solid
-        let mesh = b.marching_cubes();
+        let mesh = b.marching_cubes::<fn(usize, usize)>(None);
         // A single point solid in the middle of a grid should be surrounded by 8 cubes.
         // Each cube has one corner solid, so each should produce 1 triangle.
         // Total 8 triangles forming an octahedron.
@@ -554,7 +557,7 @@ mod tests {
                 }
             }
         }
-        let mesh = b.marching_cubes();
+        let mesh = b.marching_cubes::<fn(usize, usize)>(None);
         // A fully solid cube should produce 0 triangles (index 255 -> no triangles)
         assert_eq!(mesh.triangles.len(), 0);
     }
@@ -563,7 +566,7 @@ mod tests {
     fn test_marching_cubes_manifold() {
         let mut b = BinVox::new(3, 3, 3, [0.0, 0.0, 0.0], [2.0, 2.0, 2.0]);
         b.set(1, 1, 1);
-        let mesh = b.marching_cubes();
+        let mesh = b.marching_cubes::<fn(usize, usize)>(None);
         assert_eq!(mesh.triangles.len(), 8);
 
         // Manifold check: every edge must appear exactly twice (with opposite winding, but we just check count)

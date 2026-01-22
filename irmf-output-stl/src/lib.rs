@@ -50,7 +50,7 @@ where
         .map_err(|e| anyhow::anyhow!("render_z_slices: {}", e))?;
 
     println!("Converting voxels to STL...");
-    let mesh = model.marching_cubes();
+    let mesh = model.marching_cubes(on_progress);
 
     println!("Writing STL file: {}", filename);
     let file = File::create(filename).map_err(|e| anyhow::anyhow!("File::create: {}", e))?;

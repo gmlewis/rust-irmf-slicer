@@ -1,4 +1,5 @@
 use crate::{BinVox, Mesh, Triangle};
+use irmf_slicer::{IrmfError, IrmfResult};
 use wgpu::util::DeviceExt;
 
 /// GPU-based Marching Cubes implementation.
@@ -60,7 +61,12 @@ impl GpuMarchingCubes {
         }
     }
 
-    pub async fn run(&self, device: &wgpu::Device, queue: &wgpu::Queue, binvox: &BinVox) -> Mesh {
+    pub async fn run(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        binvox: &BinVox,
+    ) -> IrmfResult<Mesh> {
         let nx = binvox.nx as u32;
         let ny = binvox.ny as u32;
         let nz = binvox.nz as u32;
@@ -113,10 +119,11 @@ impl GpuMarchingCubes {
             .max_buffer_size
             .min(device.limits().max_storage_buffer_binding_size as u64);
         let max_triangles_from_limit = (limit - 16) / tri_size;
-        let mut max_triangles = (nx * ny * nz).min(max_triangles_from_limit as u32);
+        let mut max_triangles = (nx as u64 * ny as u64 * nz as u64).min(max_triangles_from_limit);
         if max_triangles > 10_000_000 {
             max_triangles = 10_000_000;
         }
+        let max_triangles = max_triangles as u32;
 
         let output_buffer_size = 16 + max_triangles as u64 * tri_size;
 
@@ -184,7 +191,9 @@ impl GpuMarchingCubes {
         });
 
         device.poll(wgpu::Maintain::Wait);
-        receiver.await.unwrap().unwrap();
+        receiver
+            .await
+            .map_err(|_| IrmfError::RendererError("oneshot channel canceled".to_string()))??;
 
         let data = buffer_slice.get_mapped_range();
         let gpu_count = u32::from_le_bytes(data[0..4].try_into().unwrap());
@@ -212,7 +221,7 @@ impl GpuMarchingCubes {
             })
             .collect();
 
-        Mesh { triangles }
+        Ok(Mesh { triangles })
     }
 }
 
@@ -242,7 +251,7 @@ mod tests {
         b.set(0, 0, 0);
 
         let mc = GpuMarchingCubes::new(&device);
-        let mesh = block_on(mc.run(&device, &queue, &b));
+        let mesh = block_on(mc.run(&device, &queue, &b)).unwrap();
 
         assert_eq!(mesh.triangles.len(), 8);
 

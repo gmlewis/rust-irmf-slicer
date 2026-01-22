@@ -67,7 +67,16 @@ where
     let mesh = if let Some((device, queue)) = slicer.renderer.wgpu_device_queue() {
         println!("Using GPU-accelerated Marching Cubes...");
         let gpu_mc = irmf_output_voxels::gpu_mc::GpuMarchingCubes::new(device);
-        pollster::block_on(gpu_mc.run(device, queue, &model))
+        match pollster::block_on(gpu_mc.run(device, queue, &model)) {
+            Ok(mesh) => mesh,
+            Err(e) => {
+                eprintln!(
+                    "GPU-accelerated Marching Cubes failed: {}. Falling back to CPU...",
+                    e
+                );
+                model.marching_cubes(on_progress)
+            }
+        }
     } else {
         model.marching_cubes(on_progress)
     };

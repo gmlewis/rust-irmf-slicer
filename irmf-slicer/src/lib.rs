@@ -1,7 +1,7 @@
 pub mod irmf;
 pub mod wgpu_renderer;
 
-use image::DynamicImage;
+pub use image::DynamicImage;
 pub use irmf::{IrmfError, IrmfHeader, IrmfModel};
 pub use wgpu_renderer::WgpuRenderer;
 

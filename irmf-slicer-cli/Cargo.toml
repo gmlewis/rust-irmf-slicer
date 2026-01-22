@@ -18,3 +18,4 @@ irmf-output-stl = { path = "../irmf-output-stl" }
 irmf-output-voxels = { path = "../irmf-output-voxels" }
 minifb = "0.27"
 image = "0.25"
+indicatif = "0.17"

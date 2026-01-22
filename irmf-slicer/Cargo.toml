@@ -20,3 +20,4 @@ wgpu = "24.0"
 bytemuck = { version = "1.16", features = ["derive"] }
 pollster = "0.4"
 futures = "0.3"
+glam = "0.29"

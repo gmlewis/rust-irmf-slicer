@@ -3,6 +3,7 @@ use std::io::Read;
 use flate2::read::GzDecoder;
 use base64::{prelude::BASE64_STANDARD, Engine};
 use thiserror::Error;
+use regex::Regex;
 
 #[derive(Error, Debug)]
 pub enum IrmfError {
@@ -107,17 +108,35 @@ fn parse_header(data: &[u8]) -> Result<(IrmfHeader, &[u8]), IrmfError> {
         return Err(IrmfError::MissingLeadingComment);
     }
 
-    // Find the end tag. Note: Go used "\n}*/\n" but IRMF spec is usually "}*/"
-    // Let's be a bit flexible but look for the first "}*/"
     let end_index = data.windows(end_tag.len())
         .position(|window| window == end_tag)
         .ok_or(IrmfError::MissingTrailingComment)?;
 
-    let json_bytes = &data[2..end_index + 1]; // From "{" to "}"
-    let header: IrmfHeader = serde_json::from_slice(json_bytes)?;
+    let json_str = String::from_utf8_lossy(&data[2..end_index + 1]);
+    
+    // Simple fix for trailing commas and unquoted keys
+    let mut cleaned_json = json_str.into_owned();
+    
+    // Remove trailing commas before closing brace
+    let re_comma = Regex::new(r",\s*\}").unwrap();
+    cleaned_json = re_comma.replace_all(&cleaned_json, "}").into_owned();
+    
+    let keys = [
+        "author", "license", "date", "encoding", "irmf", "glslVersion",
+        "language", "materials", "max", "min", "notes", "options",
+        "title", "units", "version",
+    ];
+    
+    for key in keys {
+        let re_key = Regex::new(&format!(r"(\s|^){}:", key)).unwrap();
+        cleaned_json = re_key.replace_all(&cleaned_json, |caps: &regex::Captures| {
+            format!("{}\"{}\":", &caps[1], key)
+        }).into_owned();
+    }
+
+    let header: IrmfHeader = serde_json::from_str(&cleaned_json)?;
 
     let payload = &data[end_index + end_tag.len()..];
-    // Trim leading whitespace/newlines from payload
     let mut start = 0;
     while start < payload.len() && (payload[start] as char).is_whitespace() {
         start += 1;

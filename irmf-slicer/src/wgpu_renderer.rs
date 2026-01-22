@@ -1,5 +1,5 @@
 use crate::irmf::IrmfModel;
-use crate::Renderer;
+use crate::{Renderer, IrmfResult};
 use image::{DynamicImage, RgbaImage};
 use std::borrow::Cow;
 use wgpu::util::DeviceExt;
@@ -26,10 +26,15 @@ pub struct WgpuRenderer {
     read_buffer: Option<wgpu::Buffer>,
     width: u32,
     height: u32,
+    
+    // Stored matrices for rendering
+    projection: glam::Mat4,
+    camera: glam::Mat4,
+    model_matrix: glam::Mat4,
 }
 
 impl WgpuRenderer {
-    pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new() -> IrmfResult<Self> {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions::default())
@@ -66,12 +71,15 @@ impl WgpuRenderer {
             read_buffer: None,
             width: 0,
             height: 0,
+            projection: glam::Mat4::IDENTITY,
+            camera: glam::Mat4::IDENTITY,
+            model_matrix: glam::Mat4::IDENTITY,
         })
     }
 }
 
 impl Renderer for WgpuRenderer {
-    fn init(&mut self, width: u32, height: u32) -> Result<(), Box<dyn std::error::Error>> {
+    fn init(&mut self, width: u32, height: u32) -> IrmfResult<()> {
         self.width = width;
         self.height = height;
 
@@ -107,10 +115,24 @@ impl Renderer for WgpuRenderer {
         Ok(())
     }
 
-    fn prepare(&mut self, model: &IrmfModel) -> Result<(), Box<dyn std::error::Error>> {
+    fn prepare(
+        &mut self,
+        model: &IrmfModel,
+        projection: glam::Mat4,
+        camera: glam::Mat4,
+        model_matrix: glam::Mat4,
+        vec3_str: &str,
+    ) -> IrmfResult<()> {
+        self.projection = projection;
+        self.camera = camera;
+        self.model_matrix = model_matrix;
+
         let lang = model.header.language.as_deref().unwrap_or("glsl");
+        let num_materials = model.header.materials.len();
         
         let shader_source = if lang == "wgsl" {
+            let footer = gen_wgsl_footer(num_materials, vec3_str);
+
             format!(r#"
 struct Uniforms {{
     projection: mat4x4<f32>,
@@ -137,18 +159,8 @@ fn vs_main(@location(0) vert: vec3<f32>) -> VertexOutput {{
 
 {}
 
-@fragment
-fn fs_main(@location(0) fragVert: vec3<f32>) -> @location(0) vec4<f32> {{
-    let m = mainModel4(fragVert);
-    var color = 0.0;
-    let mat_num = i32(uniforms.u_material_num);
-    if mat_num == 1 {{ color = m.x; }}
-    else if mat_num == 2 {{ color = m.y; }}
-    else if mat_num == 3 {{ color = m.z; }}
-    else if mat_num == 4 {{ color = m.w; }}
-    return vec4<f32>(color, color, color, 1.0);
-}}
-"#, model.shader)
+{}
+"#, model.shader, footer)
         } else {
             return Err("GLSL support in WgpuRenderer not yet implemented".into());
         };
@@ -235,24 +247,18 @@ fn fs_main(@location(0) fragVert: vec3<f32>) -> @location(0) vec4<f32> {{
         Ok(())
     }
 
-    fn render(&mut self, z: f32, material_num: usize) -> Result<DynamicImage, Box<dyn std::error::Error>> {
+    fn render(&mut self, slice_depth: f32, material_num: usize) -> IrmfResult<DynamicImage> {
         let pipeline = self.pipeline.as_ref().ok_or("Pipeline not prepared")?;
         let bind_group = self.bind_group.as_ref().ok_or("Bind group not prepared")?;
         let uniform_buffer = self.uniform_buffer.as_ref().ok_or("Uniform buffer not prepared")?;
         let target_texture = self.target_texture.as_ref().ok_or("Target texture not initialized")?;
         let read_buffer = self.read_buffer.as_ref().ok_or("Read buffer not initialized")?;
 
-        let identity = [
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0],
-        ];
         let uniforms = Uniforms {
-            projection: identity,
-            camera: identity,
-            model: identity,
-            u_slice: z,
+            projection: self.projection.to_cols_array_2d(),
+            camera: self.camera.to_cols_array_2d(),
+            model: self.model_matrix.to_cols_array_2d(),
+            u_slice: slice_depth,
             u_material_num: material_num as f32,
             _padding: [0.0, 0.0],
         };
@@ -328,4 +334,69 @@ fn fs_main(@location(0) fragVert: vec3<f32>) -> @location(0) vec4<f32> {{
 
         Ok(DynamicImage::ImageRgba8(rgba))
     }
+}
+
+fn gen_wgsl_footer(num_materials: usize, vec3_str: &str) -> String {
+    let call = if num_materials <= 4 {
+        format!("let m = mainModel4(vec3<f32>({}));", vec3_str)
+    } else if num_materials <= 9 {
+        format!("let m = mainModel9(vec3<f32>({}));", vec3_str)
+    } else {
+        format!("let m = mainModel16(vec3<f32>({}));", vec3_str)
+    };
+
+    let cases = if num_materials <= 4 {
+        r#"
+        case 1: { color = m.x; }
+        case 2: { color = m.y; }
+        case 3: { color = m.z; }
+        case 4: { color = m.w; }
+"#
+    } else if num_materials <= 9 {
+        r#"
+        case 1: { color = m[0][0]; }
+        case 2: { color = m[0][1]; }
+        case 3: { color = m[0][2]; }
+        case 4: { color = m[1][0]; }
+        case 5: { color = m[1][1]; }
+        case 6: { color = m[1][2]; }
+        case 7: { color = m[2][0]; }
+        case 8: { color = m[2][1]; }
+        case 9: { color = m[2][2]; }
+"#
+    } else {
+        r#"
+        case 1: { color = m[0][0]; }
+        case 2: { color = m[0][1]; }
+        case 3: { color = m[0][2]; }
+        case 4: { color = m[0][3]; }
+        case 5: { color = m[1][0]; }
+        case 6: { color = m[1][1]; }
+        case 7: { color = m[1][2]; }
+        case 8: { color = m[1][3]; }
+        case 9: { color = m[2][0]; }
+        case 10: { color = m[2][1]; }
+        case 11: { color = m[2][2]; }
+        case 12: { color = m[2][3]; }
+        case 13: { color = m[3][0]; }
+        case 14: { color = m[3][1]; }
+        case 15: { color = m[3][2]; }
+        case 16: { color = m[3][3]; }
+"#
+    };
+
+    format!(r#"
+@fragment
+fn fs_main(@location(0) fragVert: vec3<f32>) -> @location(0) vec4<f32> {{
+    let u_slice = uniforms.u_slice;
+    {}
+    var color = 0.0;
+    let mat_num = i32(uniforms.u_material_num);
+    switch mat_num {{
+        {}
+        default: {{ color = 0.0; }}
+    }}
+    return vec4<f32>(color, color, color, 1.0);
+}}
+"#, call, cases)
 }

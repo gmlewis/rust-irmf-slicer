@@ -66,15 +66,42 @@ async fn main() -> anyhow::Result<()> {
         println!("Processing IRMF shader {:?}...", file_path);
         let data = tokio::fs::read(&file_path).await?;
         
-        let mut model = irmf_slicer::IrmfModel::new(&data)?;
+        let mut model = irmf_slicer::IrmfModel::new(&data)
+            .map_err(|e| anyhow::anyhow!("IrmfModel::new: {}", e))?;
         
         println!("Resolving includes for {}...", file_path.display());
-        model.shader = irmf_include_resolver::resolve_includes(&model.shader).await?;
+        model.shader = irmf_include_resolver::resolve_includes(&model.shader).await
+            .map_err(|e| anyhow::anyhow!("resolve_includes: {}", e))?;
 
         println!("Model: {} by {}", model.header.title.as_deref().unwrap_or("Untitled"), model.header.author.as_deref().unwrap_or("Unknown"));
         println!("Materials: {:?}", model.header.materials);
         println!("Units: {}", model.header.units);
         println!("MBB: {:?} to {:?}", model.header.min, model.header.max);
+
+        let renderer = irmf_slicer::WgpuRenderer::new().await
+            .map_err(|e| anyhow::anyhow!("WgpuRenderer::new: {}", e))?;
+        let mut slicer = irmf_slicer::Slicer::new(model, renderer, x_res as f32, y_res as f32, z_res as f32);
+
+        println!("Preparing render for Z axis...");
+        slicer.prepare_render_z()
+            .map_err(|e| anyhow::anyhow!("prepare_render_z: {}", e))?;
+
+        let num_slices = slicer.num_z_slices();
+        println!("Slicing {} Z-slices...", num_slices);
+
+        for material_num in 1..=slicer.model.header.materials.len() {
+            println!("Slicing material {}...", material_num);
+            if num_slices > 0 {
+                let img = slicer.render_z_slice(0, material_num)
+                    .map_err(|e| anyhow::anyhow!("render_z_slice(0): {}", e))?;
+                println!("Slice 0 rendered: {}x{}", img.width(), img.height());
+                if num_slices > 1 {
+                    let img = slicer.render_z_slice(num_slices - 1, material_num)
+                        .map_err(|e| anyhow::anyhow!("render_z_slice({}): {}", num_slices - 1, e))?;
+                    println!("Slice {} rendered: {}x{}", num_slices - 1, img.width(), img.height());
+                }
+            }
+        }
     }
 
     Ok(())

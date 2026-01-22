@@ -175,14 +175,13 @@ fn decode_shader(header: &IrmfHeader, payload: &[u8]) -> Result<String, IrmfErro
             Ok(shader)
         }
         Some("gzip+base64") => {
-            // Trim whitespace from base64 payload
-            let payload_str = std::str::from_utf8(payload).unwrap_or("").trim();
-            let decoded = BASE64_STANDARD.decode(payload_str)?;
+            // Remove all whitespace from base64 payload
+            let payload_str = std::str::from_utf8(payload).unwrap_or("");
+            let cleaned_payload: String = payload_str.chars().filter(|c| !c.is_whitespace()).collect();
+            let decoded = BASE64_STANDARD.decode(&cleaned_payload)?;
             let mut decoder = GzDecoder::new(&decoded[..]);
             let mut shader = String::new();
-            decoder
-                .read_to_string(&mut shader)
-                .map_err(IrmfError::GzipError)?;
+            decoder.read_to_string(&mut shader).map_err(IrmfError::GzipError)?;
             Ok(shader)
         }
         None | Some("") => Ok(String::from_utf8_lossy(payload).into_owned()),

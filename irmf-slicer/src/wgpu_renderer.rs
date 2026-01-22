@@ -21,7 +21,7 @@ pub struct WgpuRenderer {
     pipeline: Option<wgpu::RenderPipeline>,
     bind_group: Option<wgpu::BindGroup>,
     uniform_buffer: Option<wgpu::Buffer>,
-    vertex_buffer: wgpu::Buffer,
+    vertex_buffer: Option<wgpu::Buffer>,
     target_texture: Option<wgpu::Texture>,
     read_buffer: Option<wgpu::Buffer>,
     width: u32,
@@ -45,24 +45,13 @@ impl WgpuRenderer {
             .request_device(&wgpu::DeviceDescriptor::default(), None)
             .await?;
 
-        let vertex_data: [f32; 18] = [
-            -1.0, -1.0, 0.0, 1.0, -1.0, 0.0, -1.0, 1.0, 0.0, -1.0, 1.0, 0.0, 1.0, -1.0, 0.0, 1.0,
-            1.0, 0.0,
-        ];
-
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(&vertex_data),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
         Ok(Self {
             device,
             queue,
             pipeline: None,
             bind_group: None,
             uniform_buffer: None,
-            vertex_buffer,
+            vertex_buffer: None,
             target_texture: None,
             read_buffer: None,
             width: 0,
@@ -114,6 +103,7 @@ impl Renderer for WgpuRenderer {
     fn prepare(
         &mut self,
         model: &IrmfModel,
+        vertices: &[f32],
         projection: glam::Mat4,
         camera: glam::Mat4,
         model_matrix: glam::Mat4,
@@ -122,6 +112,16 @@ impl Renderer for WgpuRenderer {
         self.projection = projection;
         self.camera = camera;
         self.model_matrix = model_matrix;
+
+        // Create vertex buffer with world coordinates
+        self.vertex_buffer = Some(
+            self.device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Vertex Buffer"),
+                    contents: bytemuck::cast_slice(vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                }),
+        );
 
         let lang = model.header.language.as_deref().unwrap_or("glsl");
         let num_materials = model.header.materials.len();
@@ -160,12 +160,10 @@ fn vs_main(@location(0) vert: vec3<f32>) -> VertexOutput {{
                 model.shader, footer
             );
 
-            let shader = self
-                .device
-                .create_shader_module(wgpu::ShaderModuleDescriptor {
-                    label: Some("Shader"),
-                    source: wgpu::ShaderSource::Wgsl(Cow::Owned(shader_source)),
-                });
+            let shader = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("Shader"),
+                source: wgpu::ShaderSource::Wgsl(Cow::Owned(shader_source)),
+            });
 
             self.create_pipeline(&shader, "vs_main", &shader, "fs_main")
         } else {
@@ -191,18 +189,14 @@ void main() {
             let vs_wgsl = translate_glsl_to_wgsl(glsl_vs, naga::ShaderStage::Vertex)?;
             let fs_wgsl = translate_glsl_to_wgsl(&glsl_fs, naga::ShaderStage::Fragment)?;
 
-            let vs_module = self
-                .device
-                .create_shader_module(wgpu::ShaderModuleDescriptor {
-                    label: Some("VS Shader"),
-                    source: wgpu::ShaderSource::Wgsl(Cow::Owned(vs_wgsl)),
-                });
-            let fs_module = self
-                .device
-                .create_shader_module(wgpu::ShaderModuleDescriptor {
-                    label: Some("FS Shader"),
-                    source: wgpu::ShaderSource::Wgsl(Cow::Owned(fs_wgsl)),
-                });
+            let vs_module = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("VS Shader"),
+                source: wgpu::ShaderSource::Wgsl(Cow::Owned(vs_wgsl)),
+            });
+            let fs_module = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("FS Shader"),
+                source: wgpu::ShaderSource::Wgsl(Cow::Owned(fs_wgsl)),
+            });
 
             self.create_pipeline(&vs_module, "main", &fs_module, "main")
         }
@@ -211,18 +205,13 @@ void main() {
     fn render(&mut self, slice_depth: f32, material_num: usize) -> IrmfResult<DynamicImage> {
         let pipeline = self.pipeline.as_ref().ok_or("Pipeline not prepared")?;
         let bind_group = self.bind_group.as_ref().ok_or("Bind group not prepared")?;
-        let uniform_buffer = self
-            .uniform_buffer
-            .as_ref()
-            .ok_or("Uniform buffer not prepared")?;
+        let uniform_buffer = self.uniform_buffer.as_ref().ok_or("Uniform buffer not prepared")?;
         let target_texture = self
             .target_texture
             .as_ref()
             .ok_or("Target texture not initialized")?;
-        let read_buffer = self
-            .read_buffer
-            .as_ref()
-            .ok_or("Read buffer not initialized")?;
+        let read_buffer = self.read_buffer.as_ref().ok_or("Read buffer not initialized")?;
+        let vertex_buffer = self.vertex_buffer.as_ref().ok_or("Vertex buffer not prepared")?;
 
         let uniforms = Uniforms {
             projection: self.projection.to_cols_array_2d(),
@@ -242,8 +231,7 @@ void main() {
             });
 
         {
-            let render_target_view =
-                target_texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let render_target_view = target_texture.create_view(&wgpu::TextureViewDescriptor::default());
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -261,7 +249,7 @@ void main() {
 
             render_pass.set_pipeline(pipeline);
             render_pass.set_bind_group(0, bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
             render_pass.draw(0..6, 0..1);
         }
 
@@ -361,13 +349,13 @@ impl WgpuRenderer {
             }],
         });
 
-        let pipeline_layout = self
-            .device
-            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Pipeline Layout"),
-                bind_group_layouts: &[&bind_group_layout],
-                push_constant_ranges: &[],
-            });
+        let pipeline_layout =
+            self.device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Pipeline Layout"),
+                    bind_group_layouts: &[&bind_group_layout],
+                    push_constant_ranges: &[],
+                });
 
         let pipeline = self
             .device
@@ -418,7 +406,7 @@ fn translate_glsl_to_wgsl(glsl: &str, stage: naga::ShaderStage) -> IrmfResult<St
         .parse(
             &naga::front::glsl::Options {
                 stage,
-                defines: rustc_hash::FxHashMap::default(),
+                defines: rustc_hash::FxHashMap::<String, String>::default(),
             },
             glsl,
         )
@@ -431,9 +419,8 @@ fn translate_glsl_to_wgsl(glsl: &str, stage: naga::ShaderStage) -> IrmfResult<St
     .validate(&module)
     .map_err(|e| format!("Naga Validation Error: {:?}", e))?;
 
-    let wgsl =
-        naga::back::wgsl::write_string(&module, &info, naga::back::wgsl::WriterFlags::empty())
-            .map_err(|e| format!("WGSL Back-end Error: {:?}", e))?;
+    let wgsl = naga::back::wgsl::write_string(&module, &info, naga::back::wgsl::WriterFlags::empty())
+        .map_err(|e| format!("WGSL Back-end Error: {:?}", e))?;
 
     Ok(wgsl)
 }

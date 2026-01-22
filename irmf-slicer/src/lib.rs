@@ -12,6 +12,7 @@ pub trait Renderer {
     fn prepare(
         &mut self,
         model: &IrmfModel,
+        vertices: &[f32],
         projection: glam::Mat4,
         camera: glam::Mat4,
         model_matrix: glam::Mat4,
@@ -93,6 +94,17 @@ impl<R: Renderer> Slicer<R> {
 
         self.renderer.init(new_width, new_height)?;
 
+        let vertices = [
+            // Tri 1
+            0.0, left, bottom,
+            0.0, right, bottom,
+            0.0, left, top,
+            // Tri 2
+            0.0, right, bottom,
+            0.0, right, top,
+            0.0, left, top,
+        ];
+
         let near = 0.1;
         let far = 100.0;
         let projection = glam::Mat4::orthographic_rh(left, right, bottom, top, near, far);
@@ -105,7 +117,7 @@ impl<R: Renderer> Slicer<R> {
         let vec3_str = "u_slice, fragVert.yz";
 
         self.renderer
-            .prepare(&self.model, projection, camera, model_matrix, vec3_str)
+            .prepare(&self.model, &vertices, projection, camera, model_matrix, vec3_str)
     }
 
     pub fn prepare_render_y(&mut self) -> IrmfResult<()> {
@@ -132,6 +144,17 @@ impl<R: Renderer> Slicer<R> {
 
         self.renderer.init(new_width, new_height)?;
 
+        let vertices = [
+            // Tri 1
+            left, 0.0, bottom,
+            right, 0.0, bottom,
+            left, 0.0, top,
+            // Tri 2
+            right, 0.0, bottom,
+            right, 0.0, top,
+            left, 0.0, top,
+        ];
+
         let near = 0.1;
         let far = 100.0;
         let projection = glam::Mat4::orthographic_rh(left, right, bottom, top, near, far);
@@ -144,7 +167,7 @@ impl<R: Renderer> Slicer<R> {
         let vec3_str = "fragVert.x, u_slice, fragVert.z";
 
         self.renderer
-            .prepare(&self.model, projection, camera, model_matrix, vec3_str)
+            .prepare(&self.model, &vertices, projection, camera, model_matrix, vec3_str)
     }
 
     pub fn prepare_render_z(&mut self) -> IrmfResult<()> {
@@ -171,6 +194,17 @@ impl<R: Renderer> Slicer<R> {
 
         self.renderer.init(new_width, new_height)?;
 
+        let vertices = [
+            // Tri 1
+            left, bottom, 0.0,
+            right, bottom, 0.0,
+            left, top, 0.0,
+            // Tri 2
+            right, bottom, 0.0,
+            right, top, 0.0,
+            left, top, 0.0,
+        ];
+
         let near = 0.1;
         let far = 100.0;
         let projection = glam::Mat4::orthographic_rh(left, right, bottom, top, near, far);
@@ -183,7 +217,7 @@ impl<R: Renderer> Slicer<R> {
         let vec3_str = "fragVert.xy, u_slice";
 
         self.renderer
-            .prepare(&self.model, projection, camera, model_matrix, vec3_str)
+            .prepare(&self.model, &vertices, projection, camera, model_matrix, vec3_str)
     }
 
     pub fn render_x_slice(

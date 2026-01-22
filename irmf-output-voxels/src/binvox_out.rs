@@ -10,9 +10,8 @@ pub fn slice_to_binvox<R: Renderer>(slicer: &mut Slicer<R>, material_num: usize,
     let nz = slicer.num_z_slices();
     let min = slicer.model.header.min;
     let max = slicer.model.header.max;
-    let scale = (max[2] - min[2]) as f64;
 
-    let mut model = BinVox::new(nx, ny, nz, min[0] as f64, min[1] as f64, min[2] as f64, scale);
+    let mut model = BinVox::new(nx, ny, nz, min, max);
 
     println!("Rendering Z-slices for Binvox...");
     slicer.prepare_render_z().map_err(|e| anyhow::anyhow!("prepare_render_z: {}", e))?;

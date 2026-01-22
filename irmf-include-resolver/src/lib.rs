@@ -9,7 +9,7 @@ pub enum ResolverError {
 
 pub async fn resolve_includes(source: &str) -> Result<String, ResolverError> {
     let mut resolved_source = String::new();
-    let include_re = Regex::new(r"^#include\s+\"([^\"]+)\\"" ).unwrap();
+    let include_re = Regex::new("^#include\\s+\"([^\"]+)\"").unwrap();
 
     for line in source.lines() {
         let trimmed = line.trim();
@@ -20,8 +20,6 @@ pub async fn resolve_includes(source: &str) -> Result<String, ResolverError> {
                     resolved_source.push_str(&content);
                     resolved_source.push('\n');
                 }
-                // Go implementation continues here, effectively dropping the line
-                // if it was recognized as a URL (whether fetch succeeded or failed).
                 continue;
             }
         }

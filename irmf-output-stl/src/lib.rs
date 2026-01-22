@@ -1,4 +1,4 @@
-use irmf_output_voxels::{BinVox, Mesh};
+use irmf_output_voxels::{BinVox};
 use irmf_slicer::{Slicer, Renderer, IrmfResult};
 use std::fs::File;
 use std::io::BufWriter;
@@ -10,9 +10,8 @@ pub fn slice_to_stl<R: Renderer>(slicer: &mut Slicer<R>, material_num: usize, fi
     let nz = slicer.num_z_slices();
     let min = slicer.model.header.min;
     let max = slicer.model.header.max;
-    let scale = (max[2] - min[2]) as f64;
 
-    let mut model = BinVox::new(nx, ny, nz, min[0] as f64, min[1] as f64, min[2] as f64, scale);
+    let mut model = BinVox::new(nx, ny, nz, min, max);
 
     println!("Rendering Z-slices for STL...");
     slicer.prepare_render_z().map_err(|e| anyhow::anyhow!("prepare_render_z: {}", e))?;
@@ -21,7 +20,6 @@ pub fn slice_to_stl<R: Renderer>(slicer: &mut Slicer<R>, material_num: usize, fi
         for y in 0..img.height() {
             for x in 0..img.width() {
                 let pixel = img.get_pixel(x, y);
-                // Assume grayscale/alpha
                 if pixel[0] >= 128 {
                     model.set(x as usize, y as usize, z_idx);
                 }
@@ -30,7 +28,7 @@ pub fn slice_to_stl<R: Renderer>(slicer: &mut Slicer<R>, material_num: usize, fi
         Ok(())
     }).map_err(|e| anyhow::anyhow!("render_z_slices: {}", e))?;
 
-    println!("Converting voxels to STL using Marching Cubes...");
+    println!("Converting voxels to STL...");
     let mesh = model.marching_cubes();
     
     println!("Writing STL file: {}", filename);

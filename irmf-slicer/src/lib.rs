@@ -43,14 +43,23 @@ impl<R: Renderer> Slicer<R> {
         let delta_x = self.res_x / 1000.0;
         let min_x = self.model.header.min[0];
         let max_x = self.model.header.max[0];
-        (0.5 + (max_x - min_x) / delta_x).floor() as usize
+        let mut n = (0.5 + (max_x - min_x) / delta_x).floor() as usize;
+        if n % 2 == 1 {
+            n += 1;
+        }
+        n
     }
 
     pub fn num_y_slices(&self) -> usize {
+        let nx = self.num_x_slices();
         let delta_y = self.res_y / 1000.0;
         let min_y = self.model.header.min[1];
         let max_y = self.model.header.max[1];
-        (0.5 + (max_y - min_y) / delta_y).floor() as usize
+        let mut n = (0.5 + (max_y - min_y) / delta_y).floor() as usize;
+        if nx % 2 == 1 {
+            n += 1;
+        }
+        n
     }
 
     pub fn num_z_slices(&self) -> usize {

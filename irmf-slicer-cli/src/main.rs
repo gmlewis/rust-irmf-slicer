@@ -130,8 +130,6 @@ async fn main() -> anyhow::Result<()> {
             // For each material, we might need a window.
             // We'll prepare Z first to get the size.
             slicer.prepare_render_z().map_err(|e| anyhow::anyhow!("{}", e))?;
-            let (width, height) = (0, 0); // Need to expose renderer size or calculate it.
-            // Actually, let's just let the viewer be created inside the closures.
             
             let mut viewer: Option<Viewer> = None;
             let mut on_slice = |img: &DynamicImage| {

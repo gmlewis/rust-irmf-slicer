@@ -99,8 +99,14 @@ async fn main() -> anyhow::Result<()> {
                 irmf_output_voxels::binvox_out::slice_to_binvox(&mut slicer, material_num, &filename)
                     .map_err(|e| anyhow::anyhow!("slice_to_binvox: {}", e))?;
             }
+
+            if args.dlp {
+                let filename = format!("{}-mat{:02}-{}.cbddlp", base_name, material_num, material_name);
+                irmf_output_voxels::photon_out::slice_to_photon(&mut slicer, material_num, &filename, z_res as f32)
+                    .map_err(|e| anyhow::anyhow!("slice_to_photon: {}", e))?;
+            }
             
-            // TODO: dlp, svx
+            // TODO: svx
         }
     }
 

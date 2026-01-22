@@ -1,5 +1,6 @@
 pub mod zip_out;
 pub mod binvox_out;
+pub mod photon_out;
 
 use std::io::{Write};
 

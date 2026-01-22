@@ -1,7 +1,7 @@
 use clap::Parser;
 use image::DynamicImage;
 use indicatif::{ProgressBar, ProgressStyle};
-use irmf_slicer::IrmfResult;
+use irmf_slicer::{IrmfError, IrmfResult};
 use minifb::{Window, WindowOptions};
 use std::path::PathBuf;
 
@@ -82,7 +82,7 @@ impl Viewer {
             }
             window
                 .update_with_buffer(&self.buffer, width, height)
-                .map_err(|e| anyhow::anyhow!("Window update error: {}", e))?;
+                .map_err(|e| IrmfError::RendererError(format!("Window update error: {}", e)))?;
         }
         Ok(())
     }
@@ -130,7 +130,8 @@ async fn main() -> anyhow::Result<()> {
             .await
             .map_err(|e| anyhow::anyhow!("resolve_includes: {}", e))?;
 
-        let base_name = file_path.file_stem().unwrap().to_str().unwrap();
+        let base_name = file_path.with_extension("");
+        let base_name_str = base_name.to_str().unwrap();
 
         let renderer = irmf_slicer::WgpuRenderer::new()
             .await
@@ -171,8 +172,10 @@ async fn main() -> anyhow::Result<()> {
             };
 
             if args.stl {
-                let filename =
-                    format!("{}-mat{:02}-{}.stl", base_name, material_num, material_name);
+                let filename = format!(
+                    "{}-mat{:02}-{}.stl",
+                    base_name_str, material_num, material_name
+                );
                 irmf_output_stl::slice_to_stl(
                     &mut slicer,
                     material_num,
@@ -184,8 +187,10 @@ async fn main() -> anyhow::Result<()> {
             }
 
             if args.zip {
-                let filename =
-                    format!("{}-mat{:02}-{}.zip", base_name, material_num, material_name);
+                let filename = format!(
+                    "{}-mat{:02}-{}.zip",
+                    base_name_str, material_num, material_name
+                );
                 irmf_output_voxels::zip_out::slice_to_zip(
                     &mut slicer,
                     material_num,
@@ -199,7 +204,7 @@ async fn main() -> anyhow::Result<()> {
             if args.binvox {
                 let filename = format!(
                     "{}-mat{:02}-{}.binvox",
-                    base_name, material_num, material_name
+                    base_name_str, material_num, material_name
                 );
                 irmf_output_voxels::binvox_out::slice_to_binvox(
                     &mut slicer,
@@ -214,7 +219,7 @@ async fn main() -> anyhow::Result<()> {
             if args.dlp {
                 let filename = format!(
                     "{}-mat{:02}-{}.cbddlp",
-                    base_name, material_num, material_name
+                    base_name_str, material_num, material_name
                 );
                 irmf_output_voxels::photon_out::slice_to_photon(
                     &mut slicer,
@@ -228,8 +233,10 @@ async fn main() -> anyhow::Result<()> {
             }
 
             if args.svx {
-                let filename =
-                    format!("{}-mat{:02}-{}.svx", base_name, material_num, material_name);
+                let filename = format!(
+                    "{}-mat{:02}-{}.svx",
+                    base_name_str, material_num, material_name
+                );
                 irmf_output_voxels::svx_out::slice_to_svx(
                     &mut slicer,
                     material_num,

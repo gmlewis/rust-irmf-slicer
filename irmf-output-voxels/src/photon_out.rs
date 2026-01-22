@@ -80,13 +80,11 @@ where
     F: FnMut(&DynamicImage) -> IrmfResult<()>,
     P: FnMut(usize, usize),
 {
-    let mut file = File::create(filename).map_err(|e| anyhow::anyhow!("File::create: {}", e))?;
+    let mut file = File::create(filename)?;
     let num_slices = slicer.num_z_slices();
 
     println!("Rendering Z-slices for Photon...");
-    slicer
-        .prepare_render_z()
-        .map_err(|e| anyhow::anyhow!("prepare_render_z: {}", e))?;
+    slicer.prepare_render_z()?;
 
     let mut layer_headers = Vec::with_capacity(num_slices);
     let mut current_pos = 0u32;
@@ -178,38 +176,36 @@ where
     }
 
     let total_slices = num_slices;
-    slicer
-        .render_z_slices(material_num, |i, _z, _rad, img| {
-            if let Some(ref mut f) = on_slice {
-                f(&img)?;
-            }
-            if let Some(ref mut p) = on_progress {
-                p(i + 1, total_slices);
-            }
-            let layer_data = encode_layer_image_data(&img.to_rgba8());
+    slicer.render_z_slices(material_num, |i, _z, _rad, img| {
+        if let Some(ref mut f) = on_slice {
+            f(&img)?;
+        }
+        if let Some(ref mut p) = on_progress {
+            p(i + 1, total_slices);
+        }
+        let layer_data = encode_layer_image_data(&img.to_rgba8());
 
-            let exp_time = if i < header.bottom_layers as usize {
-                header.bottom_exposure_time
-            } else {
-                header.normal_exposure_time
-            };
-            layer_headers.push(LayerHeader {
-                absolute_height: (i as f32) * z_res / 1000.0,
-                exposure_time: exp_time,
-                per_layer_off_time: header.off_time,
-                image_data_offset: current_pos,
-                image_data_size: layer_data.len() as u32,
-                field_14: 0,
-                field_18: 0,
-                field_1c: 0,
-                field_20: 0,
-            });
+        let exp_time = if i < header.bottom_layers as usize {
+            header.bottom_exposure_time
+        } else {
+            header.normal_exposure_time
+        };
+        layer_headers.push(LayerHeader {
+            absolute_height: (i as f32) * z_res / 1000.0,
+            exposure_time: exp_time,
+            per_layer_off_time: header.off_time,
+            image_data_offset: current_pos,
+            image_data_size: layer_data.len() as u32,
+            field_14: 0,
+            field_18: 0,
+            field_1c: 0,
+            field_20: 0,
+        });
 
-            file.write_all(&layer_data)?;
-            current_pos += layer_data.len() as u32;
-            Ok(())
-        })
-        .map_err(|e| anyhow::anyhow!("render_z_slices: {}", e))?;
+        file.write_all(&layer_data)?;
+        current_pos += layer_data.len() as u32;
+        Ok(())
+    })?;
 
     file.seek(SeekFrom::Start(0))?;
     file.write_all(bytemuck::bytes_of(&header))?;

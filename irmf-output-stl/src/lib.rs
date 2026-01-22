@@ -24,39 +24,34 @@ where
     let mut model = BinVox::new(nx, ny, nz, min, max);
 
     println!("Rendering Z-slices for STL...");
-    slicer
-        .prepare_render_z()
-        .map_err(|e| anyhow::anyhow!("prepare_render_z: {}", e))?;
+    slicer.prepare_render_z()?;
 
     let total_slices = slicer.num_z_slices();
-    slicer
-        .render_z_slices(material_num, |z_idx, _z, _radius, img| {
-            if let Some(ref mut f) = on_slice {
-                f(&img)?;
-            }
-            if let Some(ref mut p) = on_progress {
-                p(z_idx + 1, total_slices);
-            }
-            for y in 0..img.height() {
-                for x in 0..img.width() {
-                    let pixel = img.get_pixel(x, y);
-                    if pixel[0] >= 128 {
-                        model.set(x as usize, y as usize, z_idx);
-                    }
+    slicer.render_z_slices(material_num, |z_idx, _z, _radius, img| {
+        if let Some(ref mut f) = on_slice {
+            f(&img)?;
+        }
+        if let Some(ref mut p) = on_progress {
+            p(z_idx + 1, total_slices);
+        }
+        for y in 0..img.height() {
+            for x in 0..img.width() {
+                let pixel = img.get_pixel(x, y);
+                if pixel[0] >= 128 {
+                    model.set(x as usize, y as usize, z_idx);
                 }
             }
-            Ok(())
-        })
-        .map_err(|e| anyhow::anyhow!("render_z_slices: {}", e))?;
+        }
+        Ok(())
+    })?;
 
     println!("Converting voxels to STL...");
     let mesh = model.marching_cubes(on_progress);
 
     println!("Writing STL file: {}", filename);
-    let file = File::create(filename).map_err(|e| anyhow::anyhow!("File::create: {}", e))?;
+    let file = File::create(filename)?;
     let mut writer = BufWriter::new(file);
-    mesh.save_stl(&mut writer)
-        .map_err(|e| anyhow::anyhow!("Mesh::save_stl: {}", e))?;
+    mesh.save_stl(&mut writer)?;
 
     Ok(())
 }

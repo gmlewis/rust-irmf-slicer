@@ -5,7 +5,7 @@ pub use image::DynamicImage;
 pub use irmf::{IrmfError, IrmfHeader, IrmfModel};
 pub use wgpu_renderer::WgpuRenderer;
 
-pub type IrmfResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+pub type IrmfResult<T> = Result<T, IrmfError>;
 
 pub trait Renderer {
     fn init(&mut self, width: u32, height: u32) -> IrmfResult<()>;

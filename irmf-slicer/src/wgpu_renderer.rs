@@ -1,4 +1,4 @@
-use crate::irmf::IrmfModel;
+use crate::irmf::{IrmfError, IrmfModel};
 use crate::{IrmfResult, Renderer};
 use image::{DynamicImage, RgbaImage};
 use std::borrow::Cow;
@@ -39,7 +39,7 @@ impl WgpuRenderer {
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions::default())
             .await
-            .ok_or("Failed to find an appropriate adapter")?;
+            .ok_or(IrmfError::WgpuAdapterError)?;
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor::default(), None)
@@ -208,24 +208,32 @@ void main() {
     }
 
     fn render(&mut self, slice_depth: f32, material_num: usize) -> IrmfResult<DynamicImage> {
-        let pipeline = self.pipeline.as_ref().ok_or("Pipeline not prepared")?;
-        let bind_group = self.bind_group.as_ref().ok_or("Bind group not prepared")?;
+        let pipeline = self
+            .pipeline
+            .as_ref()
+            .ok_or(IrmfError::RendererError("Pipeline not prepared".into()))?;
+        let bind_group = self
+            .bind_group
+            .as_ref()
+            .ok_or(IrmfError::RendererError("Bind group not prepared".into()))?;
         let uniform_buffer = self
             .uniform_buffer
             .as_ref()
-            .ok_or("Uniform buffer not prepared")?;
+            .ok_or(IrmfError::RendererError(
+                "Uniform buffer not prepared".into(),
+            ))?;
         let target_texture = self
             .target_texture
             .as_ref()
-            .ok_or("Target texture not initialized")?;
-        let read_buffer = self
-            .read_buffer
-            .as_ref()
-            .ok_or("Read buffer not initialized")?;
-        let vertex_buffer = self
-            .vertex_buffer
-            .as_ref()
-            .ok_or("Vertex buffer not prepared")?;
+            .ok_or(IrmfError::RendererError(
+                "Target texture not initialized".into(),
+            ))?;
+        let read_buffer = self.read_buffer.as_ref().ok_or(IrmfError::RendererError(
+            "Read buffer not initialized".into(),
+        ))?;
+        let vertex_buffer = self.vertex_buffer.as_ref().ok_or(IrmfError::RendererError(
+            "Vertex buffer not prepared".into(),
+        ))?;
 
         let uniforms = Uniforms {
             projection: self.projection.to_cols_array_2d(),
@@ -299,7 +307,7 @@ void main() {
             tx.send(result).unwrap();
         });
         self.device.poll(wgpu::Maintain::Wait);
-        rx.recv()??;
+        rx.recv()?.map_err(IrmfError::WgpuBufferError)?;
 
         let data = buffer_slice.get_mapped_range();
         let mut rgba = RgbaImage::new(self.width, self.height);
@@ -425,18 +433,18 @@ fn translate_glsl_to_wgsl(glsl: &str, stage: naga::ShaderStage) -> IrmfResult<St
             },
             glsl,
         )
-        .map_err(|e| format!("GLSL Parse Error: {:?}", e))?;
+        .map_err(|e| IrmfError::ShaderError(format!("GLSL Parse Error: {:?}", e)))?;
 
     let info = naga::valid::Validator::new(
         naga::valid::ValidationFlags::all(),
         naga::valid::Capabilities::all(),
     )
     .validate(&module)
-    .map_err(|e| format!("Naga Validation Error: {:?}", e))?;
+    .map_err(|e| IrmfError::ShaderError(format!("Naga Validation Error: {:?}", e)))?;
 
     let wgsl =
         naga::back::wgsl::write_string(&module, &info, naga::back::wgsl::WriterFlags::empty())
-            .map_err(|e| format!("WGSL Back-end Error: {:?}", e))?;
+            .map_err(|e| IrmfError::ShaderError(format!("WGSL Back-end Error: {:?}", e)))?;
 
     Ok(wgsl)
 }

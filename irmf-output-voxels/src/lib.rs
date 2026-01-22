@@ -125,7 +125,13 @@ impl BinVox {
     }
 
     fn get_i32(&self, x: i32, y: i32, z: i32) -> bool {
-        if x < 0 || y < 0 || z < 0 || x >= self.nx as i32 || y >= self.ny as i32 || z >= self.nz as i32 {
+        if x < 0
+            || y < 0
+            || z < 0
+            || x >= self.nx as i32
+            || y >= self.ny as i32
+            || z >= self.nz as i32
+        {
             return false;
         }
         self.get(x as usize, y as usize, z as usize)

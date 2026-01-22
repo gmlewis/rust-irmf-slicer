@@ -15,8 +15,8 @@ pub enum IrmfError {
     JsonError(#[from] serde_json::Error),
     #[error("Base64 decoding error: {0}")]
     Base64Error(#[from] base64::DecodeError),
-    #[error("Gzip decoding error: {0}")]
-    GzipError(#[from] std::io::Error),
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
     #[error("Unsupported IRMF version: {0}")]
     UnsupportedVersion(String),
     #[error("Unsupported language: {0}")]
@@ -27,6 +27,19 @@ pub enum IrmfError {
     InvalidMbb(String),
     #[error("Unsupported encoding: {0}")]
     UnsupportedEncoding(String),
+
+    #[error("Renderer error: {0}")]
+    RendererError(String),
+    #[error("WGPU adapter error")]
+    WgpuAdapterError,
+    #[error("WGPU device error: {0}")]
+    WgpuDeviceError(#[from] wgpu::RequestDeviceError),
+    #[error("WGPU buffer error: {0}")]
+    WgpuBufferError(#[from] wgpu::BufferAsyncError),
+    #[error("Receive error: {0}")]
+    RecvError(#[from] std::sync::mpsc::RecvError),
+    #[error("Shader compilation error: {0}")]
+    ShaderError(String),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -171,7 +184,7 @@ fn decode_shader(header: &IrmfHeader, payload: &[u8]) -> Result<String, IrmfErro
             let mut shader = String::new();
             decoder
                 .read_to_string(&mut shader)
-                .map_err(IrmfError::GzipError)?;
+                .map_err(IrmfError::IoError)?;
             Ok(shader)
         }
         Some("gzip+base64") => {
@@ -184,7 +197,7 @@ fn decode_shader(header: &IrmfHeader, payload: &[u8]) -> Result<String, IrmfErro
             let mut shader = String::new();
             decoder
                 .read_to_string(&mut shader)
-                .map_err(IrmfError::GzipError)?;
+                .map_err(IrmfError::IoError)?;
             Ok(shader)
         }
         None | Some("") => Ok(String::from_utf8_lossy(payload).into_owned()),

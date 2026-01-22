@@ -1,6 +1,7 @@
 # Rust [IRMF Shader](https://irmf.io) Slicer
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Rust CI](https://github.com/gmlewis/rust-irmf-slicer/actions/workflows/rust.yml/badge.svg)](https://github.com/gmlewis/rust-irmf-slicer/actions/workflows/rust.yml)
 
 ## Summary
 

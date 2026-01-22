@@ -793,4 +793,122 @@ fn mainModel4(xyz: vec3f) -> vec4f {
         // println!("GOLDEN_IMAGE_CHECKSUM_WGSL: {:016x}", checksum);
         assert_eq!(checksum, 7845210651492792762);
     }
+
+    #[test]
+    fn test_complex_glsl_robustness() {
+        let renderer_res = block_on(WgpuRenderer::new());
+        let mut renderer = match renderer_res {
+            Ok(r) => r,
+            Err(IrmfError::WgpuAdapterError) => {
+                println!("Skipping WGPU test: No suitable adapter found.");
+                return;
+            }
+            Err(e) => panic!("Failed to create WgpuRenderer: {:?}", e),
+        };
+
+        let data = include_bytes!("../../examples/015-soapdish/soapdish-step-10.irmf");
+        let model = IrmfModel::new(data).unwrap();
+
+        let width = 100;
+        let height = 100;
+        renderer.init(width, height).unwrap();
+
+        let left = -57.5;
+        let right = 57.5;
+        let bottom = -57.5;
+        let top = 57.5;
+        let vertices = [
+            left, bottom, 0.0, right, bottom, 0.0, left, top, 0.0, right, bottom, 0.0, right, top,
+            0.0, left, top, 0.0,
+        ];
+        let projection = glam::Mat4::orthographic_rh(left, right, bottom, top, 0.1, 100.0);
+        let camera = glam::Mat4::look_at_rh(
+            glam::vec3(0.0, 0.0, 3.0),
+            glam::vec3(0.0, 0.0, 0.0),
+            glam::vec3(0.0, 1.0, 0.0),
+        );
+        let model_matrix = glam::Mat4::IDENTITY;
+        let vec3_str = "fragVert.xy, u_slice";
+
+        // This will trigger translation and pipeline creation
+        renderer
+            .prepare(
+                &model,
+                &vertices,
+                projection,
+                camera,
+                model_matrix,
+                vec3_str,
+            )
+            .expect("Failed to prepare complex GLSL shader");
+
+        // Render a slice to ensure it actually works
+        let img = renderer.render(0.0, 1).unwrap();
+        let rgba = img.to_rgba8();
+
+        use std::hash::{Hash, Hasher};
+        let mut hasher = rustc_hash::FxHasher::default();
+        rgba.as_raw().hash(&mut hasher);
+        let checksum = hasher.finish();
+        // println!("SOAPDISH_CHECKSUM: {:016x}", checksum);
+        assert!(checksum > 0);
+    }
+
+    #[test]
+    fn test_bolt_glsl_robustness() {
+        let renderer_res = block_on(WgpuRenderer::new());
+        let mut renderer = match renderer_res {
+            Ok(r) => r,
+            Err(IrmfError::WgpuAdapterError) => {
+                println!("Skipping WGPU test: No suitable adapter found.");
+                return;
+            }
+            Err(e) => panic!("Failed to create WgpuRenderer: {:?}", e),
+        };
+
+        let data = include_bytes!("../../examples/029-gsdf-bolt/bolt.irmf");
+        let model = IrmfModel::new(data).unwrap();
+
+        let width = 100;
+        let height = 100;
+        renderer.init(width, height).unwrap();
+
+        let left = -3.8632028;
+        let right = 5.468897;
+        let bottom = -3.406863;
+        let top = 10.091039;
+        let vertices = [
+            left, bottom, 0.0, right, bottom, 0.0, left, top, 0.0, right, bottom, 0.0, right, top,
+            0.0, left, top, 0.0,
+        ];
+        let projection = glam::Mat4::orthographic_rh(left, right, bottom, top, 0.1, 100.0);
+        let camera = glam::Mat4::look_at_rh(
+            glam::vec3(0.0, 0.0, 3.0),
+            glam::vec3(0.0, 0.0, 0.0),
+            glam::vec3(0.0, 1.0, 0.0),
+        );
+        let model_matrix = glam::Mat4::IDENTITY;
+        let vec3_str = "fragVert.xy, u_slice";
+
+        renderer
+            .prepare(
+                &model,
+                &vertices,
+                projection,
+                camera,
+                model_matrix,
+                vec3_str,
+            )
+            .expect("Failed to prepare bolt GLSL shader");
+
+        let img = renderer.render(0.0, 1).unwrap();
+        let rgba = img.to_rgba8();
+
+        use std::hash::{Hash, Hasher};
+        let mut hasher = rustc_hash::FxHasher::default();
+        rgba.as_raw().hash(&mut hasher);
+        let checksum = hasher.finish();
+        // println!("BOLT_CHECKSUM: {:016x}", checksum);
+        assert!(checksum > 0);
+    }
 }

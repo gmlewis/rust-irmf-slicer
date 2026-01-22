@@ -23,3 +23,10 @@ futures = "0.3"
 glam = "0.29"
 naga = { version = "24.0", features = ["glsl-in", "wgsl-out"] }
 rustc-hash = "1.1"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "slicing_bench"
+harness = false

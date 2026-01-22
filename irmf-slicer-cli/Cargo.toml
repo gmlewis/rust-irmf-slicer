@@ -11,11 +11,18 @@ rust-version.workspace = true
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 irmf-slicer = { path = "../irmf-slicer" }
-irmf-include-resolver = { path = "../irmf-include-resolver" }
+irmf-include-resolver = { path = "../irmf-include-resolver", optional = true }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
-irmf-output-stl = { path = "../irmf-output-stl" }
-irmf-output-voxels = { path = "../irmf-output-voxels" }
-minifb = "0.27"
+irmf-output-stl = { path = "../irmf-output-stl", optional = true }
+irmf-output-voxels = { path = "../irmf-output-voxels", optional = true }
+minifb = { version = "0.27", optional = true }
 image = "0.25"
 indicatif = "0.17"
+
+[features]
+default = ["view", "stl", "voxels", "remote-includes"]
+view = ["dep:minifb"]
+stl = ["dep:irmf-output-stl"]
+voxels = ["dep:irmf-output-voxels"]
+remote-includes = ["dep:irmf-include-resolver"]

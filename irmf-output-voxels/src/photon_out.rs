@@ -1,3 +1,5 @@
+//! Anycubic Photon (.cbddlp) output generation for IRMF models.
+
 use irmf_slicer::{DynamicImage, IrmfResult, Renderer, Slicer};
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
@@ -68,6 +70,20 @@ struct LayerHeader {
     field_20: u32,
 }
 
+/// Slices the model and saves the result as an Anycubic Photon (.cbddlp) file.
+///
+/// This function generates the binary structure required for Photon printers,
+/// including file headers, preview/thumbnail images, layer headers, and
+/// run-length encoded layer image data.
+///
+/// # Arguments
+///
+/// * `slicer` - The IRMF slicer.
+/// * `material_num` - The index of the material to slice.
+/// * `filename` - The path to the output .cbddlp file.
+/// * `z_res` - The Z-resolution in microns.
+/// * `on_slice` - Optional callback called after each slice is rendered.
+/// * `on_progress` - Optional callback for reporting progress.
 pub fn slice_to_photon<R: Renderer, F, P>(
     slicer: &mut Slicer<R>,
     material_num: usize,

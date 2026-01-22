@@ -1,20 +1,30 @@
+//! WGPU-based implementation of the IRMF renderer.
+
 use crate::irmf::{IrmfError, IrmfModel};
 use crate::{IrmfResult, Renderer};
 use image::{DynamicImage, RgbaImage};
 use std::borrow::Cow;
 use wgpu::util::DeviceExt;
 
+/// Uniforms passed to the shader.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Uniforms {
+    /// Projection matrix.
     projection: [[f32; 4]; 4],
+    /// Camera view matrix.
     camera: [[f32; 4]; 4],
+    /// Model transformation matrix.
     model: [[f32; 4]; 4],
+    /// Depth of the current slice.
     u_slice: f32,
+    /// Index of the material being rendered.
     u_material_num: f32,
+    /// Padding for alignment.
     _padding: [f32; 2],
 }
 
+/// A renderer that uses WGPU for hardware-accelerated offscreen rendering.
 pub struct WgpuRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -34,6 +44,7 @@ pub struct WgpuRenderer {
 }
 
 impl WgpuRenderer {
+    /// Creates a new `WgpuRenderer` instance.
     pub async fn new() -> IrmfResult<Self> {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let adapter = instance
@@ -423,6 +434,7 @@ impl WgpuRenderer {
     }
 }
 
+/// Translates GLSL shader code to WGSL using Naga.
 fn translate_glsl_to_wgsl(glsl: &str, stage: naga::ShaderStage) -> IrmfResult<String> {
     let mut parser = naga::front::glsl::Frontend::default();
     let module = parser
@@ -449,6 +461,7 @@ fn translate_glsl_to_wgsl(glsl: &str, stage: naga::ShaderStage) -> IrmfResult<St
     Ok(wgsl)
 }
 
+/// Generates a full GLSL fragment shader that wraps the user-provided IRMF shader.
 fn gen_glsl_full_fs(num_materials: usize, shader: &str, vec3_str: &str) -> String {
     let call = if num_materials <= 4 {
         format!("vec4 m; mainModel4(m, vec3({}));", vec3_str)
@@ -527,6 +540,7 @@ void main() {{
     )
 }
 
+/// Generates the WGSL fragment shader footer that wraps the user-provided IRMF shader.
 fn gen_wgsl_footer(num_materials: usize, vec3_str: &str) -> String {
     let call = if num_materials <= 4 {
         format!("let m = mainModel4(vec3<f32>({}));", vec3_str)
@@ -593,4 +607,80 @@ fn fs_main(@location(0) fragVert: vec3<f32>) -> @location(0) vec4<f32> {{
 "#,
         call, cases
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pollster::block_on;
+
+    #[test]
+    fn test_wgpu_renderer_golden_image() {
+        let renderer_res = block_on(WgpuRenderer::new());
+        let mut renderer = match renderer_res {
+            Ok(r) => r,
+            Err(IrmfError::WgpuAdapterError) => {
+                println!("Skipping WGPU test: No suitable adapter found.");
+                return;
+            }
+            Err(e) => panic!("Failed to create WgpuRenderer: {:?}", e),
+        };
+
+        let data = b"/*{
+  \"irmf\": \"1.0\",
+  \"materials\": [\"PLA\"],
+  \"max\": [5,5,5],
+  \"min\": [-5,-5,-5],
+  \"units\": \"mm\"
+}*/
+void mainModel4(out vec4 materials, in vec3 xyz) {
+  // 10mm diameter sphere at origin
+  materials[0] = length(xyz) <= 5.0 ? 1.0 : 0.0;
+}";
+        let model = IrmfModel::new(data).unwrap();
+
+        let width = 100;
+        let height = 100;
+        renderer.init(width, height).unwrap();
+
+        let left = -5.0;
+        let right = 5.0;
+        let bottom = -5.0;
+        let top = 5.0;
+        let vertices = [
+            left, bottom, 0.0, right, bottom, 0.0, left, top, 0.0, right, bottom, 0.0, right, top,
+            0.0, left, top, 0.0,
+        ];
+        let projection = glam::Mat4::orthographic_rh(left, right, bottom, top, 0.1, 100.0);
+        let camera = glam::Mat4::look_at_rh(
+            glam::vec3(0.0, 0.0, 3.0),
+            glam::vec3(0.0, 0.0, 0.0),
+            glam::vec3(0.0, 1.0, 0.0),
+        );
+        let model_matrix = glam::Mat4::IDENTITY;
+        let vec3_str = "fragVert.xy, u_slice";
+
+        renderer
+            .prepare(
+                &model,
+                &vertices,
+                projection,
+                camera,
+                model_matrix,
+                vec3_str,
+            )
+            .unwrap();
+
+        // Render middle slice (z=0)
+        let img = renderer.render(0.0, 1).unwrap();
+        let rgba = img.to_rgba8();
+
+        // Center pixel (50, 50) should be white (inside sphere)
+        let center_pixel = rgba.get_pixel(50, 50);
+        assert_eq!(center_pixel[0], 255);
+
+        // Corner pixel (0, 0) should be black (outside sphere)
+        let corner_pixel = rgba.get_pixel(0, 0);
+        assert_eq!(corner_pixel[0], 0);
+    }
 }

@@ -1,7 +1,9 @@
 use clap::Parser;
 use image::DynamicImage;
 use indicatif::{ProgressBar, ProgressStyle};
+#[cfg(feature = "view")]
 use irmf_slicer::{IrmfError, IrmfResult};
+#[cfg(feature = "view")]
 use minifb::{Window, WindowOptions};
 use std::path::PathBuf;
 
@@ -41,11 +43,13 @@ struct Args {
     files: Vec<PathBuf>,
 }
 
+#[cfg(feature = "view")]
 struct Viewer {
     window: Option<Window>,
     buffer: Vec<u32>,
 }
 
+#[cfg(feature = "view")]
 impl Viewer {
     fn new(view: bool, width: u32, height: u32) -> Self {
         if !view {
@@ -125,10 +129,21 @@ async fn main() -> anyhow::Result<()> {
         let mut model = irmf_slicer::IrmfModel::new(&data)
             .map_err(|e| anyhow::anyhow!("IrmfModel::new: {}", e))?;
 
-        println!("Resolving includes for {}...", file_path.display());
-        model.shader = irmf_include_resolver::resolve_includes(&model.shader)
-            .await
-            .map_err(|e| anyhow::anyhow!("resolve_includes: {}", e))?;
+        #[cfg(feature = "remote-includes")]
+        {
+            println!("Resolving includes for {}...", file_path.display());
+            model.shader = irmf_include_resolver::resolve_includes(&model.shader)
+                .await
+                .map_err(|e| anyhow::anyhow!("resolve_includes: {}", e))?;
+        }
+        #[cfg(not(feature = "remote-includes"))]
+        {
+            if model.shader.contains("#include") {
+                eprintln!(
+                    "Warning: Shader contains #include but 'remote-includes' feature is disabled."
+                );
+            }
+        }
 
         let base_name = file_path.with_extension("");
         let base_name_str = base_name.to_str().unwrap();
@@ -146,6 +161,7 @@ async fn main() -> anyhow::Result<()> {
                 .prepare_render_z()
                 .map_err(|e| anyhow::anyhow!("{}", e))?;
 
+            #[cfg(feature = "view")]
             let mut viewer: Option<Viewer> = None;
             let pb = ProgressBar::new(slicer.num_z_slices() as u64);
             pb.set_style(
@@ -157,12 +173,25 @@ async fn main() -> anyhow::Result<()> {
                     .progress_chars("#>-"),
             );
 
-            let mut on_slice = |img: &DynamicImage| {
-                if viewer.is_none() && args.view {
-                    viewer = Some(Viewer::new(true, img.width(), img.height()));
+            let mut on_slice = |_img: &DynamicImage| {
+                #[cfg(feature = "view")]
+                {
+                    if viewer.is_none() && args.view {
+                        viewer = Some(Viewer::new(true, _img.width(), _img.height()));
+                    }
+                    if let Some(ref mut v) = viewer {
+                        v.update(_img)?;
+                    }
                 }
-                if let Some(ref mut v) = viewer {
-                    v.update(img)?;
+                #[cfg(not(feature = "view"))]
+                {
+                    if args.view {
+                        static WARNED: std::sync::atomic::AtomicBool =
+                            std::sync::atomic::AtomicBool::new(false);
+                        if !WARNED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                            eprintln!("Warning: --view requested but 'view' feature is disabled.");
+                        }
+                    }
                 }
                 Ok(())
             };
@@ -171,6 +200,7 @@ async fn main() -> anyhow::Result<()> {
                 pb.set_position(pos as u64);
             };
 
+            #[cfg(feature = "stl")]
             if args.stl {
                 let filename = format!(
                     "{}-mat{:02}-{}.stl",
@@ -185,78 +215,89 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .map_err(|e| anyhow::anyhow!("slice_to_stl: {}", e))?;
             }
-
-            if args.zip {
-                let filename = format!(
-                    "{}-mat{:02}-{}.zip",
-                    base_name_str, material_num, material_name
-                );
-                irmf_output_voxels::zip_out::slice_to_zip(
-                    &mut slicer,
-                    material_num,
-                    &filename,
-                    Some(&mut on_slice),
-                    Some(on_progress),
-                )
-                .map_err(|e| anyhow::anyhow!("slice_to_zip: {}", e))?;
+            #[cfg(not(feature = "stl"))]
+            if args.stl {
+                eprintln!("Warning: --stl requested but 'stl' feature is disabled.");
             }
 
-            if args.binvox {
-                let filename = format!(
-                    "{}-mat{:02}-{}.binvox",
-                    base_name_str, material_num, material_name
-                );
-                irmf_output_voxels::binvox_out::slice_to_binvox(
-                    &mut slicer,
-                    material_num,
-                    &filename,
-                    Some(&mut on_slice),
-                    Some(on_progress),
-                )
-                .map_err(|e| anyhow::anyhow!("slice_to_binvox: {}", e))?;
-            }
-
-            if args.dlp {
-                let filename = format!(
-                    "{}-mat{:02}-{}.cbddlp",
-                    base_name_str, material_num, material_name
-                );
-                irmf_output_voxels::photon_out::slice_to_photon(
-                    &mut slicer,
-                    material_num,
-                    &filename,
-                    z_res as f32,
-                    Some(&mut on_slice),
-                    Some(on_progress),
-                )
-                .map_err(|e| anyhow::anyhow!("slice_to_photon: {}", e))?;
-            }
-
-            if args.svx {
-                let filename = format!(
-                    "{}-mat{:02}-{}.svx",
-                    base_name_str, material_num, material_name
-                );
-                irmf_output_voxels::svx_out::slice_to_svx(
-                    &mut slicer,
-                    material_num,
-                    &filename,
-                    Some(&mut on_slice),
-                    Some(on_progress),
-                )
-                .map_err(|e| anyhow::anyhow!("slice_to_svx: {}", e))?;
-            }
-
-            if !args.binvox && !args.dlp && !args.stl && !args.svx && !args.zip {
-                if args.view {
-                    slicer
-                        .render_z_slices(material_num, |idx, _z, _rad, img| {
-                            on_slice(&img)?;
-                            on_progress(idx + 1, 0);
-                            Ok(())
-                        })
-                        .map_err(|e| anyhow::anyhow!("{}", e))?;
+            #[cfg(feature = "voxels")]
+            {
+                if args.zip {
+                    let filename = format!(
+                        "{}-mat{:02}-{}.zip",
+                        base_name_str, material_num, material_name
+                    );
+                    irmf_output_voxels::zip_out::slice_to_zip(
+                        &mut slicer,
+                        material_num,
+                        &filename,
+                        Some(&mut on_slice),
+                        Some(on_progress),
+                    )
+                    .map_err(|e| anyhow::anyhow!("slice_to_zip: {}", e))?;
                 }
+
+                if args.binvox {
+                    let filename = format!(
+                        "{}-mat{:02}-{}.binvox",
+                        base_name_str, material_num, material_name
+                    );
+                    irmf_output_voxels::binvox_out::slice_to_binvox(
+                        &mut slicer,
+                        material_num,
+                        &filename,
+                        Some(&mut on_slice),
+                        Some(on_progress),
+                    )
+                    .map_err(|e| anyhow::anyhow!("slice_to_binvox: {}", e))?;
+                }
+
+                if args.dlp {
+                    let filename = format!(
+                        "{}-mat{:02}-{}.cbddlp",
+                        base_name_str, material_num, material_name
+                    );
+                    irmf_output_voxels::photon_out::slice_to_photon(
+                        &mut slicer,
+                        material_num,
+                        &filename,
+                        z_res as f32,
+                        Some(&mut on_slice),
+                        Some(on_progress),
+                    )
+                    .map_err(|e| anyhow::anyhow!("slice_to_photon: {}", e))?;
+                }
+
+                if args.svx {
+                    let filename = format!(
+                        "{}-mat{:02}-{}.svx",
+                        base_name_str, material_num, material_name
+                    );
+                    irmf_output_voxels::svx_out::slice_to_svx(
+                        &mut slicer,
+                        material_num,
+                        &filename,
+                        Some(&mut on_slice),
+                        Some(on_progress),
+                    )
+                    .map_err(|e| anyhow::anyhow!("slice_to_svx: {}", e))?;
+                }
+            }
+            #[cfg(not(feature = "voxels"))]
+            if args.zip || args.binvox || args.dlp || args.svx {
+                eprintln!(
+                    "Warning: voxel-based output requested but 'voxels' feature is disabled."
+                );
+            }
+
+            if !args.binvox && !args.dlp && !args.stl && !args.svx && !args.zip && args.view {
+                slicer
+                    .render_z_slices(material_num, |idx, _z, _rad, img| {
+                        on_slice(&img)?;
+                        on_progress(idx + 1, 0);
+                        Ok(())
+                    })
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
             }
             pb.finish_with_message("done");
         }

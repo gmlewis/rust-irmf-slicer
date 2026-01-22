@@ -1,9 +1,27 @@
+//! STL output generation for IRMF models.
+//!
+//! This crate provides functionality to slice an IRMF model and generate
+//! an STL file using a Marching Cubes algorithm based on the generated voxels.
+
 use image::GenericImageView;
 use irmf_output_voxels::BinVox;
 use irmf_slicer::{DynamicImage, IrmfResult, Renderer, Slicer};
 use std::fs::File;
 use std::io::BufWriter;
 
+/// Slices the model and saves the result as an STL file.
+///
+/// This function orchestrates the rendering of Z-slices, populates a voxel
+/// grid, runs the Marching Cubes algorithm to generate a mesh, and writes
+/// the mesh to a binary STL file.
+///
+/// # Arguments
+///
+/// * `slicer` - The IRMF slicer.
+/// * `material_num` - The index of the material to slice.
+/// * `filename` - The path to the output STL file.
+/// * `on_slice` - Optional callback called after each slice is rendered.
+/// * `on_progress` - Optional callback for reporting progress.
 pub fn slice_to_stl<R: Renderer, F, P>(
     slicer: &mut Slicer<R>,
     material_num: usize,

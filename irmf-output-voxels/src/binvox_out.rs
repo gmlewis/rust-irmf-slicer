@@ -1,9 +1,23 @@
+//! Binvox output generation for IRMF models.
+
 use crate::BinVox;
 use image::GenericImageView;
 use irmf_slicer::{DynamicImage, IrmfResult, Renderer, Slicer};
 use std::fs::File;
 use std::io::BufWriter;
 
+/// Slices the model and saves the result as a Binvox file.
+///
+/// This function renders Z-slices of the model, populates a voxel grid,
+/// and writes it to a file using the Binvox run-length encoding format.
+///
+/// # Arguments
+///
+/// * `slicer` - The IRMF slicer.
+/// * `material_num` - The index of the material to slice.
+/// * `filename` - The path to the output Binvox file.
+/// * `on_slice` - Optional callback called after each slice is rendered.
+/// * `on_progress` - Optional callback for reporting progress.
 pub fn slice_to_binvox<R: Renderer, F, P>(
     slicer: &mut Slicer<R>,
     material_num: usize,

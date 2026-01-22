@@ -1,14 +1,35 @@
+//! Core library for the IRMF slicer.
+//!
+//! This crate provides the core logic for parsing, rendering, and slicing
+//! Infinite Resolution Materials Format (IRMF) models.
+
 pub mod irmf;
+pub mod mock_renderer;
 pub mod wgpu_renderer;
 
 pub use image::DynamicImage;
 pub use irmf::{IrmfError, IrmfHeader, IrmfModel};
+pub use mock_renderer::MockRenderer;
 pub use wgpu_renderer::WgpuRenderer;
 
+/// Result type for IRMF operations.
 pub type IrmfResult<T> = Result<T, IrmfError>;
 
+/// Trait defining the interface for an IRMF renderer.
 pub trait Renderer {
+    /// Initializes the renderer with the given dimensions.
     fn init(&mut self, width: u32, height: u32) -> IrmfResult<()>;
+
+    /// Prepares the renderer for slicing a model.
+    ///
+    /// # Arguments
+    ///
+    /// * `model` - The IRMF model to render.
+    /// * `vertices` - The vertices for the full-screen quad (or similar) used for rendering.
+    /// * `projection` - The projection matrix.
+    /// * `camera` - The camera view matrix.
+    /// * `model_matrix` - The model transformation matrix.
+    /// * `vec3_str` - A string representing how to construct the `vec3` position in the shader.
     fn prepare(
         &mut self,
         model: &IrmfModel,
@@ -18,18 +39,32 @@ pub trait Renderer {
         model_matrix: glam::Mat4,
         vec3_str: &str,
     ) -> IrmfResult<()>;
+
+    /// Renders a single slice of the model.
+    ///
+    /// # Arguments
+    ///
+    /// * `slice_depth` - The depth (Z-coordinate, or relevant axis) of the slice.
+    /// * `material_num` - The index of the material to render.
     fn render(&mut self, slice_depth: f32, material_num: usize) -> IrmfResult<DynamicImage>;
 }
 
+/// A slicer that orchestrates the rendering of multiple slices of an IRMF model.
 pub struct Slicer<R: Renderer> {
+    /// The IRMF model being sliced.
     pub model: IrmfModel,
+    /// The renderer used to generate slice images.
     pub renderer: R,
-    pub res_x: f32, // microns
+    /// Resolution in the X dimension (microns).
+    pub res_x: f32,
+    /// Resolution in the Y dimension (microns).
     pub res_y: f32,
+    /// Resolution in the Z dimension (microns).
     pub res_z: f32,
 }
 
 impl<R: Renderer> Slicer<R> {
+    /// Creates a new `Slicer` instance.
     pub fn new(model: IrmfModel, renderer: R, res_x: f32, res_y: f32, res_z: f32) -> Self {
         Self {
             model,
@@ -40,6 +75,7 @@ impl<R: Renderer> Slicer<R> {
         }
     }
 
+    /// Returns the number of slices in the X dimension.
     pub fn num_x_slices(&self) -> usize {
         let delta_x = self.res_x / 1000.0;
         let min_x = self.model.header.min[0];
@@ -51,6 +87,7 @@ impl<R: Renderer> Slicer<R> {
         n
     }
 
+    /// Returns the number of slices in the Y dimension.
     pub fn num_y_slices(&self) -> usize {
         let nx = self.num_x_slices();
         let delta_y = self.res_y / 1000.0;
@@ -63,6 +100,7 @@ impl<R: Renderer> Slicer<R> {
         n
     }
 
+    /// Returns the number of slices in the Z dimension.
     pub fn num_z_slices(&self) -> usize {
         let delta_z = self.res_z / 1000.0;
         let min_z = self.model.header.min[2];
@@ -70,6 +108,7 @@ impl<R: Renderer> Slicer<R> {
         (0.5 + (max_z - min_z) / delta_z).floor() as usize
     }
 
+    /// Prepares the renderer for slicing in the X dimension.
     pub fn prepare_render_x(&mut self) -> IrmfResult<()> {
         let left = self.model.header.min[1];
         let right = self.model.header.max[1];
@@ -121,6 +160,7 @@ impl<R: Renderer> Slicer<R> {
         )
     }
 
+    /// Prepares the renderer for slicing in the Y dimension.
     pub fn prepare_render_y(&mut self) -> IrmfResult<()> {
         let left = self.model.header.min[0];
         let right = self.model.header.max[0];
@@ -172,6 +212,7 @@ impl<R: Renderer> Slicer<R> {
         )
     }
 
+    /// Prepares the renderer for slicing in the Z dimension.
     pub fn prepare_render_z(&mut self) -> IrmfResult<()> {
         let left = self.model.header.min[0];
         let right = self.model.header.max[0];
@@ -223,6 +264,7 @@ impl<R: Renderer> Slicer<R> {
         )
     }
 
+    /// Renders a single slice in the X dimension.
     pub fn render_x_slice(
         &mut self,
         slice_num: usize,
@@ -235,6 +277,7 @@ impl<R: Renderer> Slicer<R> {
         self.renderer.render(slice_depth, material_num)
     }
 
+    /// Renders a single slice in the Y dimension.
     pub fn render_y_slice(
         &mut self,
         slice_num: usize,
@@ -247,6 +290,7 @@ impl<R: Renderer> Slicer<R> {
         self.renderer.render(slice_depth, material_num)
     }
 
+    /// Renders a single slice in the Z dimension.
     pub fn render_z_slice(
         &mut self,
         slice_num: usize,
@@ -259,6 +303,7 @@ impl<R: Renderer> Slicer<R> {
         self.renderer.render(slice_depth, material_num)
     }
 
+    /// Iteratively renders all slices in the X dimension and calls a callback for each.
     pub fn render_x_slices<F>(&mut self, material_num: usize, mut f: F) -> IrmfResult<()>
     where
         F: FnMut(usize, f32, f32, DynamicImage) -> IrmfResult<()>,
@@ -277,6 +322,7 @@ impl<R: Renderer> Slicer<R> {
         Ok(())
     }
 
+    /// Iteratively renders all slices in the Y dimension and calls a callback for each.
     pub fn render_y_slices<F>(&mut self, material_num: usize, mut f: F) -> IrmfResult<()>
     where
         F: FnMut(usize, f32, f32, DynamicImage) -> IrmfResult<()>,
@@ -295,6 +341,7 @@ impl<R: Renderer> Slicer<R> {
         Ok(())
     }
 
+    /// Iteratively renders all slices in the Z dimension and calls a callback for each.
     pub fn render_z_slices<F>(&mut self, material_num: usize, mut f: F) -> IrmfResult<()>
     where
         F: FnMut(usize, f32, f32, DynamicImage) -> IrmfResult<()>,
@@ -311,5 +358,33 @@ impl<R: Renderer> Slicer<R> {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock_renderer::MockRenderer;
+
+    #[test]
+    fn test_slicer_num_slices() {
+        let data = b"/*{\"irmf\":\"1.0\",\"materials\":[\"PLA\"],\"max\":[5,5,5],\"min\":[-5,-5,-5],\"units\":\"mm\"}*/\nvoid mainModel4(out vec4 materials, in vec3 xyz) { materials[0] = 1.0; }";
+        let model = IrmfModel::new(data).unwrap();
+        let renderer = MockRenderer::new();
+        let slicer = Slicer::new(model, renderer, 1000.0, 1000.0, 1000.0);
+        assert_eq!(slicer.num_x_slices(), 10);
+        assert_eq!(slicer.num_y_slices(), 10);
+        assert_eq!(slicer.num_z_slices(), 10);
+    }
+
+    #[test]
+    fn test_slicer_prepare_render() {
+        let data = b"/*{\"irmf\":\"1.0\",\"materials\":[\"PLA\"],\"max\":[5,5,5],\"min\":[-5,-5,-5],\"units\":\"mm\"}*/\nvoid mainModel4(out vec4 materials, in vec3 xyz) { materials[0] = 1.0; }";
+        let model = IrmfModel::new(data).unwrap();
+        let renderer = MockRenderer::new();
+        let mut slicer = Slicer::new(model, renderer, 1000.0, 1000.0, 1000.0);
+        slicer.prepare_render_z().unwrap();
+        assert_eq!(slicer.renderer.width, 10);
+        assert_eq!(slicer.renderer.height, 10);
     }
 }

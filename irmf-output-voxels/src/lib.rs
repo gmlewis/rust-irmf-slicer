@@ -1,3 +1,9 @@
+//! Shared voxel processing and output formats.
+//!
+//! This crate provides a central `BinVox` struct for representing a 3D voxel grid
+//! and implementations for various output formats like Binvox, ZIP, SVX, and DLP.
+//! It also includes a Marching Cubes algorithm to convert voxels to a mesh.
+
 pub mod binvox_out;
 pub mod photon_out;
 pub mod svx_out;
@@ -5,23 +11,36 @@ pub mod zip_out;
 
 use std::io::Write;
 
+/// A 3D voxel grid.
 pub struct BinVox {
+    /// Number of voxels in the X dimension.
     pub nx: usize,
+    /// Number of voxels in the Y dimension.
     pub ny: usize,
+    /// Number of voxels in the Z dimension.
     pub nz: usize,
+    /// Minimum X coordinate.
     pub min_x: f64,
+    /// Minimum Y coordinate.
     pub min_y: f64,
+    /// Minimum Z coordinate.
     pub min_z: f64,
+    /// Maximum X coordinate.
     pub max_x: f64,
+    /// Maximum Y coordinate.
     pub max_y: f64,
+    /// Maximum Z coordinate.
     pub max_z: f64,
+    /// Scale of the model (usually the Z-extent).
     pub scale: f64,
+    /// Bit-packed voxel data.
     pub data: Vec<u8>,
 }
 
 impl BinVox {
+    /// Creates a new `BinVox` grid.
     pub fn new(nx: usize, ny: usize, nz: usize, min: [f32; 3], max: [f32; 3]) -> Self {
-        let size = (nx * ny * nz + 7) / 8;
+        let size = (nx * ny * nz).div_ceil(8);
         Self {
             nx,
             ny,
@@ -37,6 +56,7 @@ impl BinVox {
         }
     }
 
+    /// Sets the voxel at the given coordinates to solid.
     pub fn set(&mut self, x: usize, y: usize, z: usize) {
         if x >= self.nx || y >= self.ny || z >= self.nz {
             return;
@@ -45,6 +65,7 @@ impl BinVox {
         self.data[index / 8] |= 1 << (index % 8);
     }
 
+    /// Returns `true` if the voxel at the given coordinates is solid.
     pub fn get(&self, x: usize, y: usize, z: usize) -> bool {
         if x >= self.nx || y >= self.ny || z >= self.nz {
             return false;
@@ -53,6 +74,11 @@ impl BinVox {
         (self.data[index / 8] & (1 << (index % 8))) != 0
     }
 
+    /// Runs the Marching Cubes algorithm on the voxel grid to generate a mesh.
+    ///
+    /// # Arguments
+    ///
+    /// * `on_progress` - Optional callback for reporting progress (current slice, total slices).
     pub fn marching_cubes<P: FnMut(usize, usize)>(&self, mut on_progress: Option<P>) -> Mesh {
         let mut triangles = Vec::new();
         let dx = (self.max_x - self.min_x) / (self.nx as f64);
@@ -94,9 +120,10 @@ impl BinVox {
                     let edges = TRI_TABLE[cube_index];
                     let mut i = 0;
                     while i < edges.len() && edges[i] != -1 {
-                        let v1 = self.interp_edge(x, y, z, edges[i], dx, dy, dz);
-                        let v2 = self.interp_edge(x, y, z, edges[i + 1], dx, dy, dz);
-                        let v3 = self.interp_edge(x, y, z, edges[i + 2], dx, dy, dz);
+                        let delta = [dx, dy, dz];
+                        let v1 = self.interp_edge(x, y, z, edges[i], delta);
+                        let v2 = self.interp_edge(x, y, z, edges[i + 1], delta);
+                        let v3 = self.interp_edge(x, y, z, edges[i + 2], delta);
 
                         // Winding order check: (v2-v1) x (v3-v1) for outward normal
                         let u_vec = [v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2]];
@@ -137,16 +164,10 @@ impl BinVox {
         self.get(x as usize, y as usize, z as usize)
     }
 
-    fn interp_edge(
-        &self,
-        x: i32,
-        y: i32,
-        z: i32,
-        edge: i32,
-        dx: f64,
-        dy: f64,
-        dz: f64,
-    ) -> [f32; 3] {
+    fn interp_edge(&self, x: i32, y: i32, z: i32, edge: i32, delta: [f64; 3]) -> [f32; 3] {
+        let dx = delta[0];
+        let dy = delta[1];
+        let dz = delta[2];
         let edge_vertices = [
             [0, 1],
             [1, 2],
@@ -181,6 +202,7 @@ impl BinVox {
         [mx as f32, my as f32, mz as f32]
     }
 
+    /// Writes the voxel data in the Binvox format.
     pub fn write_binvox<W: Write>(&self, mut w: W) -> std::io::Result<()> {
         writeln!(w, "#binvox 1")?;
         writeln!(w, "dim {} {} {}", self.nx, self.ny, self.nz)?;
@@ -208,22 +230,31 @@ impl BinVox {
     }
 }
 
+/// A triangle in a 3D mesh.
 #[derive(Copy, Clone, Debug)]
 pub struct Triangle {
+    /// Normal vector of the triangle.
     pub normal: [f32; 3],
+    /// First vertex.
     pub v1: [f32; 3],
+    /// Second vertex.
     pub v2: [f32; 3],
+    /// Third vertex.
     pub v3: [f32; 3],
 }
 impl Triangle {
+    /// Creates a new `Triangle`.
     pub fn new(v1: [f32; 3], v2: [f32; 3], v3: [f32; 3], normal: [f32; 3]) -> Self {
         Self { normal, v1, v2, v3 }
     }
 }
+/// A 3D mesh consisting of triangles.
 pub struct Mesh {
+    /// List of triangles in the mesh.
     pub triangles: Vec<Triangle>,
 }
 impl Mesh {
+    /// Saves the mesh to a binary STL file.
     pub fn save_stl<W: Write>(&self, mut w: W) -> std::io::Result<()> {
         let header = [0u8; 80];
         w.write_all(&header)?;
@@ -240,6 +271,7 @@ impl Mesh {
     }
 }
 
+/// Triangle table for the Marching Cubes algorithm.
 pub const TRI_TABLE: [[i32; 16]; 256] = [
     [
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,

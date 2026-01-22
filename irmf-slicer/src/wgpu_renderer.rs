@@ -130,10 +130,9 @@ impl Renderer for WgpuRenderer {
         let lang = model.header.language.as_deref().unwrap_or("glsl");
         let num_materials = model.header.materials.len();
         
-        let shader_source = if lang == "wgsl" {
+        if lang == "wgsl" {
             let footer = gen_wgsl_footer(num_materials, vec3_str);
-
-            format!(r#"
+            let shader_source = format!(r#"
 struct Uniforms {{
     projection: mat4x4<f32>,
     camera: mat4x4<f32>,
@@ -160,91 +159,48 @@ fn vs_main(@location(0) vert: vec3<f32>) -> VertexOutput {{
 {}
 
 {}
-"#, model.shader, footer)
+"#, model.shader, footer);
+
+            let shader = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("Shader"),
+                source: wgpu::ShaderSource::Wgsl(Cow::Owned(shader_source)),
+            });
+
+            self.create_pipeline(&shader, "vs_main", &shader, "fs_main")
         } else {
-            return Err("GLSL support in WgpuRenderer not yet implemented".into());
-        };
-
-        let shader = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(Cow::Owned(shader_source)),
-        });
-
-        let uniform_size = std::mem::size_of::<Uniforms>() as wgpu::BufferAddress;
-        let uniform_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Uniform Buffer"),
-            size: uniform_size,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let bind_group_layout = self.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Bind Group Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Bind Group"),
-            layout: &bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
-            }],
-        });
-
-        let pipeline_layout = self.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Pipeline Layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        let pipeline = self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: 3 * 4,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x3],
-                }],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                ..Default::default()
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
-
-        self.pipeline = Some(pipeline);
-        self.bind_group = Some(bind_group);
-        self.uniform_buffer = Some(uniform_buffer);
-        
-        Ok(())
+            // GLSL support
+            let glsl_fs = gen_glsl_full_fs(num_materials, &model.shader, vec3_str);
+            let glsl_vs = r#"#version 450
+layout(location = 0) in vec3 vert;
+layout(location = 0) out vec3 fragVert;
+layout(set = 0, binding = 0) uniform Uniforms {
+    mat4 projection;
+    mat4 camera;
+    mat4 model;
+    float u_slice;
+    float u_material_num;
+};
+void main() {
+    gl_Position = projection * camera * model * vec4(vert, 1.0);
+    fragVert = vert;
+}
+"#;
+            
+            // Translate GLSL to WGSL using naga
+            let vs_wgsl = translate_glsl_to_wgsl(glsl_vs, naga::ShaderStage::Vertex)?;
+            let fs_wgsl = translate_glsl_to_wgsl(&glsl_fs, naga::ShaderStage::Fragment)?;
+            
+            let vs_module = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("VS Shader"),
+                source: wgpu::ShaderSource::Wgsl(Cow::Owned(vs_wgsl)),
+            });
+            let fs_module = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("FS Shader"),
+                source: wgpu::ShaderSource::Wgsl(Cow::Owned(fs_wgsl)),
+            });
+            
+            self.create_pipeline(&vs_module, "main", &fs_module, "main")
+        }
     }
 
     fn render(&mut self, slice_depth: f32, material_num: usize) -> IrmfResult<DynamicImage> {
@@ -334,6 +290,177 @@ fn vs_main(@location(0) vert: vec3<f32>) -> VertexOutput {{
 
         Ok(DynamicImage::ImageRgba8(rgba))
     }
+}
+
+impl WgpuRenderer {
+    fn create_pipeline(&mut self, vs_module: &wgpu::ShaderModule, vs_entry: &str, fs_module: &wgpu::ShaderModule, fs_entry: &str) -> IrmfResult<()> {
+        let uniform_size = std::mem::size_of::<Uniforms>() as wgpu::BufferAddress;
+        let uniform_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Uniform Buffer"),
+            size: uniform_size,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let bind_group_layout = self.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Bind Group Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Bind Group"),
+            layout: &bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
+        });
+
+        let pipeline_layout = self.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Pipeline Layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let pipeline = self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Render Pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: vs_module,
+                entry_point: Some(vs_entry),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: 3 * 4,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x3],
+                }],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: fs_module,
+                entry_point: Some(fs_entry),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
+        self.pipeline = Some(pipeline);
+        self.bind_group = Some(bind_group);
+        self.uniform_buffer = Some(uniform_buffer);
+        
+        Ok(())
+    }
+}
+
+fn translate_glsl_to_wgsl(glsl: &str, stage: naga::ShaderStage) -> IrmfResult<String> {
+    let mut parser = naga::front::glsl::Frontend::default();
+    let module = parser.parse(&naga::front::glsl::Options {
+        stage,
+        defines: rustc_hash::FxHashMap::default(),
+    }, glsl).map_err(|e| format!("GLSL Parse Error: {:?}", e))?;
+    
+    let info = naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all())
+        .validate(&module).map_err(|e| format!("Naga Validation Error: {:?}", e))?;
+    
+    let wgsl = naga::back::wgsl::write_string(&module, &info, naga::back::wgsl::WriterFlags::empty())
+        .map_err(|e| format!("WGSL Back-end Error: {:?}", e))?;
+    
+    Ok(wgsl)
+}
+
+fn gen_glsl_full_fs(num_materials: usize, shader: &str, vec3_str: &str) -> String {
+    let call = if num_materials <= 4 {
+        format!("vec4 m; mainModel4(m, vec3({}));", vec3_str)
+    } else if num_materials <= 9 {
+        format!("mat3 m; mainModel9(m, vec3({}));", vec3_str)
+    } else {
+        format!("mat4 m; mainModel16(m, vec3({}));", vec3_str)
+    };
+
+    let cases = if num_materials <= 4 {
+        r#"
+        case 1: outputColor = vec4(m.x); break;
+        case 2: outputColor = vec4(m.y); break;
+        case 3: outputColor = vec4(m.z); break;
+        case 4: outputColor = vec4(m.w); break;
+"#
+    } else if num_materials <= 9 {
+        r#"
+        case 1: outputColor = vec4(m[0][0]); break;
+        case 2: outputColor = vec4(m[0][1]); break;
+        case 3: outputColor = vec4(m[0][2]); break;
+        case 4: outputColor = vec4(m[1][0]); break;
+        case 5: outputColor = vec4(m[1][1]); break;
+        case 6: outputColor = vec4(m[1][2]); break;
+        case 7: outputColor = vec4(m[2][0]); break;
+        case 8: outputColor = vec4(m[2][1]); break;
+        case 9: outputColor = vec4(m[2][2]); break;
+"#
+    } else {
+        r#"
+        case 1: outputColor = vec4(m[0][0]); break;
+        case 2: outputColor = vec4(m[0][1]); break;
+        case 3: outputColor = vec4(m[0][2]); break;
+        case 4: outputColor = vec4(m[0][3]); break;
+        case 5: outputColor = vec4(m[1][0]); break;
+        case 6: outputColor = vec4(m[1][1]); break;
+        case 7: outputColor = vec4(m[1][2]); break;
+        case 8: outputColor = vec4(m[1][3]); break;
+        case 9: outputColor = vec4(m[2][0]); break;
+        case 10: outputColor = vec4(m[2][1]); break;
+        case 11: outputColor = vec4(m[2][2]); break;
+        case 12: outputColor = vec4(m[2][3]); break;
+        case 13: outputColor = vec4(m[3][0]); break;
+        case 14: outputColor = vec4(m[3][1]); break;
+        case 15: outputColor = vec4(m[3][2]); break;
+        case 16: outputColor = vec4(m[3][3]); break;
+"#
+    };
+
+    format!(r#"#version 450
+precision highp float;
+layout(location = 0) in vec3 fragVert;
+layout(location = 0) out vec4 outputColor;
+layout(set = 0, binding = 0) uniform Uniforms {{
+    mat4 projection;
+    mat4 camera;
+    mat4 model;
+    float u_slice;
+    float u_material_num;
+}};
+
+{}
+
+void main() {{
+    float u_slice = u_slice;
+    {}
+    int mat_num = int(u_material_num);
+    switch(mat_num) {{
+        {}
+        default: outputColor = vec4(0.0); break;
+    }}
+}}
+"#, shader, call, cases)
 }
 
 fn gen_wgsl_footer(num_materials: usize, vec3_str: &str) -> String {

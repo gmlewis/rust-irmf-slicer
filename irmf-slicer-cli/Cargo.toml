@@ -1,0 +1,16 @@
+[package]
+name = "irmf-slicer-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+irmf-slicer = { path = "../irmf-slicer" }
+irmf-include-resolver = { path = "../irmf-include-resolver" }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1.0"

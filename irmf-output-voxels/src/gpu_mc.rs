@@ -119,11 +119,13 @@ impl GpuMarchingCubes {
             .max_buffer_size
             .min(device.limits().max_storage_buffer_binding_size as u64);
         let max_triangles_from_limit = (limit - 16) / tri_size;
-        let mut max_triangles = (nx as u64 * ny as u64 * nz as u64).min(max_triangles_from_limit);
-        if max_triangles > 10_000_000 {
-            max_triangles = 10_000_000;
-        }
-        let max_triangles = max_triangles as u32;
+
+        // Estimate max triangles: each cell can produce up to 5 triangles.
+        // We cap this at 10M triangles or the hardware limit.
+        let max_triangles = (nx as u64 * ny as u64 * nz as u64)
+            .saturating_mul(5)
+            .min(max_triangles_from_limit)
+            .min(10_000_000) as u32;
 
         let output_buffer_size = 16 + max_triangles as u64 * tri_size;
 
@@ -199,11 +201,15 @@ impl GpuMarchingCubes {
         let gpu_count = u32::from_le_bytes(data[0..4].try_into().unwrap());
         if gpu_count >= max_triangles {
             eprintln!(
-                "Warning: Maximum triangle limit ({}) reached. The STL mesh may be incomplete.",
+                "Warning: Maximum triangle limit ({}) reached.",
                 max_triangles
             );
+            return Err(IrmfError::RendererError(format!(
+                "Maximum triangle limit ({}) reached",
+                max_triangles
+            )));
         }
-        let count = gpu_count.min(max_triangles);
+        let count = gpu_count;
 
         let gpu_triangles: &[GpuTriangle] = bytemuck::cast_slice(
             &data[16..16 + count as usize * std::mem::size_of::<GpuTriangle>()],

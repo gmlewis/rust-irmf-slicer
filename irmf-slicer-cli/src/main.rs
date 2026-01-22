@@ -11,6 +11,41 @@
 //! - **GPU Acceleration:** High-performance rendering using `wgpu`.
 //! - **Flexible Resolution:** Customizable slicing resolution in microns.
 //!
+//! ## Usage
+//!
+//! ### Installation
+//!
+//! After you have a recent version of [Rust](https://rustup.rs/) installed,
+//! run the following command in a terminal window:
+//!
+//! ```sh
+//! $ cargo install --path irmf-slicer-cli
+//! ```
+//!
+//! (Or `$ cargo install irmf-slicer-cli` if you are installing from [crates.io](https://crates.io).)
+//!
+//! ### Examples
+//!
+//! To slice one or more `.irmf` files, just list them on the command line.
+//!
+//! Slice a model into STL files:
+//! ```sh
+//! irmf-slicer-cli --stl examples/001-sphere/sphere-1.irmf
+//! ```
+//!
+//! Slice a model for a resin printer (DLP):
+//! ```sh
+//! irmf-slicer-cli --dlp examples/001-sphere/sphere-1.irmf
+//! ```
+//!
+//! View the slicing process in real-time:
+//! ```sh
+//! irmf-slicer-cli --view --zip examples/002-cube/cube-1.irmf
+//! ```
+//!
+//! The output files will be saved in the same directory as the original
+//! input IRMF files.
+//!
 //! For more information about the IRMF format and its capabilities, visit the
 //! [official IRMF website](https://irmf.io).
 

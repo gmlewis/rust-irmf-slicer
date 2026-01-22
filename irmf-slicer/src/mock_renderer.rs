@@ -11,6 +11,11 @@ use image::{DynamicImage, RgbaImage};
 pub struct MockRenderer {
     pub width: u32,
     pub height: u32,
+    pub vertices: Vec<f32>,
+    pub projection: glam::Mat4,
+    pub camera: glam::Mat4,
+    pub model_matrix: glam::Mat4,
+    pub vec3_str: String,
 }
 
 impl MockRenderer {
@@ -19,6 +24,11 @@ impl MockRenderer {
         Self {
             width: 0,
             height: 0,
+            vertices: Vec::new(),
+            projection: glam::Mat4::IDENTITY,
+            camera: glam::Mat4::IDENTITY,
+            model_matrix: glam::Mat4::IDENTITY,
+            vec3_str: String::new(),
         }
     }
 }
@@ -39,12 +49,17 @@ impl Renderer for MockRenderer {
     fn prepare(
         &mut self,
         _model: &IrmfModel,
-        _vertices: &[f32],
-        _projection: glam::Mat4,
-        _camera: glam::Mat4,
-        _model_matrix: glam::Mat4,
-        _vec3_str: &str,
+        vertices: &[f32],
+        projection: glam::Mat4,
+        camera: glam::Mat4,
+        model_matrix: glam::Mat4,
+        vec3_str: &str,
     ) -> IrmfResult<()> {
+        self.vertices = vertices.to_vec();
+        self.projection = projection;
+        self.camera = camera;
+        self.model_matrix = model_matrix;
+        self.vec3_str = vec3_str.to_string();
         Ok(())
     }
 

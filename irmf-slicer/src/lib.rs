@@ -365,6 +365,7 @@ impl<R: Renderer> Slicer<R> {
 mod tests {
     use super::*;
     use crate::mock_renderer::MockRenderer;
+    use glam::Vec4Swizzles;
 
     #[test]
     fn test_slicer_num_slices() {
@@ -386,5 +387,61 @@ mod tests {
         slicer.prepare_render_z().unwrap();
         assert_eq!(slicer.renderer.width, 10);
         assert_eq!(slicer.renderer.height, 10);
+    }
+
+    #[test]
+    fn test_coordinate_mapping() {
+        let data = b"/*{\"irmf\":\"1.0\",\"materials\":[\"PLA\"],\"max\":[5,5,5],\"min\":[-5,-5,-5],\"units\":\"mm\"}*/\nvoid mainModel4(out vec4 materials, in vec3 xyz) { materials[0] = 1.0; }";
+        let model = IrmfModel::new(data).unwrap();
+        let renderer = MockRenderer::new();
+        let mut slicer = Slicer::new(model, renderer, 1000.0, 1000.0, 1000.0);
+
+        // Test Z-slicing
+        slicer.prepare_render_z().unwrap();
+        let mvp = slicer.renderer.projection * slicer.renderer.camera * slicer.renderer.model_matrix;
+
+        // Bottom-left corner of Z-slice (min_x, min_y, 0)
+        let p_bl = mvp * glam::vec4(-5.0, -5.0, 0.0, 1.0);
+        let ndc_bl = p_bl.xyz() / p_bl.w;
+        assert!((ndc_bl.x + 1.0).abs() < 1e-6);
+        assert!((ndc_bl.y + 1.0).abs() < 1e-6);
+
+        // Top-right corner of Z-slice (max_x, max_y, 0)
+        let p_tr = mvp * glam::vec4(5.0, 5.0, 0.0, 1.0);
+        let ndc_tr = p_tr.xyz() / p_tr.w;
+        assert!((ndc_tr.x - 1.0).abs() < 1e-6);
+        assert!((ndc_tr.y - 1.0).abs() < 1e-6);
+
+        // Test Y-slicing
+        slicer.prepare_render_y().unwrap();
+        let mvp_y = slicer.renderer.projection * slicer.renderer.camera * slicer.renderer.model_matrix;
+
+        // Bottom-left corner of Y-slice (min_x, 0, min_z)
+        let p_bl_y = mvp_y * glam::vec4(-5.0, 0.0, -5.0, 1.0);
+        let ndc_bl_y = p_bl_y.xyz() / p_bl_y.w;
+        assert!((ndc_bl_y.x + 1.0).abs() < 1e-6);
+        assert!((ndc_bl_y.y + 1.0).abs() < 1e-6);
+
+        // Top-right corner of Y-slice (max_x, 0, max_z)
+        let p_tr_y = mvp_y * glam::vec4(5.0, 0.0, 5.0, 1.0);
+        let ndc_tr_y = p_tr_y.xyz() / p_tr_y.w;
+        assert!((ndc_tr_y.x - 1.0).abs() < 1e-6);
+        assert!((ndc_tr_y.y - 1.0).abs() < 1e-6);
+
+        // Test X-slicing
+        slicer.prepare_render_x().unwrap();
+        let mvp_x = slicer.renderer.projection * slicer.renderer.camera * slicer.renderer.model_matrix;
+
+        // Bottom-left corner of X-slice (0, min_y, min_z)
+        let p_bl_x = mvp_x * glam::vec4(0.0, -5.0, -5.0, 1.0);
+        let ndc_bl_x = p_bl_x.xyz() / p_bl_x.w;
+        assert!((ndc_bl_x.x + 1.0).abs() < 1e-6);
+        assert!((ndc_bl_x.y + 1.0).abs() < 1e-6);
+
+        // Top-right corner of X-slice (0, max_y, max_z)
+        let p_tr_x = mvp_x * glam::vec4(0.0, 5.0, 5.0, 1.0);
+        let ndc_tr_x = p_tr_x.xyz() / p_tr_x.w;
+        assert!((ndc_tr_x.x - 1.0).abs() < 1e-6);
+        assert!((ndc_tr_x.y - 1.0).abs() < 1e-6);
     }
 }

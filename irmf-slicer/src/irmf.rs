@@ -183,33 +183,16 @@ fn parse_header(data: &[u8]) -> Result<(IrmfHeader, &[u8]), IrmfError> {
     let re_comma = Regex::new(r",\s*([\}\]])").unwrap();
     cleaned_json = re_comma.replace_all(&cleaned_json, "$1").into_owned();
 
-    let keys = [
-        "author",
-        "license",
-        "date",
-        "encoding",
-        "irmf",
-        "glslVersion",
-        "language",
-        "materials",
-        "max",
-        "min",
-        "notes",
-        "options",
-        "title",
-        "units",
-        "version",
-    ];
-
-    for key in keys {
-        // Look for unquoted keys: must be preceded by { or , or whitespace, followed by :
-        let re_key = Regex::new(&format!(r"([{{,\s]){}\s*:", key)).unwrap();
-        cleaned_json = re_key
-            .replace_all(&cleaned_json, |caps: &regex::Captures| {
-                format!("{}\"{}\":", &caps[1], key)
-            })
-            .into_owned();
-    }
+    // Look for unquoted keys: must be preceded by { or , or whitespace, followed by :
+    // and must not already be quoted.
+    // This regex looks for an identifier followed by a colon.
+    // It ensures it's not preceded by a quote (simple heuristic).
+    let re_key = Regex::new(r"([{,\s])([a-zA-Z_][a-zA-Z0-9_]*)\s*:").unwrap();
+    cleaned_json = re_key
+        .replace_all(&cleaned_json, |caps: &regex::Captures| {
+            format!("{}\"{}\":", &caps[1], &caps[2])
+        })
+        .into_owned();
 
     let header: IrmfHeader = serde_json::from_str(&cleaned_json)?;
 
@@ -314,5 +297,38 @@ fn mainModel4(xyz: vec3f) -> vec4f {
         assert_eq!(model.header.irmf_version, "1.0");
         assert_eq!(model.header.language.as_deref(), Some("wgsl"));
         assert!(model.shader.contains("fn mainModel4"));
+    }
+
+    #[test]
+    fn test_parse_header_edge_cases() {
+        let data = b"/*{
+  irmf: \"1.0\",
+  materials: [\"PLA\",],
+  max: [1,1,1],
+  min: [0,0,0],
+  units: \"mm\",
+  version: \"1.0\",
+  options: {
+    unquotedKey: 42,
+    \"quotedKey\": \"value\",
+    nested: {
+        deeper: [1, 2, ],
+        more: {
+            a: 1,
+            b: 2
+        }
+    }
+  },
+  title: \"Edge Case Test\",
+}*/
+void main() {}";
+        let model = IrmfModel::new(data).unwrap();
+        assert_eq!(model.header.irmf_version, "1.0");
+        assert_eq!(model.header.title.as_deref(), Some("Edge Case Test"));
+        let options = model.header.options.as_ref().unwrap();
+        assert_eq!(options["unquotedKey"], 42);
+        assert_eq!(options["quotedKey"], "value");
+        assert_eq!(options["nested"]["deeper"][1], 2);
+        assert_eq!(options["nested"]["more"]["a"], 1);
     }
 }

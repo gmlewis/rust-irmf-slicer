@@ -18,6 +18,6 @@ homepage = "https://irmf.io"
 rust-version = "1.85.0"
 description = "A slicer for IRMF (Infinite Resolution Materials Format) files"
 readme = "README.md"
-keywords = ["3d-printing", "slicer", "irmf", "infinite-resolution", "materials", "cad", "3d", "modeling"]
+keywords = ["slicer", "irmf", "infinite-resolution", "materials"]
 categories = ["command-line-utilities", "3d-printing", "3d-modeling", "cad"]
 exclude = ["assets/", "tools/", ".github/", "crates/", "examples/wasm/assets/"]

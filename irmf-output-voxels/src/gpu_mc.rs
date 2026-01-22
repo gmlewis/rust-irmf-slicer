@@ -179,7 +179,11 @@ impl GpuMarchingCubes {
             cpass.set_bind_group(0, &bind_group, &[]);
             // Dispatch enough workgroups to cover (nx+2, ny+2, nz+2)
             // Using workgroup size (8, 8, 2)
-            cpass.dispatch_workgroups((nx + 2 + 7) / 8, (ny + 2 + 7) / 8, (nz + 2 + 1) / 2);
+            cpass.dispatch_workgroups(
+                (nx + 2).div_ceil(8),
+                (ny + 2).div_ceil(8),
+                (nz + 2).div_ceil(2),
+            );
         }
 
         encoder.copy_buffer_to_buffer(&output_buffer, 0, &readback_buffer, 0, output_buffer_size);

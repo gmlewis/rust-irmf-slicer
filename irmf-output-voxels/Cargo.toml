@@ -9,3 +9,8 @@ homepage.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+bytemuck = { version = "1.16", features = ["derive"] }
+zip = "2.2"
+image = "0.25"
+irmf-slicer = { path = "../irmf-slicer" }
+anyhow = "1.0"

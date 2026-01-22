@@ -1,9 +1,9 @@
 pub mod irmf;
 pub mod wgpu_renderer;
 
-pub use irmf::{IrmfModel, IrmfHeader, IrmfError};
-pub use wgpu_renderer::WgpuRenderer;
 use image::DynamicImage;
+pub use irmf::{IrmfError, IrmfHeader, IrmfModel};
+pub use wgpu_renderer::WgpuRenderer;
 
 pub type IrmfResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -65,14 +65,14 @@ impl<R: Renderer> Slicer<R> {
         let right = self.model.header.max[1];
         let bottom = self.model.header.min[2];
         let top = self.model.header.max[2];
-        
+
         let delta_y = self.res_y / 1000.0;
         let delta_z = self.res_z / 1000.0;
-        
+
         let aspect_ratio = ((right - left) * delta_z) / ((top - bottom) * delta_y);
         let mut new_width = (0.5 + (right - left) / delta_y).floor() as u32;
         let mut new_height = (0.5 + (top - bottom) / delta_z).floor() as u32;
-        
+
         if aspect_ratio * (new_height as f32) < (new_width as f32) {
             new_height = (0.5 + (new_width as f32) / aspect_ratio).floor() as u32;
         }
@@ -95,7 +95,8 @@ impl<R: Renderer> Slicer<R> {
         let model_matrix = glam::Mat4::IDENTITY;
         let vec3_str = "u_slice, fragVert.yz";
 
-        self.renderer.prepare(&self.model, projection, camera, model_matrix, vec3_str)
+        self.renderer
+            .prepare(&self.model, projection, camera, model_matrix, vec3_str)
     }
 
     pub fn prepare_render_y(&mut self) -> IrmfResult<()> {
@@ -103,14 +104,14 @@ impl<R: Renderer> Slicer<R> {
         let right = self.model.header.max[0];
         let bottom = self.model.header.min[2];
         let top = self.model.header.max[2];
-        
+
         let delta_x = self.res_x / 1000.0;
         let delta_z = self.res_z / 1000.0;
-        
+
         let aspect_ratio = ((right - left) * delta_z) / ((top - bottom) * delta_x);
         let mut new_width = (0.5 + (right - left) / delta_x).floor() as u32;
         let mut new_height = (0.5 + (top - bottom) / delta_z).floor() as u32;
-        
+
         if aspect_ratio * (new_height as f32) < (new_width as f32) {
             new_height = (0.5 + (new_width as f32) / aspect_ratio).floor() as u32;
         }
@@ -133,7 +134,8 @@ impl<R: Renderer> Slicer<R> {
         let model_matrix = glam::Mat4::IDENTITY;
         let vec3_str = "fragVert.x, u_slice, fragVert.z";
 
-        self.renderer.prepare(&self.model, projection, camera, model_matrix, vec3_str)
+        self.renderer
+            .prepare(&self.model, projection, camera, model_matrix, vec3_str)
     }
 
     pub fn prepare_render_z(&mut self) -> IrmfResult<()> {
@@ -141,14 +143,14 @@ impl<R: Renderer> Slicer<R> {
         let right = self.model.header.max[0];
         let bottom = self.model.header.min[1];
         let top = self.model.header.max[1];
-        
+
         let delta_x = self.res_x / 1000.0;
         let delta_y = self.res_y / 1000.0;
-        
+
         let aspect_ratio = ((right - left) * delta_y) / ((top - bottom) * delta_x);
         let mut new_width = (0.5 + (right - left) / delta_x).floor() as u32;
         let mut new_height = (0.5 + (top - bottom) / delta_y).floor() as u32;
-        
+
         if aspect_ratio * (new_height as f32) < (new_width as f32) {
             new_height = (0.5 + (new_width as f32) / aspect_ratio).floor() as u32;
         }
@@ -171,10 +173,15 @@ impl<R: Renderer> Slicer<R> {
         let model_matrix = glam::Mat4::IDENTITY;
         let vec3_str = "fragVert.xy, u_slice";
 
-        self.renderer.prepare(&self.model, projection, camera, model_matrix, vec3_str)
+        self.renderer
+            .prepare(&self.model, projection, camera, model_matrix, vec3_str)
     }
 
-    pub fn render_x_slice(&mut self, slice_num: usize, material_num: usize) -> IrmfResult<DynamicImage> {
+    pub fn render_x_slice(
+        &mut self,
+        slice_num: usize,
+        material_num: usize,
+    ) -> IrmfResult<DynamicImage> {
         let delta_x = self.res_x / 1000.0;
         let voxel_radius_x = 0.5 * delta_x;
         let min_x = self.model.header.min[0];
@@ -182,7 +189,11 @@ impl<R: Renderer> Slicer<R> {
         self.renderer.render(slice_depth, material_num)
     }
 
-    pub fn render_y_slice(&mut self, slice_num: usize, material_num: usize) -> IrmfResult<DynamicImage> {
+    pub fn render_y_slice(
+        &mut self,
+        slice_num: usize,
+        material_num: usize,
+    ) -> IrmfResult<DynamicImage> {
         let delta_y = self.res_y / 1000.0;
         let voxel_radius_y = 0.5 * delta_y;
         let min_y = self.model.header.min[1];
@@ -190,11 +201,69 @@ impl<R: Renderer> Slicer<R> {
         self.renderer.render(slice_depth, material_num)
     }
 
-    pub fn render_z_slice(&mut self, slice_num: usize, material_num: usize) -> IrmfResult<DynamicImage> {
+    pub fn render_z_slice(
+        &mut self,
+        slice_num: usize,
+        material_num: usize,
+    ) -> IrmfResult<DynamicImage> {
         let delta_z = self.res_z / 1000.0;
         let voxel_radius_z = 0.5 * delta_z;
         let min_z = self.model.header.min[2];
         let slice_depth = min_z + voxel_radius_z + (slice_num as f32) * delta_z;
         self.renderer.render(slice_depth, material_num)
+    }
+
+    pub fn render_x_slices<F>(&mut self, material_num: usize, mut f: F) -> IrmfResult<()>
+    where
+        F: FnMut(usize, f32, f32, DynamicImage) -> IrmfResult<()>,
+    {
+        let num_slices = self.num_x_slices();
+        let delta_x = self.res_x / 1000.0;
+        let voxel_radius_x = 0.5 * delta_x;
+        let min_x = self.model.header.min[0];
+
+        for n in 0..num_slices {
+            let x = min_x + voxel_radius_x + (n as f32) * delta_x;
+            let img = self.renderer.render(x, material_num)?;
+            f(n, x, voxel_radius_x, img)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn render_y_slices<F>(&mut self, material_num: usize, mut f: F) -> IrmfResult<()>
+    where
+        F: FnMut(usize, f32, f32, DynamicImage) -> IrmfResult<()>,
+    {
+        let num_slices = self.num_y_slices();
+        let delta_y = self.res_y / 1000.0;
+        let voxel_radius_y = 0.5 * delta_y;
+        let min_y = self.model.header.min[1];
+
+        for n in 0..num_slices {
+            let y = min_y + voxel_radius_y + (n as f32) * delta_y;
+            let img = self.renderer.render(y, material_num)?;
+            f(n, y, voxel_radius_y, img)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn render_z_slices<F>(&mut self, material_num: usize, mut f: F) -> IrmfResult<()>
+    where
+        F: FnMut(usize, f32, f32, DynamicImage) -> IrmfResult<()>,
+    {
+        let num_slices = self.num_z_slices();
+        let delta_z = self.res_z / 1000.0;
+        let voxel_radius_z = 0.5 * delta_z;
+        let min_z = self.model.header.min[2];
+
+        for n in 0..num_slices {
+            let z = min_z + voxel_radius_z + (n as f32) * delta_z;
+            let img = self.renderer.render(z, material_num)?;
+            f(n, z, voxel_radius_z, img)?;
+        }
+
+        Ok(())
     }
 }

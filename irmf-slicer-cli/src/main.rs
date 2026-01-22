@@ -73,34 +73,34 @@ async fn main() -> anyhow::Result<()> {
         model.shader = irmf_include_resolver::resolve_includes(&model.shader).await
             .map_err(|e| anyhow::anyhow!("resolve_includes: {}", e))?;
 
-        println!("Model: {} by {}", model.header.title.as_deref().unwrap_or("Untitled"), model.header.author.as_deref().unwrap_or("Unknown"));
-        println!("Materials: {:?}", model.header.materials);
-        println!("Units: {}", model.header.units);
-        println!("MBB: {:?} to {:?}", model.header.min, model.header.max);
+        let base_name = file_path.file_stem().unwrap().to_str().unwrap();
 
         let renderer = irmf_slicer::WgpuRenderer::new().await
             .map_err(|e| anyhow::anyhow!("WgpuRenderer::new: {}", e))?;
         let mut slicer = irmf_slicer::Slicer::new(model, renderer, x_res as f32, y_res as f32, z_res as f32);
 
-        println!("Preparing render for Z axis...");
-        slicer.prepare_render_z()
-            .map_err(|e| anyhow::anyhow!("prepare_render_z: {}", e))?;
-
-        let num_slices = slicer.num_z_slices();
-        println!("Slicing {} Z-slices...", num_slices);
-
         for material_num in 1..=slicer.model.header.materials.len() {
-            println!("Slicing material {}...", material_num);
-            if num_slices > 0 {
-                let img = slicer.render_z_slice(0, material_num)
-                    .map_err(|e| anyhow::anyhow!("render_z_slice(0): {}", e))?;
-                println!("Slice 0 rendered: {}x{}", img.width(), img.height());
-                if num_slices > 1 {
-                    let img = slicer.render_z_slice(num_slices - 1, material_num)
-                        .map_err(|e| anyhow::anyhow!("render_z_slice({}): {}", num_slices - 1, e))?;
-                    println!("Slice {} rendered: {}x{}", num_slices - 1, img.width(), img.height());
-                }
+            let material_name = slicer.model.header.materials[material_num - 1].replace(" ", "-");
+            
+            if args.stl {
+                let filename = format!("{}-mat{:02}-{}.stl", base_name, material_num, material_name);
+                irmf_output_stl::slice_to_stl(&mut slicer, material_num, &filename)
+                    .map_err(|e| anyhow::anyhow!("slice_to_stl: {}", e))?;
             }
+
+            if args.zip {
+                let filename = format!("{}-mat{:02}-{}.zip", base_name, material_num, material_name);
+                irmf_output_voxels::zip_out::slice_to_zip(&mut slicer, material_num, &filename)
+                    .map_err(|e| anyhow::anyhow!("slice_to_zip: {}", e))?;
+            }
+
+            if args.binvox {
+                let filename = format!("{}-mat{:02}-{}.binvox", base_name, material_num, material_name);
+                irmf_output_voxels::binvox_out::slice_to_binvox(&mut slicer, material_num, &filename)
+                    .map_err(|e| anyhow::anyhow!("slice_to_binvox: {}", e))?;
+            }
+            
+            // TODO: dlp, svx
         }
     }
 

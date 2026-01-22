@@ -14,3 +14,5 @@ irmf-slicer = { path = "../irmf-slicer" }
 irmf-include-resolver = { path = "../irmf-include-resolver" }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
+irmf-output-stl = { path = "../irmf-output-stl" }
+irmf-output-voxels = { path = "../irmf-output-voxels" }

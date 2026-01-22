@@ -56,6 +56,11 @@ pub trait Renderer {
 
     /// Waits for the current asynchronous render to complete and returns the image.
     fn render_finish(&mut self) -> IrmfResult<DynamicImage>;
+
+    /// Returns the WGPU device and queue if available.
+    fn wgpu_device_queue(&self) -> Option<(&wgpu::Device, &wgpu::Queue)> {
+        None
+    }
 }
 
 /// A slicer that orchestrates the rendering of multiple slices of an IRMF model.

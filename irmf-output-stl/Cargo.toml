@@ -13,3 +13,4 @@ irmf-output-voxels = { path = "../irmf-output-voxels" }
 irmf-slicer = { path = "../irmf-slicer" }
 anyhow = "1.0"
 image = "0.25"
+pollster = "0.4"

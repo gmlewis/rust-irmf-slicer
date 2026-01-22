@@ -5,6 +5,7 @@
 //! It also includes a Marching Cubes algorithm to convert voxels to a mesh.
 
 pub mod binvox_out;
+pub mod gpu_mc;
 pub mod photon_out;
 pub mod svx_out;
 pub mod zip_out;

@@ -64,7 +64,13 @@ where
     })?;
 
     println!("Converting voxels to STL...");
-    let mesh = model.marching_cubes(on_progress);
+    let mesh = if let Some((device, queue)) = slicer.renderer.wgpu_device_queue() {
+        println!("Using GPU-accelerated Marching Cubes...");
+        let gpu_mc = irmf_output_voxels::gpu_mc::GpuMarchingCubes::new(device);
+        pollster::block_on(gpu_mc.run(device, queue, &model))
+    } else {
+        model.marching_cubes(on_progress)
+    };
 
     println!("Writing STL file: {}", filename);
     let file = File::create(filename)?;

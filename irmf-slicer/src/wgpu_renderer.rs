@@ -26,8 +26,8 @@ struct Uniforms {
 
 /// A renderer that uses WGPU for hardware-accelerated offscreen rendering.
 pub struct WgpuRenderer {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
     pipeline: Option<wgpu::RenderPipeline>,
     bind_group: Option<wgpu::BindGroup>,
     uniform_buffer: Option<wgpu::Buffer>,
@@ -54,7 +54,21 @@ impl WgpuRenderer {
             .ok_or(IrmfError::WgpuAdapterError)?;
 
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: None,
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits {
+                        max_storage_buffer_binding_size: adapter
+                            .limits()
+                            .max_storage_buffer_binding_size,
+                        max_buffer_size: adapter.limits().max_buffer_size,
+                        ..wgpu::Limits::default()
+                    },
+                    memory_hints: Default::default(),
+                },
+                None,
+            )
             .await?;
 
         Ok(Self {
@@ -371,6 +385,10 @@ void main() {
         self.current_buffer = (self.current_buffer + 1) % 2;
 
         Ok(DynamicImage::ImageRgba8(rgba))
+    }
+
+    fn wgpu_device_queue(&self) -> Option<(&wgpu::Device, &wgpu::Queue)> {
+        Some((&self.device, &self.queue))
     }
 }
 

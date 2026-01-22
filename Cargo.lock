@@ -1585,6 +1585,7 @@ dependencies = [
  "image",
  "irmf-output-voxels",
  "irmf-slicer",
+ "pollster",
 ]
 
 [[package]]
@@ -1595,8 +1596,11 @@ dependencies = [
  "bytemuck",
  "chrono",
  "criterion",
+ "futures",
  "image",
  "irmf-slicer",
+ "pollster",
+ "wgpu",
  "zip",
 ]
 

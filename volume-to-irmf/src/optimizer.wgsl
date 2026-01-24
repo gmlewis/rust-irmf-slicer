@@ -9,7 +9,7 @@ struct ErrorResult {
     mse_sum: f32,
     iou_min_sum: f32,
     iou_max_sum: f32,
-    padding: f32,
+    sample_idx: u32,
 }
 
 @group(0) @binding(0) var<storage, read> primitives: array<Primitive>;
@@ -28,7 +28,7 @@ struct Perturbation {
     prim_idx: u32,
     pos_delta: vec3f,
     size_scale: f32,
-    padding: f32,
+    op: u32,
 }
 @group(0) @binding(4) var<storage, read> perturbations: array<Perturbation>;
 
@@ -47,7 +47,8 @@ fn evaluate_model(p: vec3f, cand_idx: u32) -> f32 {
     var val = 0.0;
     let pert = perturbations[cand_idx];
     
-    let num_prims = select(config.num_primitives, config.num_primitives + 1u, pert.prim_idx == 9999u);
+    let is_adding = (pert.prim_idx == 9999u);
+    let num_prims = select(config.num_primitives, config.num_primitives + 1u, is_adding);
 
     for (var i = 0u; i < num_prims; i++) {
         var prim: Primitive;
@@ -61,8 +62,8 @@ fn evaluate_model(p: vec3f, cand_idx: u32) -> f32 {
             // New primitive from perturbation data
             prim.pos = pert.pos_delta;
             prim.size = vec3f(pert.size_scale);
-            prim.prim_type = 0u; // Sphere for now
-            prim.op = 0u; // Union
+            prim.prim_type = 0u; // Sphere
+            prim.op = pert.op;
         }
 
         let p_local = p - prim.pos;
@@ -108,9 +109,10 @@ fn main(
     let mse = diff * diff;
     let iou_min = min(target_val, candidate_val);
     let iou_max = max(target_val, candidate_val);
+    let out_idx = cand_idx * 32768u + sample_idx;
 
-    let out_idx = cand_idx * config.num_samples + sample_idx;
     results[out_idx].mse_sum = mse;
     results[out_idx].iou_min_sum = iou_min;
     results[out_idx].iou_max_sum = iou_max;
+    results[out_idx].sample_idx = sample_idx;
 }

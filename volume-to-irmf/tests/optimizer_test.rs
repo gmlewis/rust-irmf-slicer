@@ -27,19 +27,19 @@ async fn test_optimizer_sphere() {
     // Add a rough initial sphere
     optimizer.add_primitive(Primitive::new_sphere(Vec3::splat(0.4), 0.2, BooleanOp::Union));
     
-    let mut last_error = 1.0;
-    for i in 0..200 {
+    let mut last_error = 2.0;
+    for i in 0..500 {
         let error = optimizer.run_iteration().await.unwrap();
-        if i % 10 == 0 {
+        if i % 50 == 0 {
             println!("Iteration {}: error = {}, primitives = {}", i, error, optimizer.generate_irmf().split("val =").count() - 1);
         }
-        // error <= last_error is guaranteed by the new logic (except for noise, but we have static samples now)
-        assert!(error <= last_error + 1e-5); 
+        // Strict monotonicity (or equality)
+        assert!(error <= last_error + 1e-6, "Error increased at iteration {}: {} > {}", i, error, last_error);
         last_error = error;
     }
     
     println!("Final error: {}", last_error);
-    assert!(last_error < 0.5); // Should have made some progress
+    assert!(last_error < 0.3); // Should have improved significantly
     
     let irmf = optimizer.generate_irmf();
     assert!(irmf.contains("mainModel4"));

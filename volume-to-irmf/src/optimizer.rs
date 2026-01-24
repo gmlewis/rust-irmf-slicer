@@ -10,7 +10,7 @@ struct ErrorResult {
     mse_sum: f32,
     iou_min_sum: f32,
     iou_max_sum: f32,
-    _padding: f32,
+    sample_idx: u32,
 }
 
 pub struct Stats {
@@ -34,7 +34,7 @@ struct Perturbation {
     prim_idx: u32,
     pos_delta: Vec3,
     size_scale: f32,
-    _padding: u32,
+    op: u32,
 }
 
 pub struct Optimizer {
@@ -46,18 +46,21 @@ pub struct Optimizer {
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     target_texture_view: wgpu::TextureView,
-    
+
     config_buffer: wgpu::Buffer,
     primitive_buffer: wgpu::Buffer,
     perturbation_buffer: wgpu::Buffer,
     results_buffer: wgpu::Buffer,
     results_staging_buffer: wgpu::Buffer,
     samples_buffer: wgpu::Buffer,
-    
+
     num_candidates: u32,
     samples_per_candidate: u32,
     seed: u32,
-    
+
+    samples: Vec<Vec3>,
+    last_results: Vec<ErrorResult>,
+
     pub stats: Stats,
     start_time: std::time::Instant,
 }
@@ -119,7 +122,8 @@ impl Optimizer {
             texture_size,
         );
 
-        let target_texture_view = target_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let target_texture_view =
+            target_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         // Load shader
         let shader_src = include_str!("optimizer.wgsl");
@@ -210,7 +214,7 @@ impl Optimizer {
         });
 
         let num_candidates = 256;
-        let samples_per_candidate = 1024 * 4; // 4096 samples
+        let samples_per_candidate = 1024 * 32; // 32768
         let total_samples = num_candidates * samples_per_candidate;
 
         let samples_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -219,7 +223,7 @@ impl Optimizer {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        
+
         // Populate samples once
         use rand::Rng;
         let mut rng = rand::thread_rng();
@@ -264,7 +268,7 @@ impl Optimizer {
             mapped_at_creation: false,
         });
 
-        Ok(Self {
+        let mut optimizer = Self {
             device,
             queue,
             target_volume: Arc::new(target_volume),
@@ -281,13 +285,29 @@ impl Optimizer {
             num_candidates,
             samples_per_candidate,
             seed: 0,
+            samples,
+            last_results: Vec::new(),
             stats: Stats {
                 iterations: 0,
                 duration: std::time::Duration::from_secs(0),
                 final_error: 1.0,
             },
             start_time: std::time::Instant::now(),
-        })
+        };
+
+        // Run initial baseline
+        let perts = vec![
+            Perturbation {
+                prim_idx: 8888,
+                pos_delta: Vec3::ZERO,
+                size_scale: 1.0,
+                op: 0,
+            };
+            num_candidates as usize
+        ];
+        optimizer.calculate_errors(&perts).await?;
+
+        Ok(optimizer)
     }
 
     pub fn add_primitive(&mut self, prim: Primitive) {
@@ -301,35 +321,56 @@ impl Optimizer {
         use rand::Rng;
         let mut rng = rand::thread_rng();
 
-        // 1. Generate perturbations
+        let mut seed_pos = Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen());
+        if !self.last_results.is_empty() {
+            let mut max_err = -1.0;
+            let mut worst_idx = 0;
+            for s in 0..self.samples_per_candidate as usize {
+                let res = &self.last_results[s];
+                if res.mse_sum > max_err {
+                    max_err = res.mse_sum;
+                    worst_idx = res.sample_idx;
+                }
+            }
+            seed_pos = self.samples[worst_idx as usize];
+        }
+
         let mut perts = Vec::with_capacity(self.num_candidates as usize);
-        
-        // Candidate 0: No perturbation (baseline)
         perts.push(Perturbation {
-            prim_idx: 8888, // Use 8888 for baseline
+            prim_idx: 8888,
             pos_delta: Vec3::ZERO,
             size_scale: 1.0,
-            _padding: 0,
+            op: 0,
         });
 
-        // Other candidates
-        for _ in 1..self.num_candidates {
-            if self.primitives.len() < 1024 && rng.gen_bool(0.1) {
-                // Evaluate adding a new primitive
-                perts.push(Perturbation {
-                    prim_idx: 9999,
-                    pos_delta: Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()),
-                    size_scale: rng.gen_range(0.01..0.2),
-                    _padding: 0,
-                });
-            } else if !self.primitives.is_empty() {
-                // Refine existing
+        // Add Primitive (Union)
+        for i in 1..self.num_candidates / 4 {
+            perts.push(Perturbation {
+                prim_idx: 9999,
+                pos_delta: seed_pos,
+                size_scale: 0.01 * i as f32,
+                op: BooleanOp::Union as u32,
+            });
+        }
+        // Add Primitive (Difference)
+        for i in self.num_candidates / 4..self.num_candidates / 2 {
+            perts.push(Perturbation {
+                prim_idx: 9999,
+                pos_delta: seed_pos,
+                size_scale: 0.01 * (i - self.num_candidates / 4 + 1) as f32,
+                op: BooleanOp::Difference as u32,
+            });
+        }
+
+        // Refine Existing
+        for _ in self.num_candidates / 2..self.num_candidates {
+            if !self.primitives.is_empty() {
                 let prim_idx = rng.gen_range(0..self.primitives.len()) as u32;
                 perts.push(Perturbation {
                     prim_idx,
                     pos_delta: Vec3::new(rng.gen_range(-0.02..0.02), rng.gen_range(-0.02..0.02), rng.gen_range(-0.02..0.02)),
                     size_scale: rng.gen_range(0.95..1.05),
-                    _padding: 0,
+                    op: self.primitives[prim_idx as usize].op,
                 });
             } else {
                 perts.push(perts[0]);
@@ -337,10 +378,13 @@ impl Optimizer {
         }
 
         let errors = self.calculate_errors(&perts).await?;
-        
-        // Find best candidate
         let mut best_idx = 0;
         let mut min_error = errors[0];
+        
+        if self.stats.iterations > 1 && min_error > self.stats.final_error + 1e-5 {
+             println!("DEBUG: Iteration {}: errors[0] ({}) > last final_error ({})", self.stats.iterations, min_error, self.stats.final_error);
+        }
+
         for (i, &err) in errors.iter().enumerate() {
             if err < min_error {
                 min_error = err;
@@ -348,11 +392,10 @@ impl Optimizer {
             }
         }
 
-        // Apply best perturbation ONLY if it improves error
         if best_idx > 0 {
             let pert = &perts[best_idx];
             if pert.prim_idx == 9999 {
-                self.primitives.push(Primitive::new_sphere(pert.pos_delta, pert.size_scale, BooleanOp::Union));
+                self.primitives.push(Primitive::new_sphere(pert.pos_delta, pert.size_scale, if pert.op == 0 { BooleanOp::Union } else { BooleanOp::Difference }));
             } else if pert.prim_idx < 8888 {
                 let prim = &mut self.primitives[pert.prim_idx as usize];
                 prim.pos += pert.pos_delta;
@@ -366,19 +409,25 @@ impl Optimizer {
 
     async fn calculate_errors(&mut self, perts: &[Perturbation]) -> Result<Vec<f32>> {
         self.seed += 1;
-        
+
         let config = Config {
             num_samples: self.samples_per_candidate,
             num_primitives: self.primitives.len() as u32,
             seed: self.seed,
             num_candidates: self.num_candidates,
         };
-        
-        self.queue.write_buffer(&self.config_buffer, 0, bytemuck::cast_slice(&[config]));
+
+        self.queue
+            .write_buffer(&self.config_buffer, 0, bytemuck::cast_slice(&[config]));
         if !self.primitives.is_empty() {
-            self.queue.write_buffer(&self.primitive_buffer, 0, bytemuck::cast_slice(&self.primitives));
+            self.queue.write_buffer(
+                &self.primitive_buffer,
+                0,
+                bytemuck::cast_slice(&self.primitives),
+            );
         }
-        self.queue.write_buffer(&self.perturbation_buffer, 0, bytemuck::cast_slice(perts));
+        self.queue
+            .write_buffer(&self.perturbation_buffer, 0, bytemuck::cast_slice(perts));
 
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Optimizer Bind Group"),
@@ -411,9 +460,11 @@ impl Optimizer {
             ],
         });
 
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Error Calculation Encoder"),
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Error Calculation Encoder"),
+            });
 
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -422,20 +473,27 @@ impl Optimizer {
             });
             compute_pass.set_pipeline(&self.pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
-            compute_pass.dispatch_workgroups(self.num_candidates, self.samples_per_candidate.div_ceil(256), 1);
+            compute_pass.dispatch_workgroups(
+                self.num_candidates,
+                self.samples_per_candidate.div_ceil(256),
+                1,
+            );
         }
 
         let total_samples = self.num_candidates * self.samples_per_candidate;
         encoder.copy_buffer_to_buffer(
-            &self.results_buffer, 0,
-            &self.results_staging_buffer, 0,
+            &self.results_buffer,
+            0,
+            &self.results_staging_buffer,
+            0,
             (std::mem::size_of::<ErrorResult>() * total_samples as usize) as u64,
         );
 
         self.queue.submit(Some(encoder.finish()));
 
         let buffer_slice = self.results_staging_buffer.slice(..);
-        let (sender, receiver) = futures::channel::oneshot::channel::<Result<(), wgpu::BufferAsyncError>>();
+        let (sender, receiver) =
+            futures::channel::oneshot::channel::<Result<(), wgpu::BufferAsyncError>>();
         buffer_slice.map_async(wgpu::MapMode::Read, move |v| {
             let _ = sender.send(v);
         });
@@ -445,33 +503,39 @@ impl Optimizer {
         if let Ok(Ok(())) = receiver.await {
             let data = buffer_slice.get_mapped_range();
             let results: &[ErrorResult] = bytemuck::cast_slice(&data);
-            
+
+            self.last_results = results.to_vec();
+
             let mut cand_errors = Vec::with_capacity(self.num_candidates as usize);
-            
+
             for c in 0..self.num_candidates as usize {
                 let mut mse_total = 0.0;
                 let mut iou_min_total = 0.0;
                 let mut iou_max_total = 0.0;
-                
+
                 for s in 0..self.samples_per_candidate as usize {
                     let res = &results[c * self.samples_per_candidate as usize + s];
                     mse_total += res.mse_sum;
                     iou_min_total += res.iou_min_sum;
                     iou_max_total += res.iou_max_sum;
                 }
-                
+
                 let mse = mse_total / self.samples_per_candidate as f32;
-                let iou = if iou_max_total > 0.0 { iou_min_total / iou_max_total } else { 1.0 };
-                
+                let iou = if iou_max_total > 0.0 {
+                    iou_min_total / iou_max_total
+                } else {
+                    1.0
+                };
+
                 let alpha = 0.5;
                 let beta = 0.5;
                 let error = alpha * mse + beta * (1.0 - iou);
                 cand_errors.push(error);
             }
-            
+
             drop(data);
             self.results_staging_buffer.unmap();
-            
+
             Ok(cand_errors)
         } else {
             anyhow::bail!("Failed to read back results from GPU")
@@ -502,16 +566,32 @@ impl Optimizer {
             let p = prim.pos;
             let s = prim.size;
 
-            let dist_func = if prim_type == 0 { // Sphere
-                format!("length(p_norm - vec3f({}, {}, {})) - {}", p.x, p.y, p.z, s.x)
-            } else { // Cube
-                format!("sd_box(p_norm - vec3f({}, {}, {}), vec3f({}, {}, {}))", p.x, p.y, p.z, s.x, s.y, s.z)
+            let dist_func = if prim_type == 0 {
+                // Sphere
+                format!(
+                    "length(p_norm - vec3f({}, {}, {})) - {}",
+                    p.x, p.y, p.z, s.x
+                )
+            } else {
+                // Cube
+                format!(
+                    "sd_box(p_norm - vec3f({}, {}, {}), vec3f({}, {}, {}))",
+                    p.x, p.y, p.z, s.x, s.y, s.z
+                )
             };
 
-            let op_code = if op == 0 { // Union
-                format!("  val = max(val, select(0.0, 1.0, {} <= 0.0));\n", dist_func)
-            } else { // Difference
-                format!("  val = min(val, 1.0 - select(0.0, 1.0, {} <= 0.0));\n", dist_func)
+            let op_code = if op == 0 {
+                // Union
+                format!(
+                    "  val = max(val, select(0.0, 1.0, {} <= 0.0));\n",
+                    dist_func
+                )
+            } else {
+                // Difference
+                format!(
+                    "  val = min(val, 1.0 - select(0.0, 1.0, {} <= 0.0));\n",
+                    dist_func
+                )
             };
             primitives_code.push_str(&op_code);
         }
@@ -537,7 +617,14 @@ fn mainModel4(xyz: vec3f) -> vec4f {{
   return vec4f(val, 0.0, 0.0, 0.0);
 }}
 "#,
-            max.x, max.y, max.z, min.x, min.y, min.z, serde_json::to_string(&notes).unwrap(), primitives_code
+            max.x,
+            max.y,
+            max.z,
+            min.x,
+            min.y,
+            min.z,
+            serde_json::to_string(&notes).unwrap(),
+            primitives_code
         )
     }
 }

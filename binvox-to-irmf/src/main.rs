@@ -1,6 +1,5 @@
 use anyhow::Result;
 use clap::Parser;
-use glam::Vec3;
 use std::path::PathBuf;
 use volume_to_irmf::{Optimizer, VoxelVolume};
 
@@ -31,14 +30,18 @@ async fn main() -> Result<()> {
     let file = std::fs::File::open(&args.input)?;
     let volume = VoxelVolume::from_binvox(file)?;
 
-    println!("Dimensions: {}x{}x{}", volume.dims[0], volume.dims[1], volume.dims[2]);
+    println!(
+        "Dimensions: {}x{}x{}",
+        volume.dims[0], volume.dims[1], volume.dims[2]
+    );
 
     println!("Initializing optimizer...");
     let mut optimizer = Optimizer::new(volume).await?;
 
     println!("Starting optimization...");
     let mut best_error = f32::MAX;
-    for i in 0..1000 { // 1000 iterations for testing
+    for i in 0..1000 {
+        // 1000 iterations for testing
         let error = optimizer.run_iteration().await?;
         if error < best_error {
             best_error = error;
@@ -49,10 +52,12 @@ async fn main() -> Result<()> {
             break;
         }
     }
-    
+
     let irmf = optimizer.generate_irmf();
-    
-    let output_path = args.output.unwrap_or_else(|| args.input.with_extension("irmf"));
+
+    let output_path = args
+        .output
+        .unwrap_or_else(|| args.input.with_extension("irmf"));
     println!("Writing {}...", output_path.display());
     std::fs::write(output_path, irmf)?;
 

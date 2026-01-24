@@ -25,17 +25,25 @@ async fn main() -> Result<()> {
 
     println!("Reading {}...", args.input.display());
     let mut file = std::fs::File::open(&args.input)?;
-    let mut mesh = stl_io::read_stl(&mut file).map_err(|e| anyhow::anyhow!("stl read error: {:?}", e))?;
+    
+    println!("Voxelizing mesh...");
+    let volume = VoxelVolume::from_stl(&mut file, [args.res, args.res, args.res])?;
 
-    println!("Voxelizing mesh (placeholders)...");
-    // TODO: implement voxelization
-    let volume = VoxelVolume::new(
-        [args.res, args.res, args.res],
-        Vec3::ZERO,
-        Vec3::ONE,
-    );
+    println!("Dimensions: {}x{}x{}", volume.dims[0], volume.dims[1], volume.dims[2]);
 
+    println!("Initializing optimizer...");
     let mut optimizer = Optimizer::new(volume).await?;
+
+    println!("Starting optimization...");
+    let mut best_error = f32::MAX;
+    for i in 0..1000 {
+        let error = optimizer.run_iteration().await?;
+        if error < best_error {
+            best_error = error;
+            println!("Iteration {}: error = {}", i, error);
+        }
+    }
+    
     let irmf = optimizer.generate_irmf();
     
     let output_path = args.output.unwrap_or_else(|| args.input.with_extension("irmf"));

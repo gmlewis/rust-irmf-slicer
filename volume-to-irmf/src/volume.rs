@@ -85,7 +85,6 @@ impl VoxelVolume {
             let val_f = if value > 0 { 1.0f32 } else { 0.0f32 };
             for _ in 0..count {
                 if voxels_read < total_voxels {
-                    // Order: x changes fastest, then z, then y
                     let x = voxels_read as u32 % dims[0];
                     let z = (voxels_read as u32 / dims[0]) % dims[2];
                     let y = voxels_read as u32 / (dims[0] * dims[2]);
@@ -96,5 +95,99 @@ impl VoxelVolume {
         }
 
         Ok(volume)
+    }
+
+    pub fn from_stl(reader: &mut (impl std::io::Read + std::io::Seek), dims: [u32; 3]) -> anyhow::Result<Self> {
+        let mesh = stl_io::read_stl(reader).map_err(|e| anyhow::anyhow!("STL read error: {:?}", e))?;
+        
+        let mut min = Vec3::splat(f32::MAX);
+        let mut max = Vec3::splat(f32::MIN);
+        
+        for v in &mesh.vertices {
+            let p = Vec3::new(v[0], v[1], v[2]);
+            min = min.min(p);
+            max = max.max(p);
+        }
+
+        let size = max - min;
+        min -= size * 0.05;
+        max += size * 0.05;
+
+        let mut volume = Self::new(dims, min, max);
+        
+        for x in 0..dims[0] {
+            for y in 0..dims[1] {
+                let px = min.x + (x as f32 + 0.5) / dims[0] as f32 * (max.x - min.x);
+                let py = min.y + (y as f32 + 0.5) / dims[1] as f32 * (max.y - min.y);
+                
+                let mut intersections = Vec::new();
+                for tri in &mesh.faces {
+                    let v = [
+                        mesh.vertices[tri.vertices[0]],
+                        mesh.vertices[tri.vertices[1]],
+                        mesh.vertices[tri.vertices[2]],
+                    ];
+                    if let Some(z) = intersect_tri_xy(px, py, &v) {
+                        intersections.push(z);
+                    }
+                }
+                
+                intersections.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                
+                for i in (0..intersections.len()).step_by(2) {
+                    if i + 1 < intersections.len() {
+                        let z_start = intersections[i];
+                        let z_end = intersections[i+1];
+                        
+                        let vz_start = (((z_start - min.z) / (max.z - min.z) * dims[2] as f32) as u32).min(dims[2]-1);
+                        let vz_end = (((z_end - min.z) / (max.z - min.z) * dims[2] as f32) as u32).min(dims[2]-1);
+                        
+                        for vz in vz_start..=vz_end {
+                            volume.set(x, y, vz, 1.0);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(volume)
+    }
+
+    pub fn from_slices(slices: Vec<image::DynamicImage>, min: Vec3, max: Vec3) -> anyhow::Result<Self> {
+        if slices.is_empty() {
+            anyhow::bail!("No slices provided");
+        }
+        let width = slices[0].width();
+        let height = slices[0].height();
+        let depth = slices.len() as u32;
+        
+        let mut volume = Self::new([width, height, depth], min, max);
+        
+        for (z, img) in slices.into_iter().enumerate() {
+            let gray = img.to_luma8();
+            for (x, y, pixel) in gray.enumerate_pixels() {
+                volume.set(x, y, z as u32, pixel[0] as f32 / 255.0);
+            }
+        }
+        
+        Ok(volume)
+    }
+}
+
+fn intersect_tri_xy(px: f32, py: f32, v: &[stl_io::Vector<f32>; 3]) -> Option<f32> {
+    let v0 = Vec3::new(v[0][0], v[0][1], v[0][2]);
+    let v1 = Vec3::new(v[1][0], v[1][1], v[1][2]);
+    let v2 = Vec3::new(v[2][0], v[2][1], v[2][2]);
+    
+    let area = 0.5 * (-v1.y * v2.x + v0.y * (-v1.x + v2.x) + v0.x * (v1.y - v2.y) + v1.x * v2.y);
+    if area.abs() < 1e-9 { return None; }
+    
+    let s = 1.0 / (2.0 * area) * (v0.y * v2.x - v0.x * v2.y + (v2.y - v0.y) * px + (v0.x - v2.x) * py);
+    let t = 1.0 / (2.0 * area) * (v0.x * v1.y - v0.y * v1.x + (v0.y - v1.y) * px + (v1.x - v0.x) * py);
+    
+    if s >= 0.0 && t >= 0.0 && (1.0 - s - t) >= 0.0 {
+        Some(v0.z + s * (v1.z - v0.z) + t * (v2.z - v0.z))
+    } else {
+        None
     }
 }

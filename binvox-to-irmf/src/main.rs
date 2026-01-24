@@ -21,6 +21,10 @@ struct Args {
     #[arg(short, long, default_value_t = 0.01)]
     error: f32,
 
+    /// Number of optimization iterations
+    #[arg(short, long, default_value_t = 1000)]
+    iterations: usize,
+
     /// Use greedy box initialization
     #[arg(short, long)]
     greedy: bool,
@@ -55,29 +59,33 @@ async fn main() -> Result<()> {
         }
     }
 
-    println!("Starting optimization...");
-    let mut best_error = f32::MAX;
-    let mut last_num_prims = 0;
-    for i in 0..10000 {
-        let error = optimizer.run_iteration().await?;
-        let num_prims = optimizer.generate_irmf().split("val =").count() - 1;
-        
-        if num_prims > last_num_prims {
-            println!("Iteration {}: Added primitive. Total: {}", i, num_prims);
-            last_num_prims = num_prims;
-        }
-
-        if i % 100 == 0 || error < best_error {
-            if error < best_error {
-                best_error = error;
+    if args.iterations > 0 {
+        println!("Starting optimization...");
+        let mut best_error = f32::MAX;
+        let mut last_num_prims = 0;
+        for i in 0..args.iterations {
+            let error = optimizer.run_iteration().await?;
+            let num_prims = optimizer.generate_irmf().split("val =").count() - 1;
+            
+            if num_prims > last_num_prims {
+                println!("Iteration {}: Added primitive. Total: {}", i, num_prims);
+                last_num_prims = num_prims;
             }
-            println!("Iteration {}: error = {}, primitives = {}", i, error, num_prims);
+
+            if i % 100 == 0 || error < best_error {
+                if error < best_error {
+                    best_error = error;
+                }
+                println!("Iteration {}: error = {}, primitives = {}", i, error, num_prims);
+            }
+            
+            if error < args.error {
+                println!("Target error reached!");
+                break;
+            }
         }
-        
-        if error < args.error {
-            println!("Target error reached!");
-            break;
-        }
+    } else {
+        println!("Skipping optimization iterations as requested.");
     }
 
     let irmf = optimizer.generate_irmf();

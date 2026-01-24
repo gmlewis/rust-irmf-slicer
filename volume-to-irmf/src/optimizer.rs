@@ -3,7 +3,39 @@ use crate::volume::VoxelVolume;
 use anyhow::Result;
 use glam::Vec3;
 use std::sync::Arc;
-use wgpu::util::DeviceExt;
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct ErrorResult {
+    mse_sum: f32,
+    iou_min_sum: f32,
+    iou_max_sum: f32,
+    _padding: f32,
+}
+
+pub struct Stats {
+    pub iterations: usize,
+    pub duration: std::time::Duration,
+    pub final_error: f32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Config {
+    num_samples: u32,
+    num_primitives: u32,
+    seed: u32,
+    num_candidates: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Perturbation {
+    prim_idx: u32,
+    pos_delta: Vec3,
+    size_scale: f32,
+    _padding: u32,
+}
 
 pub struct Optimizer {
     device: Arc<wgpu::Device>,
@@ -17,29 +49,17 @@ pub struct Optimizer {
     
     config_buffer: wgpu::Buffer,
     primitive_buffer: wgpu::Buffer,
+    perturbation_buffer: wgpu::Buffer,
     results_buffer: wgpu::Buffer,
     results_staging_buffer: wgpu::Buffer,
+    samples_buffer: wgpu::Buffer,
     
-    num_samples: u32,
+    num_candidates: u32,
+    samples_per_candidate: u32,
     seed: u32,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Config {
-    num_samples: u32,
-    num_primitives: u32,
-    seed: u32,
-    _padding: u32,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct ErrorResult {
-    mse_sum: f32,
-    iou_min_sum: f32,
-    iou_max_sum: f32,
-    _padding: f32,
+    
+    pub stats: Stats,
+    start_time: std::time::Instant,
 }
 
 impl Optimizer {
@@ -151,6 +171,26 @@ impl Optimizer {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -169,7 +209,26 @@ impl Optimizer {
             cache: None,
         });
 
-        let num_samples = 1024 * 64; // Example sample count
+        let num_candidates = 256;
+        let samples_per_candidate = 1024 * 4; // 4096 samples
+        let total_samples = num_candidates * samples_per_candidate;
+
+        let samples_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Samples Buffer"),
+            size: (std::mem::size_of::<Vec3>() * samples_per_candidate as usize) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        
+        // Populate samples once
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let mut samples = Vec::with_capacity(samples_per_candidate as usize);
+        for _ in 0..samples_per_candidate {
+            samples.push(Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()));
+        }
+        queue.write_buffer(&samples_buffer, 0, bytemuck::cast_slice(&samples));
+
         let config_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Config Buffer"),
             size: std::mem::size_of::<Config>() as u64,
@@ -179,21 +238,28 @@ impl Optimizer {
 
         let primitive_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Primitive Buffer"),
-            size: (std::mem::size_of::<Primitive>() * 1024) as u64, // Max 1024 primitives for now
+            size: (std::mem::size_of::<Primitive>() * 1024) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let perturbation_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Perturbation Buffer"),
+            size: (std::mem::size_of::<Perturbation>() * num_candidates as usize) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
         let results_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Results Buffer"),
-            size: (std::mem::size_of::<ErrorResult>() * num_samples as usize) as u64,
+            size: (std::mem::size_of::<ErrorResult>() * total_samples as usize) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
         let results_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Results Staging Buffer"),
-            size: (std::mem::size_of::<ErrorResult>() * num_samples as usize) as u64,
+            size: (std::mem::size_of::<ErrorResult>() * total_samples as usize) as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -208,10 +274,19 @@ impl Optimizer {
             target_texture_view,
             config_buffer,
             primitive_buffer,
+            perturbation_buffer,
             results_buffer,
             results_staging_buffer,
-            num_samples,
+            samples_buffer,
+            num_candidates,
+            samples_per_candidate,
             seed: 0,
+            stats: Stats {
+                iterations: 0,
+                duration: std::time::Duration::from_secs(0),
+                final_error: 1.0,
+            },
+            start_time: std::time::Instant::now(),
         })
     }
 
@@ -220,72 +295,90 @@ impl Optimizer {
     }
 
     pub async fn run_iteration(&mut self) -> Result<f32> {
-        let current_error = self.calculate_error().await?;
+        self.stats.iterations += 1;
+        self.stats.duration = self.start_time.elapsed();
+
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+
+        // 1. Generate perturbations
+        let mut perts = Vec::with_capacity(self.num_candidates as usize);
         
-        // Simple stochastic refinement
-        // 1. Try to add a new primitive if we have room
-        if self.primitives.len() < 1024 {
-            use rand::Rng;
-            let mut rng = rand::thread_rng();
-            let new_prim = if rng.gen_bool(0.5) {
-                Primitive::new_sphere(
-                    Vec3::new(rng.r#gen::<f32>(), rng.r#gen::<f32>(), rng.r#gen::<f32>()),
-                    rng.gen_range(0.01..0.2),
-                    if rng.gen_bool(0.8) { BooleanOp::Union } else { BooleanOp::Difference },
-                )
-            } else {
-                Primitive::new_cube(
-                    Vec3::new(rng.r#gen::<f32>(), rng.r#gen::<f32>(), rng.r#gen::<f32>()),
-                    Vec3::new(rng.gen_range(0.01..0.2), rng.gen_range(0.01..0.2), rng.gen_range(0.01..0.2)),
-                    if rng.gen_bool(0.8) { BooleanOp::Union } else { BooleanOp::Difference },
-                )
-            };
+        // Candidate 0: No perturbation (baseline)
+        perts.push(Perturbation {
+            prim_idx: 8888, // Use 8888 for baseline
+            pos_delta: Vec3::ZERO,
+            size_scale: 1.0,
+            _padding: 0,
+        });
 
-            self.primitives.push(new_prim);
-            let new_error = self.calculate_error().await?;
-            if new_error < current_error {
-                return Ok(new_error);
+        // Other candidates
+        for _ in 1..self.num_candidates {
+            if self.primitives.len() < 1024 && rng.gen_bool(0.3) {
+                // Evaluate adding a new primitive
+                perts.push(Perturbation {
+                    prim_idx: 9999,
+                    pos_delta: Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()),
+                    size_scale: rng.gen_range(0.01..0.1),
+                    _padding: 0,
+                });
+            } else if !self.primitives.is_empty() {
+                // Refine existing
+                let prim_idx = rng.gen_range(0..self.primitives.len()) as u32;
+                perts.push(Perturbation {
+                    prim_idx,
+                    pos_delta: Vec3::new(rng.gen_range(-0.05..0.05), rng.gen_range(-0.05..0.05), rng.gen_range(-0.05..0.05)),
+                    size_scale: rng.gen_range(0.9..1.1),
+                    _padding: 0,
+                });
             } else {
-                self.primitives.pop();
+                perts.push(perts[0]);
             }
         }
 
-        // 2. Try to refine existing primitives
-        if !self.primitives.is_empty() {
-            use rand::Rng;
-            let mut rng = rand::thread_rng();
-            let idx = rng.gen_range(0..self.primitives.len());
-            let old_prim = self.primitives[idx];
-            
-            // Perturb
-            self.primitives[idx].pos += Vec3::new(rng.gen_range(-0.05..0.05), rng.gen_range(-0.05..0.05), rng.gen_range(-0.05..0.05));
-            self.primitives[idx].size *= rng.gen_range(0.9..1.1);
-            
-            let new_error = self.calculate_error().await?;
-            if new_error < current_error {
-                return Ok(new_error);
-            } else {
-                self.primitives[idx] = old_prim;
+        let errors = self.calculate_errors(&perts).await?;
+        
+        // Find best candidate
+        let mut best_idx = 0;
+        let mut min_error = errors[0];
+        for (i, &err) in errors.iter().enumerate() {
+            if err < min_error {
+                min_error = err;
+                best_idx = i;
             }
         }
 
-        Ok(current_error)
+        // Apply best perturbation ONLY if it improves error
+        if best_idx > 0 {
+            let pert = &perts[best_idx];
+            if pert.prim_idx == 9999 {
+                self.primitives.push(Primitive::new_sphere(pert.pos_delta, pert.size_scale, BooleanOp::Union));
+            } else if pert.prim_idx < 8888 {
+                let prim = &mut self.primitives[pert.prim_idx as usize];
+                prim.pos += pert.pos_delta;
+                prim.size *= pert.size_scale;
+            }
+        }
+
+        self.stats.final_error = min_error;
+        Ok(min_error)
     }
 
-    async fn calculate_error(&mut self) -> Result<f32> {
+    async fn calculate_errors(&mut self, perts: &[Perturbation]) -> Result<Vec<f32>> {
         self.seed += 1;
         
         let config = Config {
-            num_samples: self.num_samples,
+            num_samples: self.samples_per_candidate,
             num_primitives: self.primitives.len() as u32,
             seed: self.seed,
-            _padding: 0,
+            num_candidates: self.num_candidates,
         };
         
         self.queue.write_buffer(&self.config_buffer, 0, bytemuck::cast_slice(&[config]));
         if !self.primitives.is_empty() {
             self.queue.write_buffer(&self.primitive_buffer, 0, bytemuck::cast_slice(&self.primitives));
         }
+        self.queue.write_buffer(&self.perturbation_buffer, 0, bytemuck::cast_slice(perts));
 
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Optimizer Bind Group"),
@@ -307,6 +400,14 @@ impl Optimizer {
                     binding: 3,
                     resource: self.config_buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: self.perturbation_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: self.samples_buffer.as_entire_binding(),
+                },
             ],
         });
 
@@ -321,18 +422,18 @@ impl Optimizer {
             });
             compute_pass.set_pipeline(&self.pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
-            compute_pass.dispatch_workgroups((self.num_samples + 63) / 64, 1, 1);
+            compute_pass.dispatch_workgroups(self.num_candidates, self.samples_per_candidate.div_ceil(256), 1);
         }
 
+        let total_samples = self.num_candidates * self.samples_per_candidate;
         encoder.copy_buffer_to_buffer(
             &self.results_buffer, 0,
             &self.results_staging_buffer, 0,
-            (std::mem::size_of::<ErrorResult>() * self.num_samples as usize) as u64,
+            (std::mem::size_of::<ErrorResult>() * total_samples as usize) as u64,
         );
 
         self.queue.submit(Some(encoder.finish()));
 
-        // Read back results
         let buffer_slice = self.results_staging_buffer.slice(..);
         let (sender, receiver) = futures::channel::oneshot::channel::<Result<(), wgpu::BufferAsyncError>>();
         buffer_slice.map_async(wgpu::MapMode::Read, move |v| {
@@ -345,28 +446,33 @@ impl Optimizer {
             let data = buffer_slice.get_mapped_range();
             let results: &[ErrorResult] = bytemuck::cast_slice(&data);
             
-            let mut mse_total = 0.0;
-            let mut iou_min_total = 0.0;
-            let mut iou_max_total = 0.0;
+            let mut cand_errors = Vec::with_capacity(self.num_candidates as usize);
             
-            for res in results {
-                mse_total += res.mse_sum;
-                iou_min_total += res.iou_min_sum;
-                iou_max_total += res.iou_max_sum;
+            for c in 0..self.num_candidates as usize {
+                let mut mse_total = 0.0;
+                let mut iou_min_total = 0.0;
+                let mut iou_max_total = 0.0;
+                
+                for s in 0..self.samples_per_candidate as usize {
+                    let res = &results[c * self.samples_per_candidate as usize + s];
+                    mse_total += res.mse_sum;
+                    iou_min_total += res.iou_min_sum;
+                    iou_max_total += res.iou_max_sum;
+                }
+                
+                let mse = mse_total / self.samples_per_candidate as f32;
+                let iou = if iou_max_total > 0.0 { iou_min_total / iou_max_total } else { 1.0 };
+                
+                let alpha = 0.5;
+                let beta = 0.5;
+                let error = alpha * mse + beta * (1.0 - iou);
+                cand_errors.push(error);
             }
             
             drop(data);
             self.results_staging_buffer.unmap();
             
-            let mse = mse_total / self.num_samples as f32;
-            let iou = if iou_max_total > 0.0 { iou_min_total / iou_max_total } else { 1.0 };
-            
-            // Reward function MSE + IoU Hybrid
-            let alpha = 0.5;
-            let beta = 0.5;
-            let error = alpha * mse + beta * (1.0 - iou);
-            
-            Ok(error)
+            Ok(cand_errors)
         } else {
             anyhow::bail!("Failed to read back results from GPU")
         }
@@ -376,6 +482,11 @@ impl Optimizer {
         let min = self.target_volume.min;
         let max = self.target_volume.max;
         let size = max - min;
+
+        let notes = format!(
+            "Generated by volume-to-irmf. Iterations: {}, Duration: {:?}, Final Error: {}. Suggestions: Increase iterations or primitive count for better detail.",
+            self.stats.iterations, self.stats.duration, self.stats.final_error
+        );
 
         let mut primitives_code = String::new();
         primitives_code.push_str("  var val = 0.0;\n");
@@ -412,6 +523,7 @@ impl Optimizer {
   "materials": ["Material"],
   "max": [{}, {}, {}],
   "min": [{}, {}, {}],
+  "notes": [{}],
   "units": "mm"
 }}*/
 
@@ -425,7 +537,7 @@ fn mainModel4(xyz: vec3f) -> vec4f {{
   return vec4f(val, 0.0, 0.0, 0.0);
 }}
 "#,
-            max.x, max.y, max.z, min.x, min.y, min.z, primitives_code
+            max.x, max.y, max.z, min.x, min.y, min.z, serde_json::to_string(&notes).unwrap(), primitives_code
         )
     }
 }

@@ -20,28 +20,19 @@ struct Config {
     num_samples: u32,
     num_primitives: u32,
     seed: u32,
+    num_candidates: u32,
 }
 @group(0) @binding(3) var<uniform> config: Config;
 
-// Simple random number generator
-fn hash(u: u32) -> u32 {
-    var x = u;
-    x = ((x >> 16) ^ x) * 0x45d9f3b;
-    x = ((x >> 16) ^ x) * 0x45d9f3b;
-    x = (x >> 16) ^ x;
-    return x;
+struct Perturbation {
+    prim_idx: u32,
+    pos_delta: vec3f,
+    size_scale: f32,
+    padding: f32,
 }
+@group(0) @binding(4) var<storage, read> perturbations: array<Perturbation>;
 
-fn rand_vec3(index: u32) -> vec3f {
-    let h1 = hash(index ^ config.seed);
-    let h2 = hash(h1);
-    let h3 = hash(h2);
-    return vec3f(
-        f32(h1) / 4294967295.0,
-        f32(h2) / 4294967295.0,
-        f32(h3) / 4294967295.0
-    );
-}
+@group(0) @binding(5) var<storage, read> samples: array<vec3f>;
 
 fn sd_sphere(p: vec3f, radius: f32) -> f32 {
     return length(p) - radius;
@@ -52,10 +43,28 @@ fn sd_box(p: vec3f, b: vec3f) -> f32 {
     return length(max(q, vec3f(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);
 }
 
-fn evaluate_model(p: vec3f) -> f32 {
+fn evaluate_model(p: vec3f, cand_idx: u32) -> f32 {
     var val = 0.0;
-    for (var i = 0u; i < config.num_primitives; i++) {
-        let prim = primitives[i];
+    let pert = perturbations[cand_idx];
+    
+    let num_prims = select(config.num_primitives, config.num_primitives + 1u, pert.prim_idx == 9999u);
+
+    for (var i = 0u; i < num_prims; i++) {
+        var prim: Primitive;
+        if (i < config.num_primitives) {
+            prim = primitives[i];
+            if (i == pert.prim_idx) {
+                prim.pos += pert.pos_delta;
+                prim.size *= pert.size_scale;
+            }
+        } else {
+            // New primitive from perturbation data
+            prim.pos = pert.pos_delta;
+            prim.size = vec3f(pert.size_scale);
+            prim.prim_type = 0u; // Sphere for now
+            prim.op = 0u; // Union
+        }
+
         let p_local = p - prim.pos;
         var dist = 0.0;
         if (prim.prim_type == 0u) { // Sphere
@@ -64,9 +73,6 @@ fn evaluate_model(p: vec3f) -> f32 {
             dist = sd_box(p_local, prim.size);
         }
         
-        // Convert distance to occupancy (0 or 1)
-        // For smooth gradients in optimization, we might use a sigmoid or similar
-        // but for now, hard step.
         let occupancy = select(0.0, 1.0, dist <= 0.0);
         
         if (prim.op == 0u) { // Union
@@ -78,35 +84,33 @@ fn evaluate_model(p: vec3f) -> f32 {
     return val;
 }
 
-@compute @workgroup_size(64)
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let index = global_id.x;
-    if (index >= config.num_samples) {
+@compute @workgroup_size(256)
+fn main(
+    @builtin(local_invocation_id) local_id: vec3<u32>,
+    @builtin(workgroup_id) group_id: vec3<u32>
+) {
+    let cand_idx = group_id.x;
+    let group_in_cand = group_id.y;
+    let sample_idx = group_in_cand * 256u + local_id.x;
+    
+    if (cand_idx >= config.num_candidates || sample_idx >= config.num_samples) {
         return;
     }
 
-    // Sample point in [0, 1] normalized coordinates
-    let uvw = rand_vec3(index);
-    
-    // Sample target volume
-    // textureSample is not available in compute shaders for storage textures,
-    // but target_volume is a texture_3d<f32>.
-    // Wait, we need to use textureLoad with integer coordinates or use a sampler.
+    let uvw = samples[sample_idx];
     let dims = textureDimensions(target_volume);
     let coords = vec3<u32>(uvw * vec3f(dims));
     let target_val = textureLoad(target_volume, coords, 0).r;
 
-    // Evaluate candidate model
-    // map uvw to world coordinates if needed, but for now let's assume primitives are in [0, 1]
-    let candidate_val = evaluate_model(uvw);
+    let candidate_val = evaluate_model(uvw, cand_idx);
 
-    // Calculate error components
     let diff = target_val - candidate_val;
     let mse = diff * diff;
     let iou_min = min(target_val, candidate_val);
     let iou_max = max(target_val, candidate_val);
 
-    results[index].mse_sum = mse;
-    results[index].iou_min_sum = iou_min;
-    results[index].iou_max_sum = iou_max;
+    let out_idx = cand_idx * config.num_samples + sample_idx;
+    results[out_idx].mse_sum = mse;
+    results[out_idx].iou_min_sum = iou_min;
+    results[out_idx].iou_max_sum = iou_max;
 }

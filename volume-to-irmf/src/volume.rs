@@ -34,8 +34,8 @@ impl VoxelVolume {
         self.data[idx] = val;
     }
 
-    pub fn from_binvox(mut reader: impl std::io::Read) -> anyhow::Result<Self> {
-        use std::io::BufRead;
+    pub fn from_binvox(reader: impl std::io::Read) -> anyhow::Result<Self> {
+        use std::io::{BufRead, Read};
         let mut reader = std::io::BufReader::new(reader);
         
         let mut line = String::new();

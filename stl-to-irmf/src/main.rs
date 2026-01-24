@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
 
     println!("Reading {}...", args.input.display());
     let mut file = std::fs::File::open(&args.input)?;
-    let mesh = stl::read(&mut file).map_err(|e| anyhow::anyhow!("stl read error: {:?}", e))?;
+    let mut mesh = stl_io::read_stl(&mut file).map_err(|e| anyhow::anyhow!("stl read error: {:?}", e))?;
 
     println!("Voxelizing mesh (placeholders)...");
     // TODO: implement voxelization

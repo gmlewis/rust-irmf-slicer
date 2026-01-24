@@ -229,13 +229,13 @@ impl Optimizer {
             let mut rng = rand::thread_rng();
             let new_prim = if rng.gen_bool(0.5) {
                 Primitive::new_sphere(
-                    Vec3::new(rng.gen(), rng.gen(), rng.gen()),
+                    Vec3::new(rng.r#gen::<f32>(), rng.r#gen::<f32>(), rng.r#gen::<f32>()),
                     rng.gen_range(0.01..0.2),
                     if rng.gen_bool(0.8) { BooleanOp::Union } else { BooleanOp::Difference },
                 )
             } else {
                 Primitive::new_cube(
-                    Vec3::new(rng.gen(), rng.gen(), rng.gen()),
+                    Vec3::new(rng.r#gen::<f32>(), rng.r#gen::<f32>(), rng.r#gen::<f32>()),
                     Vec3::new(rng.gen_range(0.01..0.2), rng.gen_range(0.01..0.2), rng.gen_range(0.01..0.2)),
                     if rng.gen_bool(0.8) { BooleanOp::Union } else { BooleanOp::Difference },
                 )
@@ -334,8 +334,10 @@ impl Optimizer {
 
         // Read back results
         let buffer_slice = self.results_staging_buffer.slice(..);
-        let (sender, receiver) = futures::channel::oneshot::channel();
-        buffer_slice.map_async(wgpu::MapMode::Read, move |v| sender.send(v).unwrap());
+        let (sender, receiver) = futures::channel::oneshot::channel::<Result<(), wgpu::BufferAsyncError>>();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |v| {
+            let _ = sender.send(v);
+        });
 
         self.device.poll(wgpu::Maintain::Wait);
 

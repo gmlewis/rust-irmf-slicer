@@ -40,13 +40,23 @@ async fn main() -> Result<()> {
 
     println!("Starting optimization...");
     let mut best_error = f32::MAX;
-    for i in 0..1000 {
-        // 1000 iterations for testing
+    let mut last_num_prims = 0;
+    for i in 0..10000 {
         let error = optimizer.run_iteration().await?;
-        if error < best_error {
-            best_error = error;
-            println!("Iteration {}: error = {}", i, error);
+        let num_prims = optimizer.generate_irmf().split("val =").count() - 1;
+        
+        if num_prims > last_num_prims {
+            println!("Iteration {}: Added primitive. Total: {}", i, num_prims);
+            last_num_prims = num_prims;
         }
+
+        if i % 100 == 0 || error < best_error {
+            if error < best_error {
+                best_error = error;
+            }
+            println!("Iteration {}: error = {}, primitives = {}", i, error, num_prims);
+        }
+        
         if error < args.error {
             println!("Target error reached!");
             break;

@@ -27,7 +27,7 @@ struct Config {
 struct Perturbation {
     prim_idx: u32,
     pos_delta: vec3f,
-    size_scale: f32,
+    size_scale: vec3f,
     op: u32,
 }
 @group(0) @binding(4) var<storage, read> perturbations: array<Perturbation>;
@@ -64,7 +64,7 @@ fn evaluate_model(p: vec3f, cand_idx: u32) -> f32 {
             }
         } else {
             prim.pos = pert.pos_delta;
-            prim.size = vec3f(pert.size_scale);
+            prim.size = pert.size_scale;
             prim.prim_type = select(0u, 1u, pert.op >= 2u);
             prim.op = pert.op % 2u;
         }

@@ -323,7 +323,7 @@ impl Optimizer {
             Perturbation {
                 prim_idx: 8888,
                 pos_delta: Vec3::ZERO,
-                size_scale: 1.0,
+                size_scale: Vec3::ONE,
                 op: 0,
             };
             num_candidates as usize
@@ -379,7 +379,7 @@ impl Optimizer {
         perts.push(Perturbation {
             prim_idx: 8888,
             pos_delta: Vec3::ZERO,
-            size_scale: 1.0,
+            size_scale: Vec3::ONE,
             op: 0,
         });
 
@@ -389,13 +389,17 @@ impl Optimizer {
             
             if self.primitives.len() < 2048 && (self.primitives.is_empty() || rng.gen_bool(0.4)) {
                 // Try adding Sphere (0) or Cube (1-ish, we need to handle prim_type)
-                // Actually Perturbation only has prim_idx, pos_delta, size_scale, op.
-                // We'll use op bits to encode primitive type for new primitives:
                 // op: 0=Sphere Union, 1=Sphere Diff, 2=Cube Union, 3=Cube Diff
+                let size = rng.gen_range(0.005..0.05);
+                let aspect = Vec3::new(
+                    rng.gen_range(0.5..2.0),
+                    rng.gen_range(0.5..2.0),
+                    rng.gen_range(0.5..2.0),
+                );
                 perts.push(Perturbation {
                     prim_idx: 9999,
                     pos_delta: seed_pos + Vec3::new(rng.gen_range(-0.01..0.01), rng.gen_range(-0.01..0.01), rng.gen_range(-0.01..0.01)),
-                    size_scale: rng.gen_range(0.005..0.1),
+                    size_scale: Vec3::splat(size) * aspect,
                     op: rng.gen_range(0..4), 
                 });
             } else if !self.primitives.is_empty() {
@@ -407,7 +411,11 @@ impl Optimizer {
                         rng.gen_range(-0.02..0.02),
                         rng.gen_range(-0.02..0.02),
                     ),
-                    size_scale: rng.gen_range(0.9..1.1),
+                    size_scale: Vec3::new(
+                        rng.gen_range(0.9..1.1),
+                        rng.gen_range(0.9..1.1),
+                        rng.gen_range(0.9..1.1),
+                    ),
                     op: self.primitives[prim_idx as usize].op,
                 });
             } else {
@@ -416,13 +424,24 @@ impl Optimizer {
         }
 
         let errors = self.calculate_errors(&perts).await?;
+        let identity_error = errors[0];
         let mut best_idx = 0;
-        let mut min_error = f32::MAX;
+        let mut min_error = identity_error;
+        let mut improved_count = 0;
+
         for (i, &err) in errors.iter().enumerate() {
+            if err < identity_error {
+                improved_count += 1;
+            }
             if err < min_error {
                 min_error = err;
                 best_idx = i;
             }
+        }
+
+        if self.stats.iterations % 10 == 0 {
+            println!("Iteration {}: best_error = {}, improved_candidates = {}/{}", 
+                self.stats.iterations, min_error, improved_count, self.num_candidates);
         }
 
         if best_idx > 0 {
@@ -436,13 +455,13 @@ impl Optimizer {
                 if is_cube {
                     self.primitives.push(Primitive::new_cube(
                         pert.pos_delta,
-                        Vec3::splat(pert.size_scale),
+                        pert.size_scale,
                         op,
                     ));
                 } else {
                     self.primitives.push(Primitive::new_sphere(
                         pert.pos_delta,
-                        pert.size_scale,
+                        pert.size_scale.x, 
                         op,
                     ));
                 }

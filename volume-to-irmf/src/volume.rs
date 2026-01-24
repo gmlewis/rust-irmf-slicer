@@ -73,7 +73,7 @@ impl VoxelVolume {
             }
         }
 
-        let mut volume = Self::new(dims, translate, translate + Vec3::splat(scale));
+        let mut volume = Self::new([dims[0], dims[2], dims[1]], translate, translate + Vec3::splat(scale));
         let total_voxels = (dims[0] * dims[1] * dims[2]) as usize;
         let mut voxels_read = 0;
 
@@ -89,7 +89,8 @@ impl VoxelVolume {
                     let x = voxels_read as u32 % dims[0];
                     let z = (voxels_read as u32 / dims[0]) % dims[2];
                     let y = voxels_read as u32 / (dims[0] * dims[2]);
-                    volume.set(x, y, z, val_f);
+                    // Binvox (x, z, y) maps to our (x, y, z)
+                    volume.set(x, z, y, val_f);
                     voxels_read += 1;
                 }
             }

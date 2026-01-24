@@ -77,6 +77,8 @@ This project is organized as a Rust workspace to provide a lean core library sui
 - **`irmf-include-resolver`**: A utility for resolving `#include` directives (e.g., from [lygia.xyz](https://lygia.xyz) or GitHub).
 - **`irmf-output-stl`**: STL generation logic (using Marching Cubes).
 - **`irmf-output-voxels`**: Shared voxel processing and support for Binvox, ZIP (PNG slices), Anycubic Photon (.cbddlp), and SVX formats.
+- **`volume-to-irmf`**: A core library for converting 3D volumes to optimized IRMF shaders.
+- **`binvox-to-irmf`**, **`stl-to-irmf`**, **`svx-to-irmf`**, **`zip-to-irmf`**: CLI tools for converting various 3D formats into IRMF models.
 
 ## Features
 
@@ -172,6 +174,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+## Usage (Conversion)
+
+The `volume-to-irmf` tools allow you to convert existing 3D models into optimized IRMF shaders. This process uses a GPU-accelerated optimization loop to approximate the input volume with basic primitives (spheres and cubes).
+
+### Examples
+
+Convert a BinVox file to IRMF:
+```sh
+cargo run -p binvox-to-irmf -- input.binvox
+```
+
+Convert an STL file to IRMF (specifying voxelization resolution):
+```sh
+cargo run -p stl-to-irmf -- input.stl --res 128
+```
+
+Convert a ZIP archive of image slices to IRMF:
+```sh
+cargo run -p zip-to-irmf -- input.zip
+```
+
+These tools will output a `.irmf` file containing a WGSL shader that represents the optimized model.
 
 ## License
 

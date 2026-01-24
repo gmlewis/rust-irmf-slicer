@@ -61,6 +61,17 @@ fn evaluate_model(p: vec3f, cand_idx: u32) -> f32 {
             if (i == pert.prim_idx) {
                 prim.pos += pert.pos_delta;
                 prim.size *= pert.size_scale;
+                // If pos_delta is large, it might be a replacement
+                // Let's use a simpler heuristic: if size_scale.x is very different from 1.0, 
+                // or if we just always use the encoded op for the perturbed primitive.
+                // Better: if pert.op >= 4, it means encoded replacement.
+                // Let's just always use encoded op for perturbed primitive too if we want.
+                // For now, let's keep it simple: only new primitives use encoded op.
+                // Wait, I changed the Rust code to send encoded op for refinement too if it's a replacement.
+                if (pert.op < 4u && (length(pert.pos_delta) > 0.5 || any(pert.size_scale < vec3f(0.1)))) {
+                     prim.prim_type = select(0u, 1u, pert.op >= 2u);
+                     prim.op = pert.op % 2u;
+                }
             }
         } else {
             prim.pos = pert.pos_delta;

@@ -219,7 +219,7 @@ impl Optimizer {
         });
 
         let num_candidates = 256;
-        let samples_per_candidate = 1024 * 64; // Increased to 64k
+        let samples_per_candidate = 1024 * 128; // 128k
         let total_workgroups = num_candidates * (samples_per_candidate / 256);
 
         let samples_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -383,11 +383,20 @@ impl Optimizer {
             op: 0,
         });
 
+        // Guaranteed new primitive candidate to force growth
+        let seed_pos = seed_positions[rng.gen_range(0..seed_positions.len())];
+        perts.push(Perturbation {
+            prim_idx: 9999,
+            pos_delta: seed_pos,
+            size_scale: Vec3::splat(0.01),
+            op: 0, // Sphere Union
+        });
+
         // Smart generation: candidates add new primitives or refine existing
-        for i in 1..self.num_candidates as usize {
+        for i in 2..self.num_candidates as usize {
             let seed_pos = seed_positions[rng.gen_range(0..seed_positions.len())];
             
-            if self.primitives.len() < 2048 && (self.primitives.is_empty() || rng.gen_bool(0.4)) {
+            if self.primitives.len() < 2048 && (self.primitives.is_empty() || rng.gen_bool(0.3)) {
                 // Try adding Sphere (0) or Cube (1-ish, we need to handle prim_type)
                 // op: 0=Sphere Union, 1=Sphere Diff, 2=Cube Union, 3=Cube Diff
                 let size = rng.gen_range(0.005..0.05);
@@ -404,20 +413,30 @@ impl Optimizer {
                 });
             } else if !self.primitives.is_empty() {
                 let prim_idx = rng.gen_range(0..self.primitives.len()) as u32;
-                perts.push(Perturbation {
-                    prim_idx,
-                    pos_delta: Vec3::new(
-                        rng.gen_range(-0.02..0.02),
-                        rng.gen_range(-0.02..0.02),
-                        rng.gen_range(-0.02..0.02),
-                    ),
-                    size_scale: Vec3::new(
-                        rng.gen_range(0.9..1.1),
-                        rng.gen_range(0.9..1.1),
-                        rng.gen_range(0.9..1.1),
-                    ),
-                    op: self.primitives[prim_idx as usize].op,
-                });
+                if rng.gen_bool(0.1) {
+                    // Replace primitive with a new one at seed_pos
+                    perts.push(Perturbation {
+                        prim_idx,
+                        pos_delta: seed_pos - self.primitives[prim_idx as usize].pos,
+                        size_scale: Vec3::splat(rng.gen_range(0.005..0.05)) / self.primitives[prim_idx as usize].size,
+                        op: rng.gen_range(0..4),
+                    });
+                } else {
+                    perts.push(Perturbation {
+                        prim_idx,
+                        pos_delta: Vec3::new(
+                            rng.gen_range(-0.02..0.02),
+                            rng.gen_range(-0.02..0.02),
+                            rng.gen_range(-0.02..0.02),
+                        ),
+                        size_scale: Vec3::new(
+                            rng.gen_range(0.9..1.1),
+                            rng.gen_range(0.9..1.1),
+                            rng.gen_range(0.9..1.1),
+                        ),
+                        op: self.primitives[prim_idx as usize].op,
+                    });
+                }
             } else {
                 perts.push(perts[0]);
             }
@@ -469,6 +488,11 @@ impl Optimizer {
                 let prim = &mut self.primitives[pert.prim_idx as usize];
                 prim.pos = (prim.pos + pert.pos_delta).clamp(Vec3::ZERO, Vec3::ONE);
                 prim.size = (prim.size * pert.size_scale).clamp(Vec3::splat(0.0005), Vec3::splat(0.5));
+                // Apply replacement type and op if it was a replacement perturbation
+                if pert.op < 4 && (pert.pos_delta.length() > 0.5 || pert.size_scale.min_element() < 0.1) {
+                    prim.prim_type = if pert.op >= 2 { 1 } else { 0 };
+                    prim.op = pert.op % 2;
+                }
             }
         }
 
@@ -545,8 +569,7 @@ impl Optimizer {
                     iou_max_total += res.iou_max_sum;
                 }
                 let mse = mse_total / self.samples_per_candidate as f32;
-                let iou = if iou_max_total > 0.0 { iou_min_total / iou_max_total } else { 1.0 };
-                cand_errors.push(0.5 * mse + 0.5 * (1.0 - iou));
+                cand_errors.push(mse);
             }
             drop(data);
             self.results_staging_buffer.unmap();

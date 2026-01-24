@@ -229,20 +229,16 @@ impl VoxelVolume {
         #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
         struct VoxelConfig {
             num_triangles: u32,
-            _pad: u32,
-            min_bound: Vec3,
-            _pad2: u32,
-            max_bound: Vec3,
-            _pad3: u32,
+            _pad: [u32; 3],
+            min_bound: [f32; 4],
+            max_bound: [f32; 4],
         }
 
         let config = VoxelConfig {
             num_triangles: (indices.len() / 3) as u32,
-            _pad: 0,
-            min_bound: min,
-            _pad2: 0,
-            max_bound: max,
-            _pad3: 0,
+            _pad: [0; 3],
+            min_bound: [min.x, min.y, min.z, 0.0],
+            max_bound: [max.x, max.y, max.z, 0.0],
         };
 
         let config_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -276,7 +272,7 @@ impl VoxelVolume {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
             compute_pass.set_pipeline(&pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
-            compute_pass.dispatch_workgroups(dims[0].div_ceil(8), dims[1].div_ceil(8), dims[2].div_ceil(8));
+            compute_pass.dispatch_workgroups(dims[0].div_ceil(8), dims[1].div_ceil(8), dims[2].div_ceil(4));
         }
 
         let output_buffer_size = (dims[0] * dims[1] * dims[2] * 4) as u64;

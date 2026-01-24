@@ -127,7 +127,8 @@ impl Optimizer {
             texture_size,
         );
 
-        let target_texture_view = target_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let target_texture_view =
+            target_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let shader_src = include_str!("optimizer.wgsl");
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -383,7 +384,7 @@ impl Optimizer {
         let errors = self.calculate_errors(&perts).await?;
         let mut best_idx = 0;
         let mut min_error = self.stats.final_error;
-        
+
         for (i, &err) in errors.iter().enumerate() {
             if err < min_error {
                 min_error = err;
@@ -406,7 +407,8 @@ impl Optimizer {
             } else if pert.prim_idx < 8888 {
                 let prim = &mut self.primitives[pert.prim_idx as usize];
                 prim.pos = (prim.pos + pert.pos_delta).clamp(Vec3::ZERO, Vec3::ONE);
-                prim.size = (prim.size * pert.size_scale).clamp(Vec3::splat(0.001), Vec3::splat(0.5));
+                prim.size =
+                    (prim.size * pert.size_scale).clamp(Vec3::splat(0.001), Vec3::splat(0.5));
             }
         }
 
@@ -500,7 +502,7 @@ impl Optimizer {
         self.queue.submit(Some(encoder.finish()));
 
         let buffer_slice = self.results_staging_buffer.slice(..);
-        let (sender, receiver) = 
+        let (sender, receiver) =
             futures::channel::oneshot::channel::<Result<(), wgpu::BufferAsyncError>>();
         buffer_slice.map_async(wgpu::MapMode::Read, move |v| {
             let _ = sender.send(v);
@@ -576,7 +578,10 @@ impl Optimizer {
 
             let dist_func = if prim_type == 0 {
                 // Sphere
-                format!("length(p_norm - vec3f({}, {}, {})) - {}", p.x, p.y, p.z, s.x)
+                format!(
+                    "length(p_norm - vec3f({}, {}, {})) - {}",
+                    p.x, p.y, p.z, s.x
+                )
             } else {
                 // Cube
                 format!(
@@ -587,7 +592,10 @@ impl Optimizer {
 
             let op_code = if op == 0 {
                 // Union
-                format!("  val = max(val, select(0.0, 1.0, {} <= 0.0));\n", dist_func)
+                format!(
+                    "  val = max(val, select(0.0, 1.0, {} <= 0.0));\n",
+                    dist_func
+                )
             } else {
                 // Difference
                 format!(
@@ -599,13 +607,13 @@ impl Optimizer {
         }
 
         format!(
-            r#"/*{{ 
+            r#"/*{{
   "irmf": "1.0",
   "language": "wgsl",
   "materials": ["Material"],
   "max": [{}, {}, {}],
   "min": [{}, {}, {}],
-  "notes": [{}],
+  "notes": {},
   "units": "mm"
 }}*/
 

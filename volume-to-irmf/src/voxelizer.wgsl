@@ -9,8 +9,11 @@ struct Vertex {
 
 struct Config {
     num_triangles: u32,
-    min_bound: vec3f,
-    max_bound: vec3f,
+    padding: u32,
+    padding2: u32,
+    padding3: u32,
+    min_bound: vec4f,
+    max_bound: vec4f,
 };
 @group(0) @binding(3) var<uniform> config: Config;
 
@@ -32,12 +35,12 @@ fn intersect_ray_tri(orig: vec3f, dir: vec3f, v0: vec3f, v1: vec3f, v2: vec3f) -
     return t;
 }
 
-@compute @workgroup_size(8, 8, 8)
+@compute @workgroup_size(8, 8, 4)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let dims = textureDimensions(voxel_volume);
     if (any(global_id >= dims)) { return; }
 
-    let p = config.min_bound + (vec3f(global_id) + 0.5) / vec3f(dims) * (config.max_bound - config.min_bound);
+    let p = config.min_bound.xyz + (vec3f(global_id) + 0.5) / vec3f(dims) * (config.max_bound.xyz - config.min_bound.xyz);
     
     // Ray cast along +Z
     let ray_dir = vec3f(0.0, 0.0, 1.0);

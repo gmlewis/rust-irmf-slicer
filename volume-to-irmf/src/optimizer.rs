@@ -34,7 +34,7 @@ struct Config {
 struct Perturbation {
     prim_idx: u32,
     pos_delta: Vec3,
-    size_scale: f32,
+    size_scale: Vec3,
     op: u32,
 }
 
@@ -60,6 +60,7 @@ pub struct Optimizer {
     seed: u32,
 
     samples: Vec<Vec3>,
+    filled_voxels: Vec<Vec3>,
     last_results: Vec<ErrorResult>,
 
     pub stats: Stats,
@@ -218,7 +219,7 @@ impl Optimizer {
         });
 
         let num_candidates = 256;
-        let samples_per_candidate = 1024 * 32; // 32768
+        let samples_per_candidate = 1024 * 64; // Increased to 64k
         let total_workgroups = num_candidates * (samples_per_candidate / 256);
 
         let samples_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -228,11 +229,30 @@ impl Optimizer {
             mapped_at_creation: false,
         });
 
+        let mut filled_voxels = Vec::new();
+        for z in 0..target_volume.dims[2] {
+            for y in 0..target_volume.dims[1] {
+                for x in 0..target_volume.dims[0] {
+                    if target_volume.get(x, y, z) > 0.5 {
+                        filled_voxels.push(Vec3::new(
+                            (x as f32 + 0.5) / target_volume.dims[0] as f32,
+                            (y as f32 + 0.5) / target_volume.dims[1] as f32,
+                            (z as f32 + 0.5) / target_volume.dims[2] as f32,
+                        ));
+                    }
+                }
+            }
+        }
+
         use rand::Rng;
         let mut rng = rand::thread_rng();
         let mut samples = Vec::with_capacity(samples_per_candidate as usize);
-        for _ in 0..samples_per_candidate {
-            samples.push(Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()));
+        for i in 0..samples_per_candidate {
+            if !filled_voxels.is_empty() && (i % 2 == 0 || i < samples_per_candidate / 4) {
+                samples.push(filled_voxels[rng.gen_range(0..filled_voxels.len())]);
+            } else {
+                samples.push(Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()));
+            }
         }
         queue.write_buffer(&samples_buffer, 0, bytemuck::cast_slice(&samples));
 
@@ -245,7 +265,7 @@ impl Optimizer {
 
         let primitive_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Primitive Buffer"),
-            size: (std::mem::size_of::<Primitive>() * 1024) as u64,
+            size: (std::mem::size_of::<Primitive>() * 2048) as u64, // Increased to 2048
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -289,6 +309,7 @@ impl Optimizer {
             samples_per_candidate,
             seed: 0,
             samples,
+            filled_voxels,
             last_results: Vec::new(),
             stats: Stats {
                 iterations: 0,
@@ -323,20 +344,35 @@ impl Optimizer {
         use rand::Rng;
         let mut rng = rand::thread_rng();
 
-        let mut seed_pos = Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen());
+        // Resample every iteration to cover more volume over time
+        self.samples.clear();
+        for i in 0..self.samples_per_candidate {
+            if !self.filled_voxels.is_empty() && (i % 2 == 0 || i < self.samples_per_candidate / 4) {
+                self.samples.push(self.filled_voxels[rng.gen_range(0..self.filled_voxels.len())]);
+            } else {
+                self.samples.push(Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()));
+            }
+        }
+        self.queue.write_buffer(&self.samples_buffer, 0, bytemuck::cast_slice(&self.samples));
+
+        let mut seed_positions = Vec::new();
         if !self.last_results.is_empty() {
             let groups_per_cand = self.samples_per_candidate / 256;
-            let mut max_err = -1.0;
-            let mut worst_group = 0;
-            for g in 0..groups_per_cand as usize {
-                let res = &self.last_results[g];
-                if res.mse_sum > max_err {
-                    max_err = res.mse_sum;
-                    worst_group = g;
-                }
+            let mut errors_with_idx: Vec<(f32, usize)> = self.last_results[0..groups_per_cand as usize]
+                .iter()
+                .enumerate()
+                .map(|(i, r)| (r.mse_sum, i))
+                .collect();
+            errors_with_idx.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+            
+            for i in 0..10.min(errors_with_idx.len()) {
+                let group_idx = errors_with_idx[i].1;
+                let sample_idx = group_idx as u32 * 256 + rng.gen_range(0..256);
+                seed_positions.push(self.samples[sample_idx as usize]);
             }
-            let sample_idx = worst_group as u32 * 256 + rng.gen_range(0..256);
-            seed_pos = self.samples[sample_idx as usize];
+        }
+        if seed_positions.is_empty() {
+            seed_positions.push(Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()));
         }
 
         let mut perts = Vec::with_capacity(self.num_candidates as usize);
@@ -347,25 +383,31 @@ impl Optimizer {
             op: 0,
         });
 
-        // Smart generation: half candidates add new primitives, half refine existing
+        // Smart generation: candidates add new primitives or refine existing
         for i in 1..self.num_candidates as usize {
-            if self.primitives.len() < 1024 && i < (self.num_candidates as usize / 2) {
+            let seed_pos = seed_positions[rng.gen_range(0..seed_positions.len())];
+            
+            if self.primitives.len() < 2048 && (self.primitives.is_empty() || rng.gen_bool(0.4)) {
+                // Try adding Sphere (0) or Cube (1-ish, we need to handle prim_type)
+                // Actually Perturbation only has prim_idx, pos_delta, size_scale, op.
+                // We'll use op bits to encode primitive type for new primitives:
+                // op: 0=Sphere Union, 1=Sphere Diff, 2=Cube Union, 3=Cube Diff
                 perts.push(Perturbation {
                     prim_idx: 9999,
-                    pos_delta: seed_pos,
-                    size_scale: rng.gen_range(0.01..0.2),
-                    op: if rng.gen_bool(0.8) { 0 } else { 1 },
+                    pos_delta: seed_pos + Vec3::new(rng.gen_range(-0.01..0.01), rng.gen_range(-0.01..0.01), rng.gen_range(-0.01..0.01)),
+                    size_scale: rng.gen_range(0.005..0.1),
+                    op: rng.gen_range(0..4), 
                 });
             } else if !self.primitives.is_empty() {
                 let prim_idx = rng.gen_range(0..self.primitives.len()) as u32;
                 perts.push(Perturbation {
                     prim_idx,
                     pos_delta: Vec3::new(
-                        rng.gen_range(-0.05..0.05),
-                        rng.gen_range(-0.05..0.05),
-                        rng.gen_range(-0.05..0.05),
+                        rng.gen_range(-0.02..0.02),
+                        rng.gen_range(-0.02..0.02),
+                        rng.gen_range(-0.02..0.02),
                     ),
-                    size_scale: rng.gen_range(0.8..1.2),
+                    size_scale: rng.gen_range(0.9..1.1),
                     op: self.primitives[prim_idx as usize].op,
                 });
             } else {
@@ -375,7 +417,7 @@ impl Optimizer {
 
         let errors = self.calculate_errors(&perts).await?;
         let mut best_idx = 0;
-        let mut min_error = self.stats.final_error;
+        let mut min_error = f32::MAX;
         for (i, &err) in errors.iter().enumerate() {
             if err < min_error {
                 min_error = err;
@@ -386,27 +428,29 @@ impl Optimizer {
         if best_idx > 0 {
             let pert = &perts[best_idx];
             if pert.prim_idx == 9999 {
-                self.primitives.push(Primitive::new_sphere(
-                    pert.pos_delta,
-                    pert.size_scale,
-                    if pert.op == 0 {
-                        BooleanOp::Union
-                    } else {
-                        BooleanOp::Difference
-                    },
-                ));
+                let op = match pert.op {
+                    0 | 2 => BooleanOp::Union,
+                    _ => BooleanOp::Difference,
+                };
+                let is_cube = pert.op >= 2;
+                if is_cube {
+                    self.primitives.push(Primitive::new_cube(
+                        pert.pos_delta,
+                        Vec3::splat(pert.size_scale),
+                        op,
+                    ));
+                } else {
+                    self.primitives.push(Primitive::new_sphere(
+                        pert.pos_delta,
+                        pert.size_scale,
+                        op,
+                    ));
+                }
             } else if pert.prim_idx < 8888 {
                 let prim = &mut self.primitives[pert.prim_idx as usize];
                 prim.pos = (prim.pos + pert.pos_delta).clamp(Vec3::ZERO, Vec3::ONE);
-                prim.size = (prim.size * pert.size_scale).clamp(Vec3::splat(0.001), Vec3::splat(0.5));
+                prim.size = (prim.size * pert.size_scale).clamp(Vec3::splat(0.0005), Vec3::splat(0.5));
             }
-        } else if self.primitives.len() < 1024 && self.stats.iterations % 5 == 0 {
-            // Force add a primitive to jump out of local minima
-            self.primitives.push(Primitive::new_sphere(
-                seed_pos,
-                rng.gen_range(0.01..0.05),
-                BooleanOp::Union,
-            ));
         }
 
         self.stats.final_error = min_error;

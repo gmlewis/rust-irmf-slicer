@@ -65,8 +65,8 @@ fn evaluate_model(p: vec3f, cand_idx: u32) -> f32 {
         } else {
             prim.pos = pert.pos_delta;
             prim.size = vec3f(pert.size_scale);
-            prim.prim_type = 0u;
-            prim.op = pert.op;
+            prim.prim_type = select(0u, 1u, pert.op >= 2u);
+            prim.op = pert.op % 2u;
         }
 
         let p_local = p - prim.pos;

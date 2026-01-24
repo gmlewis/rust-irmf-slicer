@@ -341,6 +341,163 @@ impl Optimizer {
         self.primitives.push(prim);
     }
 
+    /// Initializes primitives using a greedy box-growing algorithm to cover filled voxels.
+    pub fn greedy_box_initialize(&mut self, max_primitives: usize) {
+        let [w, h, d] = self.target_volume.dims;
+        let mut covered = vec![false; (w * h * d) as usize];
+        let mut primitives = Vec::new();
+
+        for z in 0..d {
+            for y in 0..h {
+                for x in 0..w {
+                    let idx = ((z * h + y) * w + x) as usize;
+                    if self.target_volume.data[idx] > 0.5 && !covered[idx] {
+                        if primitives.len() >= max_primitives {
+                            self.primitives = primitives;
+                            return;
+                        }
+
+                        // Greedy expansion: X, then Y, then Z
+                        let mut dx = 0;
+                        while x + dx + 1 < w {
+                            let next_idx = idx + (dx + 1) as usize;
+                            if self.target_volume.data[next_idx] > 0.5 && !covered[next_idx] {
+                                dx += 1;
+                            } else {
+                                break;
+                            }
+                        }
+
+                        let mut dy = 0;
+                        'y_loop: while y + dy + 1 < h {
+                            for i in 0..=dx {
+                                let next_idx = (((z * h + (y + dy + 1)) * w) + (x + i)) as usize;
+                                if !(self.target_volume.data[next_idx] > 0.5 && !covered[next_idx]) {
+                                    break 'y_loop;
+                                }
+                            }
+                            dy += 1;
+                        }
+
+                        let mut dz = 0;
+                        'z_loop: while z + dz + 1 < d {
+                            for j in 0..=dy {
+                                for i in 0..=dx {
+                                    let next_idx =
+                                        ((((z + dz + 1) * h + (y + j)) * w) + (x + i)) as usize;
+                                    if !(self.target_volume.data[next_idx] > 0.5 && !covered[next_idx])
+                                    {
+                                        break 'z_loop;
+                                    }
+                                }
+                            }
+                            dz += 1;
+                        }
+
+                        // Add box in normalized coordinates [0, 1]
+                        let pos = Vec3::new(
+                            (x as f32 + (dx as f32 + 1.0) / 2.0) / w as f32,
+                            (y as f32 + (dy as f32 + 1.0) / 2.0) / h as f32,
+                            (z as f32 + (dz as f32 + 1.0) / 2.0) / d as f32,
+                        );
+                        let size = Vec3::new(
+                            (dx as f32 + 1.0) / 2.0 / w as f32,
+                            (dy as f32 + 1.0) / 2.0 / h as f32,
+                            (dz as f32 + 1.0) / 2.0 / d as f32,
+                        );
+
+                        primitives.push(Primitive::new_cube(pos, size, BooleanOp::Union));
+
+                        // Mark covered
+                        for k in 0..=dz {
+                            for j in 0..=dy {
+                                for i in 0..=dx {
+                                    let c_idx = ((((z + k) * h + (y + j)) * w) + (x + i)) as usize;
+                                    covered[c_idx] = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.primitives = primitives;
+    }
+
+    /// Reduces the number of primitives by merging those that minimize introduced error.
+    pub fn decimate(&mut self, target_count: usize) {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+
+        while self.primitives.len() > target_count {
+            let mut best_pair = (0, 0);
+            let mut min_cost = f32::MAX;
+
+            // Sample random pairs to find a good merge candidate (approximate O(N^2) search)
+            for _ in 0..1000 {
+                let i = rng.gen_range(0..self.primitives.len());
+                let j = rng.gen_range(0..self.primitives.len());
+                if i == j {
+                    continue;
+                }
+
+                let p1 = &self.primitives[i];
+                let p2 = &self.primitives[j];
+
+                // Merge heuristics: only merge if both are boxes
+                if p1.prim_type != 1 || p2.prim_type != 1 {
+                    continue;
+                }
+
+                let min1 = p1.pos - p1.size;
+                let max1 = p1.pos + p1.size;
+                let min2 = p2.pos - p2.size;
+                let max2 = p2.pos + p2.size;
+
+                let combined_min = min1.min(min2);
+                let combined_max = max1.max(max2);
+                let combined_size = (combined_max - combined_min) / 2.0;
+
+                let vol1 = p1.size.x * p1.size.y * p1.size.z * 8.0;
+                let vol2 = p2.size.x * p2.size.y * p2.size.z * 8.0;
+                let combined_vol = combined_size.x * combined_size.y * combined_size.z * 8.0;
+
+                // Cost is the "empty space" introduced by the merge
+                let cost = combined_vol - (vol1 + vol2);
+                if cost < min_cost {
+                    min_cost = cost;
+                    best_pair = (i, j);
+                }
+            }
+
+            if min_cost == f32::MAX {
+                break;
+            }
+
+            // Perform merge
+            let (idx1, idx2) = if best_pair.0 > best_pair.1 {
+                (best_pair.0, best_pair.1)
+            } else {
+                (best_pair.1, best_pair.0)
+            };
+            let p1 = self.primitives.remove(idx1);
+            let p2 = self.primitives.remove(idx2);
+
+            let min1 = p1.pos - p1.size;
+            let max1 = p1.pos + p1.size;
+            let min2 = p2.pos - p2.size;
+            let max2 = p2.pos + p2.size;
+            let combined_min = min1.min(min2);
+            let combined_max = max1.max(max2);
+
+            self.primitives.push(Primitive::new_cube(
+                (combined_min + combined_max) / 2.0,
+                (combined_max - combined_min) / 2.0,
+                BooleanOp::Union,
+            ));
+        }
+    }
+
     pub async fn run_iteration(&mut self) -> Result<f32> {
         self.stats.iterations += 1;
         self.stats.duration = self.start_time.elapsed();
@@ -357,18 +514,20 @@ impl Optimizer {
                 self.samples.push(Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()));
             }
         }
-        self.queue.write_buffer(&self.samples_buffer, 0, bytemuck::cast_slice(&self.samples));
+        self.queue
+            .write_buffer(&self.samples_buffer, 0, bytemuck::cast_slice(&self.samples));
 
         let mut seed_positions = Vec::new();
         if !self.last_results.is_empty() {
             let groups_per_cand = self.samples_per_candidate / 256;
-            let mut errors_with_idx: Vec<(f32, usize)> = self.last_results[0..groups_per_cand as usize]
+            let mut errors_with_idx: Vec<(f32, usize)> = self.last_results
+                [0..groups_per_cand as usize]
                 .iter()
                 .enumerate()
                 .map(|(i, r)| (r.mse_sum, i))
                 .collect();
             errors_with_idx.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-            
+
             for i in 0..10.min(errors_with_idx.len()) {
                 let group_idx = errors_with_idx[i].1;
                 let sample_idx = group_idx as u32 * 256 + rng.gen_range(0..256);
@@ -397,9 +556,9 @@ impl Optimizer {
         });
 
         // Smart generation: candidates add new primitives or refine existing
-        for i in 2..self.num_candidates as usize {
+        for _i in 2..self.num_candidates as usize {
             let seed_pos = seed_positions[rng.gen_range(0..seed_positions.len())];
-            
+
             if self.primitives.len() < 2048 && (self.primitives.is_empty() || rng.gen_bool(0.3)) {
                 // Try adding Sphere (0) or Cube (1-ish, we need to handle prim_type)
                 // op: 0=Sphere Union, 1=Sphere Diff, 2=Cube Union, 3=Cube Diff
@@ -411,9 +570,14 @@ impl Optimizer {
                 );
                 perts.push(Perturbation {
                     prim_idx: 9999,
-                    pos_delta: seed_pos + Vec3::new(rng.gen_range(-0.01..0.01), rng.gen_range(-0.01..0.01), rng.gen_range(-0.01..0.01)),
+                    pos_delta: seed_pos
+                        + Vec3::new(
+                            rng.gen_range(-0.01..0.01),
+                            rng.gen_range(-0.01..0.01),
+                            rng.gen_range(-0.01..0.01),
+                        ),
                     size_scale: Vec3::splat(size) * aspect,
-                    op: rng.gen_range(0..4), 
+                    op: rng.gen_range(0..4),
                 });
             } else if !self.primitives.is_empty() {
                 let prim_idx = rng.gen_range(0..self.primitives.len()) as u32;
@@ -422,7 +586,8 @@ impl Optimizer {
                     perts.push(Perturbation {
                         prim_idx,
                         pos_delta: seed_pos - self.primitives[prim_idx as usize].pos,
-                        size_scale: Vec3::splat(rng.gen_range(0.005..0.05)) / self.primitives[prim_idx as usize].size,
+                        size_scale: Vec3::splat(rng.gen_range(0.005..0.05))
+                            / self.primitives[prim_idx as usize].size,
                         op: rng.gen_range(0..4),
                     });
                 } else {
@@ -463,8 +628,10 @@ impl Optimizer {
         }
 
         if self.stats.iterations % 10 == 0 {
-            println!("Iteration {}: best_error = {}, improved_candidates = {}/{}", 
-                self.stats.iterations, min_error, improved_count, self.num_candidates);
+            println!(
+                "Iteration {}: best_error = {}, improved_candidates = {}/{}",
+                self.stats.iterations, min_error, improved_count, self.num_candidates
+            );
         }
 
         if best_idx > 0 {
@@ -484,7 +651,7 @@ impl Optimizer {
                 } else {
                     self.primitives.push(Primitive::new_sphere(
                         pert.pos_delta,
-                        pert.size_scale.x, 
+                        pert.size_scale.x,
                         op,
                     ));
                 }
@@ -493,32 +660,12 @@ impl Optimizer {
                 prim.pos = (prim.pos + pert.pos_delta).clamp(Vec3::ZERO, Vec3::ONE);
                 prim.size = (prim.size * pert.size_scale).clamp(Vec3::splat(0.0005), Vec3::splat(0.5));
                 // Apply replacement type and op if it was a replacement perturbation
-                if pert.op < 4 && (pert.pos_delta.length() > 0.5 || pert.size_scale.min_element() < 0.1) {
+                if pert.op < 4
+                    && (pert.pos_delta.length() > 0.5 || pert.size_scale.min_element() < 0.1)
+                {
                     prim.prim_type = if pert.op >= 2 { 1 } else { 0 };
                     prim.op = pert.op % 2;
                 }
-            }
-        }
-
-        // Pruning: Occasionally try removing a primitive
-        if self.stats.iterations % 50 == 0 && !self.primitives.is_empty() {
-            let prim_to_remove = rng.gen_range(0..self.primitives.len());
-            let mut test_prims = self.primitives.clone();
-            test_prims.remove(prim_to_remove);
-            
-            // Check error without this primitive
-            let mut test_perts = vec![Perturbation {
-                prim_idx: 8888,
-                pos_delta: Vec3::ZERO,
-                size_scale: Vec3::ONE,
-                op: 0,
-            }; self.num_candidates as usize];
-            
-            // We need a way to calculate error for a specific set of primitives.
-            // For now, let's just use a simple heuristic: if it's very small, remove it.
-            if self.primitives[prim_to_remove].size.max_element() < 0.001 {
-                self.primitives.remove(prim_to_remove);
-                println!("Pruned tiny primitive.");
             }
         }
 
@@ -554,26 +701,49 @@ impl Optimizer {
             num_candidates: self.num_candidates,
         };
 
-        self.queue.write_buffer(&self.config_buffer, 0, bytemuck::cast_slice(&[config]));
+        self.queue
+            .write_buffer(&self.config_buffer, 0, bytemuck::cast_slice(&[config]));
         if !self.primitives.is_empty() {
-            self.queue.write_buffer(&self.primitive_buffer, 0, bytemuck::cast_slice(&self.primitives));
+            self.queue
+                .write_buffer(&self.primitive_buffer, 0, bytemuck::cast_slice(&self.primitives));
         }
-        self.queue.write_buffer(&self.perturbation_buffer, 0, bytemuck::cast_slice(perts));
+        self.queue
+            .write_buffer(&self.perturbation_buffer, 0, bytemuck::cast_slice(perts));
 
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Optimizer Bind Group"),
             layout: &self.bind_group_layout,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: self.primitive_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&self.target_texture_view) },
-                wgpu::BindGroupEntry { binding: 2, resource: self.results_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 3, resource: self.config_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 4, resource: self.perturbation_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 5, resource: self.samples_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.primitive_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&self.target_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: self.results_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: self.config_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: self.perturbation_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: self.samples_buffer.as_entire_binding(),
+                },
             ],
         });
 
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
             compute_pass.set_pipeline(&self.pipeline);
@@ -584,33 +754,33 @@ impl Optimizer {
         let groups_per_cand = self.samples_per_candidate / 256;
         let total_results = self.num_candidates * groups_per_cand;
         encoder.copy_buffer_to_buffer(
-            &self.results_buffer, 0,
-            &self.results_staging_buffer, 0,
+            &self.results_buffer,
+            0,
+            &self.results_staging_buffer,
+            0,
             (std::mem::size_of::<ErrorResult>() * total_results as usize) as u64,
         );
 
         self.queue.submit(Some(encoder.finish()));
 
         let buffer_slice = self.results_staging_buffer.slice(..);
-        let (sender, receiver) = futures::channel::oneshot::channel::<Result<(), wgpu::BufferAsyncError>>();
-        buffer_slice.map_async(wgpu::MapMode::Read, move |v| { let _ = sender.send(v); });
+        let (sender, receiver) =
+            futures::channel::oneshot::channel::<Result<(), wgpu::BufferAsyncError>>();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |v| {
+            let _ = sender.send(v);
+        });
         self.device.poll(wgpu::Maintain::Wait);
 
         if let Ok(Ok(())) = receiver.await {
             let data = buffer_slice.get_mapped_range();
             let results: &[ErrorResult] = bytemuck::cast_slice(&data);
             self.last_results = results.to_vec();
-            
+
             let mut cand_errors = Vec::with_capacity(self.num_candidates as usize);
             for c in 0..self.num_candidates as usize {
                 let mut mse_total = 0.0;
-                let mut iou_min_total = 0.0;
-                let mut iou_max_total = 0.0;
                 for g in 0..groups_per_cand as usize {
-                    let res = &results[c * groups_per_cand as usize + g];
-                    mse_total += res.mse_sum;
-                    iou_min_total += res.iou_min_sum;
-                    iou_max_total += res.iou_max_sum;
+                    mse_total += results[c * groups_per_cand as usize + g].mse_sum;
                 }
                 let mse = mse_total / self.samples_per_candidate as f32;
                 cand_errors.push(mse);

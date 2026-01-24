@@ -20,6 +20,10 @@ struct Args {
     /// Target error
     #[arg(short, long, default_value_t = 0.01)]
     error: f32,
+
+    /// Use greedy box initialization
+    #[arg(short, long)]
+    greedy: bool,
 }
 
 #[tokio::main]
@@ -37,6 +41,19 @@ async fn main() -> Result<()> {
 
     println!("Initializing optimizer...");
     let mut optimizer = Optimizer::new(volume).await?;
+
+    if args.greedy {
+        println!("Performing greedy box initialization...");
+        // Use a higher intermediate limit for greedy pass
+        optimizer.greedy_box_initialize(5000);
+        let initial_count = optimizer.generate_irmf().split("val =").count() - 1;
+        println!("Greedy pass produced {} primitives.", initial_count);
+        
+        if initial_count > args.max_primitives {
+            println!("Decimating to {} primitives...", args.max_primitives);
+            optimizer.decimate(args.max_primitives);
+        }
+    }
 
     println!("Starting optimization...");
     let mut best_error = f32::MAX;

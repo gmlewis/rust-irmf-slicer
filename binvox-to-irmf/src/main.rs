@@ -28,40 +28,27 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     println!("Reading {}...", args.input.display());
-    let mut file = std::fs::File::open(&args.input)?;
-    let model = binvox::read(&mut file).map_err(|e| anyhow::anyhow!("binvox read error: {:?}", e))?;
+    let file = std::fs::File::open(&args.input)?;
+    let volume = VoxelVolume::from_binvox(file)?;
 
-    let dims = [model.width as u32, model.height as u32, model.depth as u32];
-    println!("Dimensions: {}x{}x{}", dims[0], dims[1], dims[2]);
-
-    // binvox coordinates: x is fastest, then z, then y?
-    // Actually binvox::Model.data is a Vec<bool>
-    // The binvox crate says: "The order of voxels is (x, z, y), where x is the inner-most loop."
-    
-    let mut volume = VoxelVolume::new(
-        dims,
-        Vec3::new(model.tx, model.ty, model.tz),
-        Vec3::new(
-            model.tx + model.scale,
-            model.ty + model.scale,
-            model.tz + model.scale,
-        ),
-    );
-
-    for (i, &filled) in model.data.iter().enumerate() {
-        if filled {
-            let x = i as u32 % dims[0];
-            let z = (i as u32 / dims[0]) % dims[2];
-            let y = i as u32 / (dims[0] * dims[2]);
-            volume.set(x, y, z, 1.0);
-        }
-    }
+    println!("Dimensions: {}x{}x{}", volume.dims[0], volume.dims[1], volume.dims[2]);
 
     println!("Initializing optimizer...");
     let mut optimizer = Optimizer::new(volume).await?;
 
-    println!("Starting optimization (placeholders)...");
-    // TODO: loop and run iterations
+    println!("Starting optimization...");
+    let mut best_error = f32::MAX;
+    for i in 0..1000 { // 1000 iterations for testing
+        let error = optimizer.run_iteration().await?;
+        if error < best_error {
+            best_error = error;
+            println!("Iteration {}: error = {}", i, error);
+        }
+        if error < args.error {
+            println!("Target error reached!");
+            break;
+        }
+    }
     
     let irmf = optimizer.generate_irmf();
     

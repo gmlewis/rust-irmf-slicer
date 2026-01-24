@@ -220,15 +220,210 @@ impl Optimizer {
     }
 
     pub async fn run_iteration(&mut self) -> Result<f32> {
-        // TODO: Implement one RL iteration
-        // 1. Update primitive buffer on GPU
-        // 2. Run compute shader to sample and calculate error
-        // 3. Update primitives based on error signal
-        Ok(0.0)
+        let current_error = self.calculate_error().await?;
+        
+        // Simple stochastic refinement
+        // 1. Try to add a new primitive if we have room
+        if self.primitives.len() < 1024 {
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            let new_prim = if rng.gen_bool(0.5) {
+                Primitive::new_sphere(
+                    Vec3::new(rng.gen(), rng.gen(), rng.gen()),
+                    rng.gen_range(0.01..0.2),
+                    if rng.gen_bool(0.8) { BooleanOp::Union } else { BooleanOp::Difference },
+                )
+            } else {
+                Primitive::new_cube(
+                    Vec3::new(rng.gen(), rng.gen(), rng.gen()),
+                    Vec3::new(rng.gen_range(0.01..0.2), rng.gen_range(0.01..0.2), rng.gen_range(0.01..0.2)),
+                    if rng.gen_bool(0.8) { BooleanOp::Union } else { BooleanOp::Difference },
+                )
+            };
+
+            self.primitives.push(new_prim);
+            let new_error = self.calculate_error().await?;
+            if new_error < current_error {
+                return Ok(new_error);
+            } else {
+                self.primitives.pop();
+            }
+        }
+
+        // 2. Try to refine existing primitives
+        if !self.primitives.is_empty() {
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            let idx = rng.gen_range(0..self.primitives.len());
+            let old_prim = self.primitives[idx];
+            
+            // Perturb
+            self.primitives[idx].pos += Vec3::new(rng.gen_range(-0.05..0.05), rng.gen_range(-0.05..0.05), rng.gen_range(-0.05..0.05));
+            self.primitives[idx].size *= rng.gen_range(0.9..1.1);
+            
+            let new_error = self.calculate_error().await?;
+            if new_error < current_error {
+                return Ok(new_error);
+            } else {
+                self.primitives[idx] = old_prim;
+            }
+        }
+
+        Ok(current_error)
+    }
+
+    async fn calculate_error(&mut self) -> Result<f32> {
+        self.seed += 1;
+        
+        let config = Config {
+            num_samples: self.num_samples,
+            num_primitives: self.primitives.len() as u32,
+            seed: self.seed,
+            _padding: 0,
+        };
+        
+        self.queue.write_buffer(&self.config_buffer, 0, bytemuck::cast_slice(&[config]));
+        if !self.primitives.is_empty() {
+            self.queue.write_buffer(&self.primitive_buffer, 0, bytemuck::cast_slice(&self.primitives));
+        }
+
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Optimizer Bind Group"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.primitive_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&self.target_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: self.results_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: self.config_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Error Calculation Encoder"),
+        });
+
+        {
+            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Error Calculation Pass"),
+                timestamp_writes: None,
+            });
+            compute_pass.set_pipeline(&self.pipeline);
+            compute_pass.set_bind_group(0, &bind_group, &[]);
+            compute_pass.dispatch_workgroups((self.num_samples + 63) / 64, 1, 1);
+        }
+
+        encoder.copy_buffer_to_buffer(
+            &self.results_buffer, 0,
+            &self.results_staging_buffer, 0,
+            (std::mem::size_of::<ErrorResult>() * self.num_samples as usize) as u64,
+        );
+
+        self.queue.submit(Some(encoder.finish()));
+
+        // Read back results
+        let buffer_slice = self.results_staging_buffer.slice(..);
+        let (sender, receiver) = futures::channel::oneshot::channel();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |v| sender.send(v).unwrap());
+
+        self.device.poll(wgpu::Maintain::Wait);
+
+        if let Ok(Ok(())) = receiver.await {
+            let data = buffer_slice.get_mapped_range();
+            let results: &[ErrorResult] = bytemuck::cast_slice(&data);
+            
+            let mut mse_total = 0.0;
+            let mut iou_min_total = 0.0;
+            let mut iou_max_total = 0.0;
+            
+            for res in results {
+                mse_total += res.mse_sum;
+                iou_min_total += res.iou_min_sum;
+                iou_max_total += res.iou_max_sum;
+            }
+            
+            drop(data);
+            self.results_staging_buffer.unmap();
+            
+            let mse = mse_total / self.num_samples as f32;
+            let iou = if iou_max_total > 0.0 { iou_min_total / iou_max_total } else { 1.0 };
+            
+            // Reward function MSE + IoU Hybrid
+            let alpha = 0.5;
+            let beta = 0.5;
+            let error = alpha * mse + beta * (1.0 - iou);
+            
+            Ok(error)
+        } else {
+            anyhow::bail!("Failed to read back results from GPU")
+        }
     }
 
     pub fn generate_irmf(&self) -> String {
-        // TODO: Generate WGSL IRMF shader
-        String::new()
+        let min = self.target_volume.min;
+        let max = self.target_volume.max;
+        let size = max - min;
+
+        let mut primitives_code = String::new();
+        primitives_code.push_str("  var val = 0.0;\n");
+        primitives_code.push_str("  let p_norm = (xyz - vec3f(");
+        primitives_code.push_str(&format!("{}, {}, {}", min.x, min.y, min.z));
+        primitives_code.push_str(")) / vec3f(");
+        primitives_code.push_str(&format!("{}, {}, {}", size.x, size.y, size.z));
+        primitives_code.push_str(");\n");
+
+        for prim in &self.primitives {
+            let prim_type = prim.prim_type;
+            let op = prim.op;
+            let p = prim.pos;
+            let s = prim.size;
+
+            let dist_func = if prim_type == 0 { // Sphere
+                format!("length(p_norm - vec3f({}, {}, {})) - {}", p.x, p.y, p.z, s.x)
+            } else { // Cube
+                format!("sd_box(p_norm - vec3f({}, {}, {}), vec3f({}, {}, {}))", p.x, p.y, p.z, s.x, s.y, s.z)
+            };
+
+            let op_code = if op == 0 { // Union
+                format!("  val = max(val, select(0.0, 1.0, {} <= 0.0));\n", dist_func)
+            } else { // Difference
+                format!("  val = min(val, 1.0 - select(0.0, 1.0, {} <= 0.0));\n", dist_func)
+            };
+            primitives_code.push_str(&op_code);
+        }
+
+        format!(
+            r#"/*{{
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["Material"],
+  "max": [{}, {}, {}],
+  "min": [{}, {}, {}],
+  "units": "mm"
+}}*/
+
+fn sd_box(p: vec3f, b: vec3f) -> f32 {{
+  let q = abs(p) - b;
+  return length(max(q, vec3f(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);
+}}
+
+fn mainModel4(xyz: vec3f) -> vec4f {{
+{}
+  return vec4f(val, 0.0, 0.0, 0.0);
+}}
+"#,
+            max.x, max.y, max.z, min.x, min.y, min.z, primitives_code
+        )
     }
 }

@@ -62,6 +62,8 @@ pub struct Optimizer {
     samples: Vec<Vec3>,
     filled_voxels: Vec<Vec3>,
     last_results: Vec<ErrorResult>,
+    last_best_error: f32,
+    iterations_since_improvement: u32,
 
     pub stats: Stats,
     start_time: std::time::Instant,
@@ -311,6 +313,8 @@ impl Optimizer {
             samples,
             filled_voxels,
             last_results: Vec::new(),
+            last_best_error: 1.0,
+            iterations_since_improvement: 0,
             stats: Stats {
                 iterations: 0,
                 duration: std::time::Duration::from_secs(0),
@@ -496,6 +500,46 @@ impl Optimizer {
             }
         }
 
+        // Pruning: Occasionally try removing a primitive
+        if self.stats.iterations % 50 == 0 && !self.primitives.is_empty() {
+            let prim_to_remove = rng.gen_range(0..self.primitives.len());
+            let mut test_prims = self.primitives.clone();
+            test_prims.remove(prim_to_remove);
+            
+            // Check error without this primitive
+            let mut test_perts = vec![Perturbation {
+                prim_idx: 8888,
+                pos_delta: Vec3::ZERO,
+                size_scale: Vec3::ONE,
+                op: 0,
+            }; self.num_candidates as usize];
+            
+            // We need a way to calculate error for a specific set of primitives.
+            // For now, let's just use a simple heuristic: if it's very small, remove it.
+            if self.primitives[prim_to_remove].size.max_element() < 0.001 {
+                self.primitives.remove(prim_to_remove);
+                println!("Pruned tiny primitive.");
+            }
+        }
+
+        if min_error < self.last_best_error * 0.999 {
+            self.last_best_error = min_error;
+            self.iterations_since_improvement = 0;
+        } else {
+            self.iterations_since_improvement += 1;
+        }
+
+        if self.iterations_since_improvement > 50 && self.primitives.len() < 2048 {
+            let seed_pos = seed_positions[rng.gen_range(0..seed_positions.len())];
+            self.primitives.push(Primitive::new_sphere(
+                seed_pos,
+                rng.gen_range(0.01..0.03),
+                BooleanOp::Union,
+            ));
+            self.iterations_since_improvement = 0;
+            println!("Forced adding primitive due to no improvement.");
+        }
+
         self.stats.final_error = min_error;
         Ok(min_error)
     }
@@ -612,9 +656,9 @@ impl Optimizer {
             };
 
             let op_code = if op == 0 {
-                format!("  val = max(val, select(0.0, 1.0, {} <= 0.0));\n", dist_func)
+                format!("  val = max(val, clamp(0.5 - ({}) * 20.0, 0.0, 1.0));\n", dist_func)
             } else {
-                format!("  val = min(val, 1.0 - select(0.0, 1.0, {} <= 0.0));\n", dist_func)
+                format!("  val = min(val, 1.0 - clamp(0.5 - ({}) * 20.0, 0.0, 1.0));\n", dist_func)
             };
             primitives_code.push_str(&op_code);
         }

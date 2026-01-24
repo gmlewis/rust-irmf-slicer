@@ -87,7 +87,10 @@ fn evaluate_model(p: vec3f, cand_idx: u32) -> f32 {
         } else {
             dist = sd_box(p_local, prim.size);
         }
-        let occupancy = select(0.0, 1.0, dist <= 0.0);
+        
+        // Soft occupancy: 1.0 inside, 0.0 outside, smooth transition
+        let occupancy = clamp(0.5 - dist * 20.0, 0.0, 1.0);
+        
         if (prim.op == 0u) {
             val = max(val, occupancy);
         } else {

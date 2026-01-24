@@ -59,7 +59,6 @@ fn evaluate_model(p: vec3f, cand_idx: u32) -> f32 {
                 prim.size *= pert.size_scale;
             }
         } else {
-            // New primitive from perturbation data
             prim.pos = pert.pos_delta;
             prim.size = vec3f(pert.size_scale);
             prim.prim_type = 0u; // Sphere
@@ -74,7 +73,10 @@ fn evaluate_model(p: vec3f, cand_idx: u32) -> f32 {
             dist = sd_box(p_local, prim.size);
         }
         
-        let occupancy = select(0.0, 1.0, dist <= 0.0);
+        // Smooth occupancy using smoothstep for better gradients
+        // Map dist in [-epsilon, epsilon] to [1, 0]
+        let epsilon = 0.05;
+        let occupancy = smoothstep(epsilon, -epsilon, dist);
         
         if (prim.op == 0u) { // Union
             val = max(val, occupancy);

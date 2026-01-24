@@ -78,7 +78,13 @@ impl Optimizer {
                 &wgpu::DeviceDescriptor {
                     label: Some("Optimizer Device"),
                     required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::default(),
+                    required_limits: wgpu::Limits {
+                        max_storage_buffer_binding_size: adapter
+                            .limits()
+                            .max_storage_buffer_binding_size,
+                        max_buffer_size: adapter.limits().max_buffer_size,
+                        ..wgpu::Limits::default()
+                    },
                     memory_hints: Default::default(),
                 },
                 None,
@@ -88,7 +94,6 @@ impl Optimizer {
         let device = Arc::new(device);
         let queue = Arc::new(queue);
 
-        // Create target volume texture
         let texture_size = wgpu::Extent3d {
             width: target_volume.dims[0],
             height: target_volume.dims[1],
@@ -122,10 +127,8 @@ impl Optimizer {
             texture_size,
         );
 
-        let target_texture_view =
-            target_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let target_texture_view = target_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Load shader
         let shader_src = include_str!("optimizer.wgsl");
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Optimizer Shader"),
@@ -215,7 +218,7 @@ impl Optimizer {
 
         let num_candidates = 256;
         let samples_per_candidate = 1024 * 32; // 32768
-        let total_samples = num_candidates * samples_per_candidate;
+        let total_workgroups = num_candidates * (samples_per_candidate / 256);
 
         let samples_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Samples Buffer"),
@@ -224,7 +227,6 @@ impl Optimizer {
             mapped_at_creation: false,
         });
 
-        // Populate samples once
         use rand::Rng;
         let mut rng = rand::thread_rng();
         let mut samples = Vec::with_capacity(samples_per_candidate as usize);
@@ -256,14 +258,14 @@ impl Optimizer {
 
         let results_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Results Buffer"),
-            size: (std::mem::size_of::<ErrorResult>() * total_samples as usize) as u64,
+            size: (std::mem::size_of::<ErrorResult>() * total_workgroups as usize) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
         let results_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Results Staging Buffer"),
-            size: (std::mem::size_of::<ErrorResult>() * total_samples as usize) as u64,
+            size: (std::mem::size_of::<ErrorResult>() * total_workgroups as usize) as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -295,7 +297,6 @@ impl Optimizer {
             start_time: std::time::Instant::now(),
         };
 
-        // Run initial baseline
         let perts = vec![
             Perturbation {
                 prim_idx: 8888,
@@ -323,16 +324,18 @@ impl Optimizer {
 
         let mut seed_pos = Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen());
         if !self.last_results.is_empty() {
+            let groups_per_cand = self.samples_per_candidate / 256;
             let mut max_err = -1.0;
-            let mut worst_idx = 0;
-            for s in 0..self.samples_per_candidate as usize {
-                let res = &self.last_results[s];
+            let mut worst_group = 0;
+            for g in 0..groups_per_cand as usize {
+                let res = &self.last_results[g];
                 if res.mse_sum > max_err {
                     max_err = res.mse_sum;
-                    worst_idx = res.sample_idx;
+                    worst_group = g;
                 }
             }
-            seed_pos = self.samples[worst_idx as usize];
+            let sample_idx = worst_group as u32 * 256 + rng.gen_range(0..256);
+            seed_pos = self.samples[sample_idx as usize];
         }
 
         let mut perts = Vec::with_capacity(self.num_candidates as usize);
@@ -343,7 +346,6 @@ impl Optimizer {
             op: 0,
         });
 
-        // Add Primitive (Union)
         for i in 1..self.num_candidates / 4 {
             perts.push(Perturbation {
                 prim_idx: 9999,
@@ -352,7 +354,6 @@ impl Optimizer {
                 op: BooleanOp::Union as u32,
             });
         }
-        // Add Primitive (Difference)
         for i in self.num_candidates / 4..self.num_candidates / 2 {
             perts.push(Perturbation {
                 prim_idx: 9999,
@@ -361,14 +362,16 @@ impl Optimizer {
                 op: BooleanOp::Difference as u32,
             });
         }
-
-        // Refine Existing
         for _ in self.num_candidates / 2..self.num_candidates {
             if !self.primitives.is_empty() {
                 let prim_idx = rng.gen_range(0..self.primitives.len()) as u32;
                 perts.push(Perturbation {
                     prim_idx,
-                    pos_delta: Vec3::new(rng.gen_range(-0.02..0.02), rng.gen_range(-0.02..0.02), rng.gen_range(-0.02..0.02)),
+                    pos_delta: Vec3::new(
+                        rng.gen_range(-0.02..0.02),
+                        rng.gen_range(-0.02..0.02),
+                        rng.gen_range(-0.02..0.02),
+                    ),
                     size_scale: rng.gen_range(0.95..1.05),
                     op: self.primitives[prim_idx as usize].op,
                 });
@@ -379,12 +382,8 @@ impl Optimizer {
 
         let errors = self.calculate_errors(&perts).await?;
         let mut best_idx = 0;
-        let mut min_error = errors[0];
+        let mut min_error = self.stats.final_error;
         
-        if self.stats.iterations > 1 && min_error > self.stats.final_error + 1e-5 {
-             println!("DEBUG: Iteration {}: errors[0] ({}) > last final_error ({})", self.stats.iterations, min_error, self.stats.final_error);
-        }
-
         for (i, &err) in errors.iter().enumerate() {
             if err < min_error {
                 min_error = err;
@@ -395,11 +394,19 @@ impl Optimizer {
         if best_idx > 0 {
             let pert = &perts[best_idx];
             if pert.prim_idx == 9999 {
-                self.primitives.push(Primitive::new_sphere(pert.pos_delta, pert.size_scale, if pert.op == 0 { BooleanOp::Union } else { BooleanOp::Difference }));
+                self.primitives.push(Primitive::new_sphere(
+                    pert.pos_delta,
+                    pert.size_scale,
+                    if pert.op == 0 {
+                        BooleanOp::Union
+                    } else {
+                        BooleanOp::Difference
+                    },
+                ));
             } else if pert.prim_idx < 8888 {
                 let prim = &mut self.primitives[pert.prim_idx as usize];
-                prim.pos += pert.pos_delta;
-                prim.size *= pert.size_scale;
+                prim.pos = (prim.pos + pert.pos_delta).clamp(Vec3::ZERO, Vec3::ONE);
+                prim.size = (prim.size * pert.size_scale).clamp(Vec3::splat(0.001), Vec3::splat(0.5));
             }
         }
 
@@ -480,19 +487,20 @@ impl Optimizer {
             );
         }
 
-        let total_samples = self.num_candidates * self.samples_per_candidate;
+        let groups_per_cand = self.samples_per_candidate / 256;
+        let total_results = self.num_candidates * groups_per_cand;
         encoder.copy_buffer_to_buffer(
             &self.results_buffer,
             0,
             &self.results_staging_buffer,
             0,
-            (std::mem::size_of::<ErrorResult>() * total_samples as usize) as u64,
+            (std::mem::size_of::<ErrorResult>() * total_results as usize) as u64,
         );
 
         self.queue.submit(Some(encoder.finish()));
 
         let buffer_slice = self.results_staging_buffer.slice(..);
-        let (sender, receiver) =
+        let (sender, receiver) = 
             futures::channel::oneshot::channel::<Result<(), wgpu::BufferAsyncError>>();
         buffer_slice.map_async(wgpu::MapMode::Read, move |v| {
             let _ = sender.send(v);
@@ -513,8 +521,8 @@ impl Optimizer {
                 let mut iou_min_total = 0.0;
                 let mut iou_max_total = 0.0;
 
-                for s in 0..self.samples_per_candidate as usize {
-                    let res = &results[c * self.samples_per_candidate as usize + s];
+                for g in 0..groups_per_cand as usize {
+                    let res = &results[c * groups_per_cand as usize + g];
                     mse_total += res.mse_sum;
                     iou_min_total += res.iou_min_sum;
                     iou_max_total += res.iou_max_sum;
@@ -558,7 +566,7 @@ impl Optimizer {
         primitives_code.push_str(&format!("{}, {}, {}", min.x, min.y, min.z));
         primitives_code.push_str(")) / vec3f(");
         primitives_code.push_str(&format!("{}, {}, {}", size.x, size.y, size.z));
-        primitives_code.push_str(");\n");
+        primitives_code.push('\n');
 
         for prim in &self.primitives {
             let prim_type = prim.prim_type;
@@ -568,10 +576,7 @@ impl Optimizer {
 
             let dist_func = if prim_type == 0 {
                 // Sphere
-                format!(
-                    "length(p_norm - vec3f({}, {}, {})) - {}",
-                    p.x, p.y, p.z, s.x
-                )
+                format!("length(p_norm - vec3f({}, {}, {})) - {}", p.x, p.y, p.z, s.x)
             } else {
                 // Cube
                 format!(
@@ -582,10 +587,7 @@ impl Optimizer {
 
             let op_code = if op == 0 {
                 // Union
-                format!(
-                    "  val = max(val, select(0.0, 1.0, {} <= 0.0));\n",
-                    dist_func
-                )
+                format!("  val = max(val, select(0.0, 1.0, {} <= 0.0));\n", dist_func)
             } else {
                 // Difference
                 format!(
@@ -597,7 +599,7 @@ impl Optimizer {
         }
 
         format!(
-            r#"/*{{
+            r#"/*{{ 
   "irmf": "1.0",
   "language": "wgsl",
   "materials": ["Material"],

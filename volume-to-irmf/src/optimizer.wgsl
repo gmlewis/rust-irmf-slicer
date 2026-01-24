@@ -34,6 +34,10 @@ struct Perturbation {
 
 @group(0) @binding(5) var<storage, read> samples: array<vec3f>;
 
+var<workgroup> local_mse: array<f32, 256>;
+var<workgroup> local_min: array<f32, 256>;
+var<workgroup> local_max: array<f32, 256>;
+
 fn sd_sphere(p: vec3f, radius: f32) -> f32 {
     return length(p) - radius;
 }
@@ -61,26 +65,21 @@ fn evaluate_model(p: vec3f, cand_idx: u32) -> f32 {
         } else {
             prim.pos = pert.pos_delta;
             prim.size = vec3f(pert.size_scale);
-            prim.prim_type = 0u; // Sphere
+            prim.prim_type = 0u;
             prim.op = pert.op;
         }
 
         let p_local = p - prim.pos;
         var dist = 0.0;
-        if (prim.prim_type == 0u) { // Sphere
+        if (prim.prim_type == 0u) {
             dist = sd_sphere(p_local, prim.size.x);
-        } else { // Cube
+        } else {
             dist = sd_box(p_local, prim.size);
         }
-        
-        // Smooth occupancy using smoothstep for better gradients
-        // Map dist in [-epsilon, epsilon] to [1, 0]
-        let epsilon = 0.05;
-        let occupancy = smoothstep(epsilon, -epsilon, dist);
-        
-        if (prim.op == 0u) { // Union
+        let occupancy = select(0.0, 1.0, dist <= 0.0);
+        if (prim.op == 0u) {
             val = max(val, occupancy);
-        } else { // Difference
+        } else {
             val = min(val, 1.0 - occupancy);
         }
     }
@@ -104,17 +103,30 @@ fn main(
     let dims = textureDimensions(target_volume);
     let coords = vec3<u32>(uvw * vec3f(dims));
     let target_val = textureLoad(target_volume, coords, 0).r;
-
     let candidate_val = evaluate_model(uvw, cand_idx);
 
     let diff = target_val - candidate_val;
-    let mse = diff * diff;
-    let iou_min = min(target_val, candidate_val);
-    let iou_max = max(target_val, candidate_val);
-    let out_idx = cand_idx * 32768u + sample_idx;
+    local_mse[local_id.x] = diff * diff;
+    local_min[local_id.x] = min(target_val, candidate_val);
+    local_max[local_id.x] = max(target_val, candidate_val);
 
-    results[out_idx].mse_sum = mse;
-    results[out_idx].iou_min_sum = iou_min;
-    results[out_idx].iou_max_sum = iou_max;
-    results[out_idx].sample_idx = sample_idx;
+    workgroupBarrier();
+
+    // Reduction
+    if (local_id.x == 0u) {
+        var mse_sum = 0.0;
+        var min_sum = 0.0;
+        var max_sum = 0.0;
+        for (var i = 0u; i < 256u; i++) {
+            mse_sum += local_mse[i];
+            min_sum += local_min[i];
+            max_sum += local_max[i];
+        }
+        
+        // Use group_id.y to store partial sums
+        let out_idx = cand_idx * (config.num_samples / 256u) + group_in_cand;
+        results[out_idx].mse_sum = mse_sum;
+        results[out_idx].iou_min_sum = min_sum;
+        results[out_idx].iou_max_sum = max_sum;
+    }
 }

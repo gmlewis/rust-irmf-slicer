@@ -25,9 +25,30 @@ async fn main() -> Result<()> {
 
     println!("Reading {}...", args.input.display());
     let mut file = std::fs::File::open(&args.input)?;
-    
-    println!("Voxelizing mesh...");
-    let volume = VoxelVolume::from_stl(&mut file, [args.res, args.res, args.res])?;
+    let mesh = stl_io::read_stl(&mut file).map_err(|e| anyhow::anyhow!("stl read error: {:?}", e))?;
+
+    let mut min = Vec3::splat(f32::MAX);
+    let mut max = Vec3::splat(f32::MIN);
+    let mut vertices = Vec::new();
+    for v in &mesh.vertices {
+        let p = Vec3::new(v[0], v[1], v[2]);
+        min = min.min(p);
+        max = max.max(p);
+        vertices.push(p);
+    }
+    let size = max - min;
+    min -= size * 0.05;
+    max += size * 0.05;
+
+    let mut indices = Vec::new();
+    for tri in &mesh.faces {
+        indices.push(tri.vertices[0] as u32);
+        indices.push(tri.vertices[1] as u32);
+        indices.push(tri.vertices[2] as u32);
+    }
+
+    println!("Voxelizing mesh on GPU...");
+    let volume = VoxelVolume::gpu_voxelize(vertices, indices, [args.res, args.res, args.res], min, max).await?;
 
     println!("Dimensions: {}x{}x{}", volume.dims[0], volume.dims[1], volume.dims[2]);
 

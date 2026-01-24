@@ -314,12 +314,12 @@ impl Optimizer {
 
         // Other candidates
         for _ in 1..self.num_candidates {
-            if self.primitives.len() < 1024 && rng.gen_bool(0.3) {
+            if self.primitives.len() < 1024 && rng.gen_bool(0.1) {
                 // Evaluate adding a new primitive
                 perts.push(Perturbation {
                     prim_idx: 9999,
                     pos_delta: Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()),
-                    size_scale: rng.gen_range(0.01..0.1),
+                    size_scale: rng.gen_range(0.01..0.2),
                     _padding: 0,
                 });
             } else if !self.primitives.is_empty() {
@@ -327,8 +327,8 @@ impl Optimizer {
                 let prim_idx = rng.gen_range(0..self.primitives.len()) as u32;
                 perts.push(Perturbation {
                     prim_idx,
-                    pos_delta: Vec3::new(rng.gen_range(-0.05..0.05), rng.gen_range(-0.05..0.05), rng.gen_range(-0.05..0.05)),
-                    size_scale: rng.gen_range(0.9..1.1),
+                    pos_delta: Vec3::new(rng.gen_range(-0.02..0.02), rng.gen_range(-0.02..0.02), rng.gen_range(-0.02..0.02)),
+                    size_scale: rng.gen_range(0.95..1.05),
                     _padding: 0,
                 });
             } else {

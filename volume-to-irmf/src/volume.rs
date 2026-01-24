@@ -1,4 +1,5 @@
 use glam::Vec3;
+use wgpu::util::DeviceExt;
 
 pub struct VoxelVolume {
     pub data: Vec<f32>, // 0.0 to 1.0
@@ -171,6 +172,154 @@ impl VoxelVolume {
         }
         
         Ok(volume)
+    }
+
+    pub async fn gpu_voxelize(
+        vertices: Vec<Vec3>,
+        indices: Vec<u32>,
+        dims: [u32; 3],
+        min: Vec3,
+        max: Vec3,
+    ) -> anyhow::Result<Self> {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions::default())
+            .await
+            .ok_or_else(|| anyhow::anyhow!("No WGPU adapter"))?;
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .await?;
+
+        let shader_src = include_str!("voxelizer.wgsl");
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Voxelizer Shader"),
+            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_src)),
+        });
+
+        let texture_size = wgpu::Extent3d {
+            width: dims[0],
+            height: dims[1],
+            depth_or_array_layers: dims[2],
+        };
+
+        let voxel_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Voxel Texture"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D3,
+            format: wgpu::TextureFormat::R32Float,
+            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(&vertices),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(&indices),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        #[repr(C)]
+        #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+        struct VoxelConfig {
+            num_triangles: u32,
+            _pad: u32,
+            min_bound: Vec3,
+            _pad2: u32,
+            max_bound: Vec3,
+            _pad3: u32,
+        }
+
+        let config = VoxelConfig {
+            num_triangles: (indices.len() / 3) as u32,
+            _pad: 0,
+            min_bound: min,
+            _pad2: 0,
+            max_bound: max,
+            _pad3: 0,
+        };
+
+        let config_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Config Buffer"),
+            contents: bytemuck::cast_slice(&[config]),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+
+        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Voxelizer Pipeline"),
+            layout: None,
+            module: &shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Voxelizer Bind Group"),
+            layout: &pipeline.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: vertex_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: index_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&voxel_texture.create_view(&wgpu::TextureViewDescriptor::default())) },
+                wgpu::BindGroupEntry { binding: 3, resource: config_buffer.as_entire_binding() },
+            ],
+        });
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        {
+            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+            compute_pass.set_pipeline(&pipeline);
+            compute_pass.set_bind_group(0, &bind_group, &[]);
+            compute_pass.dispatch_workgroups(dims[0].div_ceil(8), dims[1].div_ceil(8), dims[2].div_ceil(8));
+        }
+
+        let output_buffer_size = (dims[0] * dims[1] * dims[2] * 4) as u64;
+        let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Output Buffer"),
+            size: output_buffer_size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &voxel_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &output_buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4 * dims[0]),
+                    rows_per_image: Some(dims[1]),
+                },
+            },
+            texture_size,
+        );
+
+        queue.submit(Some(encoder.finish()));
+
+        let buffer_slice = output_buffer.slice(..);
+        let (sender, receiver) = futures::channel::oneshot::channel::<Result<(), wgpu::BufferAsyncError>>();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |v| { let _ = sender.send(v); });
+        device.poll(wgpu::Maintain::Wait);
+        
+        if let Ok(Ok(())) = receiver.await {
+            let data = buffer_slice.get_mapped_range();
+            let result: Vec<f32> = bytemuck::cast_slice(&data).to_vec();
+            drop(data);
+            Ok(Self { data: result, dims, min, max })
+        } else {
+            anyhow::bail!("GPU readback failed")
+        }
     }
 }
 

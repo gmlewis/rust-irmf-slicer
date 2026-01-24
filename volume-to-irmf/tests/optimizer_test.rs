@@ -28,11 +28,13 @@ async fn test_optimizer_sphere() {
     optimizer.add_primitive(Primitive::new_sphere(Vec3::splat(0.4), 0.2, BooleanOp::Union));
     
     let mut last_error = 1.0;
-    for i in 0..100 {
+    for i in 0..200 {
         let error = optimizer.run_iteration().await.unwrap();
-        println!("Iteration {}: error = {}, last_error = {}", i, error, last_error);
-        // Stochastic variance is expected, but it should not explode
-        assert!(error <= last_error + 0.05); 
+        if i % 10 == 0 {
+            println!("Iteration {}: error = {}, primitives = {}", i, error, optimizer.generate_irmf().split("val =").count() - 1);
+        }
+        // error <= last_error is guaranteed by the new logic (except for noise, but we have static samples now)
+        assert!(error <= last_error + 1e-5); 
         last_error = error;
     }
     

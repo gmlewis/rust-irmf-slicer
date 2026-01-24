@@ -6,6 +6,12 @@ members = [
     "irmf-include-resolver",
     "irmf-output-stl",
     "irmf-output-voxels",
+    "volume-to-irmf",
+    "binvox-to-irmf",
+    "dlp-to-irmf",
+    "stl-to-irmf",
+    "svx-to-irmf",
+    "zip-to-irmf",
 ]
 
 [workspace.package]

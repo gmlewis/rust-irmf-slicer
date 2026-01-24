@@ -540,6 +540,9 @@ impl Optimizer {
                 let alpha = 0.5;
                 let beta = 0.5;
                 let error = alpha * mse + beta * (1.0 - iou);
+                if c == 0 {
+                    println!("DEBUG: Cand 0: mse={}, iou={}, error={}", mse, iou, error);
+                }
                 cand_errors.push(error);
             }
 
@@ -568,7 +571,7 @@ impl Optimizer {
         primitives_code.push_str(&format!("{}, {}, {}", min.x, min.y, min.z));
         primitives_code.push_str(")) / vec3f(");
         primitives_code.push_str(&format!("{}, {}, {}", size.x, size.y, size.z));
-        primitives_code.push('\n');
+        primitives_code.push_str(");\n");
 
         for prim in &self.primitives {
             let prim_type = prim.prim_type;

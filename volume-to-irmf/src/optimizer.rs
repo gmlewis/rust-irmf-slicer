@@ -51,11 +51,15 @@ struct Config {
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Perturbation {
     prim_idx: u32,
-    _pad1: [u32; 3],
+    pad1: u32,
+    pad2: u32,
+    pad3: u32,
     pos_delta: [f32; 4],
     size_scale: [f32; 4],
     op: u32,
-    _pad2: [u32; 3],
+    pad4: u32,
+    pad5: u32,
+    pad6: u32,
 }
 
 pub struct Optimizer {
@@ -1024,21 +1028,29 @@ impl Optimizer {
         let mut perts = Vec::with_capacity(self.num_candidates as usize);
         perts.push(Perturbation {
             prim_idx: 8888,
-            _pad1: [0; 3],
+            pad1: 0,
+            pad2: 0,
+            pad3: 0,
             pos_delta: [0.0, 0.0, 0.0, 0.0],
             size_scale: [1.0, 1.0, 1.0, 0.0],
             op: 0,
-            _pad2: [0; 3],
+            pad4: 0,
+            pad5: 0,
+            pad6: 0,
         });
 
         let seed_pos = seed_positions[rng.gen_range(0..seed_positions.len())];
         perts.push(Perturbation {
             prim_idx: 9999,
-            _pad1: [0; 3],
+            pad1: 0,
+            pad2: 0,
+            pad3: 0,
             pos_delta: [seed_pos.x, seed_pos.y, seed_pos.z, 0.0],
             size_scale: [0.01, 0.01, 0.01, 0.0],
             op: 0,
-            _pad2: [0; 3],
+            pad4: 0,
+            pad5: 0,
+            pad6: 0,
         });
 
         for _i in 2..self.num_candidates as usize {
@@ -1059,11 +1071,15 @@ impl Optimizer {
                 let s = Vec3::splat(size) * aspect;
                 perts.push(Perturbation {
                     prim_idx: 9999,
-                    _pad1: [0; 3],
+                    pad1: 0,
+                    pad2: 0,
+                    pad3: 0,
                     pos_delta: [d.x, d.y, d.z, 0.0],
                     size_scale: [s.x, s.y, s.z, 0.0],
                     op: rng.gen_range(0..4),
-                    _pad2: [0; 3],
+                    pad4: 0,
+                    pad5: 0,
+                    pad6: 0,
                 });
             } else if !self.primitives.is_empty() {
                 let prim_idx = rng.gen_range(0..self.primitives.len()) as u32;
@@ -1074,11 +1090,15 @@ impl Optimizer {
                     let s = Vec3::splat(rng.gen_range(0.005..0.05)) / prim_size;
                     perts.push(Perturbation {
                         prim_idx,
-                        _pad1: [0; 3],
+                        pad1: 0,
+                        pad2: 0,
+                        pad3: 0,
                         pos_delta: [d.x, d.y, d.z, 0.0],
                         size_scale: [s.x, s.y, s.z, 0.0],
                         op: rng.gen_range(0..4),
-                        _pad2: [0; 3],
+                        pad4: 0,
+                        pad5: 0,
+                        pad6: 0,
                     });
                 } else {
                     let d = Vec3::new(
@@ -1093,11 +1113,15 @@ impl Optimizer {
                     );
                     perts.push(Perturbation {
                         prim_idx,
-                        _pad1: [0; 3],
+                        pad1: 0,
+                        pad2: 0,
+                        pad3: 0,
                         pos_delta: [d.x, d.y, d.z, 0.0],
                         size_scale: [s.x, s.y, s.z, 0.0],
                         op: self.primitives[prim_idx as usize].op,
-                        _pad2: [0; 3],
+                        pad4: 0,
+                        pad5: 0,
+                        pad6: 0,
                     });
                 }
             } else {
@@ -1316,12 +1340,12 @@ impl Optimizer {
             };
             if prim.op == 0 {
                 primitives_code.push_str(&format!(
-                    "  val = max(val, clamp(0.5 - ({}) * 20.0, 0.0, 1.0));\n",
+                    "  val = max(val, clamp(0.5 - ({}) * 100.0, 0.0, 1.0));\n",
                     df
                 ));
             } else {
                 primitives_code.push_str(&format!(
-                    "  val = min(val, 1.0 - clamp(0.5 - ({}) * 20.0, 0.0, 1.0));\n",
+                    "  val = min(val, 1.0 - clamp(0.5 - ({}) * 100.0, 0.0, 1.0));\n",
                     df
                 ));
             }

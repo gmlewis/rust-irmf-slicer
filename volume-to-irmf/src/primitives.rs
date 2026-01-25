@@ -19,11 +19,15 @@ pub enum BooleanOp {
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct Primitive {
     pub pos: [f32; 4],
-    pub prim_type: u32, // PrimitiveType
-    pub _pad1: [u32; 3],
+    pub prim_type: u32,
+    pub pad1: u32,
+    pub pad2: u32,
+    pub pad3: u32,
     pub size: [f32; 4],
-    pub op: u32, // BooleanOp
-    pub _pad2: [u32; 3],
+    pub op: u32,
+    pub pad4: u32,
+    pub pad5: u32,
+    pub pad6: u32,
 }
 
 impl Primitive {
@@ -31,10 +35,14 @@ impl Primitive {
         Self {
             pos: [pos.x, pos.y, pos.z, 0.0],
             prim_type: PrimitiveType::Sphere as u32,
-            _pad1: [0; 3],
+            pad1: 0,
+            pad2: 0,
+            pad3: 0,
             size: [radius, radius, radius, 0.0],
             op: op as u32,
-            _pad2: [0; 3],
+            pad4: 0,
+            pad5: 0,
+            pad6: 0,
         }
     }
 
@@ -42,10 +50,14 @@ impl Primitive {
         Self {
             pos: [pos.x, pos.y, pos.z, 0.0],
             prim_type: PrimitiveType::Cube as u32,
-            _pad1: [0; 3],
+            pad1: 0,
+            pad2: 0,
+            pad3: 0,
             size: [half_extents.x, half_extents.y, half_extents.z, 0.0],
             op: op as u32,
-            _pad2: [0; 3],
+            pad4: 0,
+            pad5: 0,
+            pad6: 0,
         }
     }
 }

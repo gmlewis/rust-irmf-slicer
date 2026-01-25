@@ -1,10 +1,14 @@
 struct Primitive {
     pos: vec4f,
     prim_type: u32,
-    _pad1: vec3u,
+    pad1: u32,
+    pad2: u32,
+    pad3: u32,
     size: vec4f,
     op: u32,
-    _pad2: vec3u,
+    pad4: u32,
+    pad5: u32,
+    pad6: u32,
 }
 
 struct ErrorResult {
@@ -28,11 +32,15 @@ struct Config {
 
 struct Perturbation {
     prim_idx: u32,
-    _pad1: vec3u,
+    pad1: u32,
+    pad2: u32,
+    pad3: u32,
     pos_delta: vec4f,
     size_scale: vec4f,
     op: u32,
-    _pad2: vec3u,
+    pad4: u32,
+    pad5: u32,
+    pad6: u32,
 }
 @group(0) @binding(4) var<storage, read> perturbations: array<Perturbation>;
 
@@ -85,8 +93,8 @@ fn evaluate_model(p: vec3f, cand_idx: u32) -> f32 {
             dist = sd_box(p_local, prim.size.xyz);
         }
         
-        // Soft occupancy: 1.0 inside, 0.0 outside, smooth transition
-        let occupancy = clamp(0.5 - dist * 20.0, 0.0, 1.0);
+        // Sharper occupancy transition for thin features
+        let occupancy = clamp(0.5 - dist * 100.0, 0.0, 1.0);
         
         if (prim.op == 0u) {
             val = max(val, occupancy);

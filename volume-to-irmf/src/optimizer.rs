@@ -705,270 +705,603 @@ impl Optimizer {
 
             
 
-                    // Pass 2: Extract Primitives (Multi-level)
-
-                    let mut final_primitives = Vec::new();
-
-                    let max_extracted = 10000;
-
-                    let node_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-
-                        label: Some("Octree Node Output"),
-
-                        size: (std::mem::size_of::<OctreeNode>() * max_extracted) as u64,
-
-                        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-
-                        mapped_at_creation: false,
-
-                    });
-
-                    let count_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-
-                        label: Some("Octree Count Output"),
-
-                        size: 4,
-
-                        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
-
-                        mapped_at_creation: false,
-
-                    });
-
-                    let staging_node_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-
-                        label: Some("Staging Node Buffer"),
-
-                        size: (std::mem::size_of::<OctreeNode>() * max_extracted) as u64,
-
-                        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-
-                        mapped_at_creation: false,
-
-                    });
-
-                    let staging_count_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-
-                        label: Some("Staging Count Buffer"),
-
-                        size: 4,
-
-                        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-
-                        mapped_at_creation: false,
-
-                    });
+                            // Pass 2: Extract Primitives (Multi-level)
 
             
 
-                    // Top-down extraction: coarse levels first
-
-                    for (view, dims, lvl) in pyramid.into_iter().rev() {
-
-                        if final_primitives.len() >= target_count { break; }
+                            let mut all_potential_nodes = Vec::new();
 
             
 
-                                    self.queue.write_buffer(&count_buffer, 0, bytemuck::cast_slice(&[0u32]));
+                            let max_extracted = 10000;
 
             
 
-                                    let config = OctreeConfig {
+                            let node_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
 
             
 
-                                        dims: [w, h, d, 0],
+                                label: Some("Octree Node Output"),
 
             
 
-                                        level: lvl,
+                                size: (std::mem::size_of::<OctreeNode>() * max_extracted) as u64,
 
             
 
-                                        threshold_low: 0.01,
+                                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
 
             
 
-                                        threshold_high: 0.3,
+                                mapped_at_creation: false,
 
             
 
-                                        max_nodes: max_extracted as u32,
+                            });
 
             
 
-                                    };
+                            let count_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
 
             
 
-                        
-
-                        let config_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-
-                            label: Some("Octree Extract Config"),
-
-                            contents: bytemuck::cast_slice(&[config]),
-
-                            usage: wgpu::BufferUsages::UNIFORM,
-
-                        });
+                                label: Some("Octree Count Output"),
 
             
 
-                                    let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                                size: 4,
 
             
 
-                                        label: Some("Extract Bind Group"),
+                                usage: wgpu::BufferUsages::STORAGE
 
             
 
-                                        layout: &self.octree_bind_group_layout,
+                                    | wgpu::BufferUsages::COPY_SRC
 
             
 
-                                        entries: &[
+                                    | wgpu::BufferUsages::COPY_DST,
 
             
 
-                                            wgpu::BindGroupEntry {
+                                mapped_at_creation: false,
 
             
 
-                                                binding: 0,
+                            });
 
             
 
-                                                resource: config_buffer.as_entire_binding(),
+                            let staging_node_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
 
             
 
-                                            },
+                                label: Some("Staging Node Buffer"),
 
             
 
-                                            wgpu::BindGroupEntry {
+                                size: (std::mem::size_of::<OctreeNode>() * max_extracted) as u64,
 
             
 
-                                                binding: 1,
+                                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
 
             
 
-                                                resource: wgpu::BindingResource::TextureView(&view),
+                                mapped_at_creation: false,
 
             
 
-                                            },
+                            });
 
             
 
-                                            wgpu::BindGroupEntry {
+                            let staging_count_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
 
             
 
-                                                binding: 2,
+                                label: Some("Staging Count Buffer"),
 
             
 
-                                                resource: wgpu::BindingResource::TextureView(&dummy_view),
+                                size: 4,
 
             
 
-                                            },
+                                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
 
             
 
-                                            wgpu::BindGroupEntry {
+                                mapped_at_creation: false,
 
             
 
-                                                binding: 3,
+                            });
 
             
 
-                                                resource: node_buffer.as_entire_binding(),
+                    
 
             
 
-                                            },
+                            // Collect from ALL levels
 
             
 
-                                            wgpu::BindGroupEntry {
+                            let mut level_textures = pyramid;
 
             
 
-                                                binding: 4,
+                            // Also add Level 0
 
             
 
-                                                resource: count_buffer.as_entire_binding(),
+                            level_textures.insert(0, (self.target_texture_view.clone(), self.target_volume.dims, 0));
 
             
 
-                                            },
+                    
 
             
 
-                                        ],
+                            for (view, dims, lvl) in level_textures {
 
             
 
-                                    });
+                                self.queue
 
             
 
-                        
+                                    .write_buffer(&count_buffer, 0, bytemuck::cast_slice(&[0u32]));
 
             
 
-            let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-            {
-                let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-                compute_pass.set_pipeline(&self.octree_pipeline);
-                compute_pass.set_bind_group(0, &bind_group, &[]);
-                compute_pass.dispatch_workgroups(dims[0].div_ceil(8), dims[1].div_ceil(8), dims[2]);
-            }
-            encoder.copy_buffer_to_buffer(&node_buffer, 0, &staging_node_buffer, 0, (std::mem::size_of::<OctreeNode>() * max_extracted) as u64);
-            encoder.copy_buffer_to_buffer(&count_buffer, 0, &staging_count_buffer, 0, 4);
-            self.queue.submit(Some(encoder.finish()));
+                                let config = OctreeConfig {
 
-            // Read back results
-            let count_slice = staging_count_buffer.slice(..);
-            let node_slice = staging_node_buffer.slice(..);
-            let (tx, rx) = futures::channel::oneshot::channel();
-            count_slice.map_async(wgpu::MapMode::Read, move |v| { let _ = tx.send(v); });
-            self.device.poll(wgpu::Maintain::Wait);
-            rx.await??;
-            let count = bytemuck::cast_slice::<u8, u32>(&count_slice.get_mapped_range())[0] as usize;
-            staging_count_buffer.unmap();
+            
 
-            if count > 0 {
-                let (tx, rx) = futures::channel::oneshot::channel();
-                node_slice.map_async(wgpu::MapMode::Read, move |v| { let _ = tx.send(v); });
-                self.device.poll(wgpu::Maintain::Wait);
-                rx.await??;
-                let mapped_range = node_slice.get_mapped_range();
-                let nodes: &[OctreeNode] = bytemuck::cast_slice(&mapped_range);
-                for n in &nodes[..count.min(max_extracted)] {
-                    if final_primitives.len() < target_count {
-                        final_primitives.push(Primitive::new_cube(
-                            glam::Vec3::new(n.pos[0], n.pos[1], n.pos[2]),
-                            glam::Vec3::new(n.size[0], n.size[1], n.size[2]),
-                            BooleanOp::Union,
-                        ));
-                    }
-                }
-                drop(mapped_range);
-                staging_node_buffer.unmap();
-            }
-        }
+                                    dims: [self.target_volume.dims[0], self.target_volume.dims[1], self.target_volume.dims[2], 0],
 
-        self.primitives = final_primitives;
-        println!("Octree initialization produced {} primitives.", self.primitives.len());
-        Ok(())
-    }
+            
+
+                                    level: lvl,
+
+            
+
+                                    threshold_low: 0.05,
+
+            
+
+                                    threshold_high: 0.8,
+
+            
+
+                                    max_nodes: max_extracted as u32,
+
+            
+
+                                };
+
+            
+
+                                let config_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+
+            
+
+                                    label: Some("Octree Extract Config"),
+
+            
+
+                                    contents: bytemuck::cast_slice(&[config]),
+
+            
+
+                                    usage: wgpu::BufferUsages::UNIFORM,
+
+            
+
+                                });
+
+            
+
+                    
+
+            
+
+                                let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+
+            
+
+                                    label: Some("Extract Bind Group"),
+
+            
+
+                                    layout: &self.octree_bind_group_layout,
+
+            
+
+                                    entries: &[
+
+            
+
+                                        wgpu::BindGroupEntry {
+
+            
+
+                                            binding: 0,
+
+            
+
+                                            resource: config_buffer.as_entire_binding(),
+
+            
+
+                                        },
+
+            
+
+                                        wgpu::BindGroupEntry {
+
+            
+
+                                            binding: 1,
+
+            
+
+                                            resource: wgpu::BindingResource::TextureView(&view),
+
+            
+
+                                        },
+
+            
+
+                                        wgpu::BindGroupEntry {
+
+            
+
+                                            binding: 2,
+
+            
+
+                                            resource: wgpu::BindingResource::TextureView(&dummy_view),
+
+            
+
+                                        },
+
+            
+
+                                        wgpu::BindGroupEntry {
+
+            
+
+                                            binding: 3,
+
+            
+
+                                            resource: node_buffer.as_entire_binding(),
+
+            
+
+                                        },
+
+            
+
+                                        wgpu::BindGroupEntry {
+
+            
+
+                                            binding: 4,
+
+            
+
+                                            resource: count_buffer.as_entire_binding(),
+
+            
+
+                                        },
+
+            
+
+                                    ],
+
+            
+
+                                });
+
+            
+
+                    
+
+            
+
+                                let mut encoder = self
+
+            
+
+                                    .device
+
+            
+
+                                    .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+            
+
+                                {
+
+            
+
+                                    let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+
+            
+
+                                    compute_pass.set_pipeline(&self.octree_pipeline);
+
+            
+
+                                    compute_pass.set_bind_group(0, &bind_group, &[]);
+
+            
+
+                                    compute_pass.dispatch_workgroups(dims[0].div_ceil(8), dims[1].div_ceil(8), dims[2]);
+
+            
+
+                                }
+
+            
+
+                                encoder.copy_buffer_to_buffer(
+
+            
+
+                                    &node_buffer,
+
+            
+
+                                    0,
+
+            
+
+                                    &staging_node_buffer,
+
+            
+
+                                    0,
+
+            
+
+                                    (std::mem::size_of::<OctreeNode>() * max_extracted) as u64,
+
+            
+
+                                );
+
+            
+
+                                encoder.copy_buffer_to_buffer(&count_buffer, 0, &staging_count_buffer, 0, 4);
+
+            
+
+                                self.queue.submit(Some(encoder.finish());
+
+            
+
+                    
+
+            
+
+                                // Read back
+
+            
+
+                                let (tx, rx) = futures::channel::oneshot::channel();
+
+            
+
+                                staging_count_buffer.slice(..).map_async(wgpu::MapMode::Read, move |v| { let _ = tx.send(v); });
+
+            
+
+                                self.device.poll(wgpu::Maintain::Wait);
+
+            
+
+                                rx.await??;
+
+            
+
+                                let count = bytemuck::cast_slice::<u8, u32>(&staging_count_buffer.slice(..).get_mapped_range())[0] as usize;
+
+            
+
+                                staging_count_buffer.unmap();
+
+            
+
+                    
+
+            
+
+                                if count > 0 {
+
+            
+
+                                    let (tx, rx) = futures::channel::oneshot::channel();
+
+            
+
+                                    staging_node_buffer.slice(..).map_async(wgpu::MapMode::Read, move |v| { let _ = tx.send(v); });
+
+            
+
+                                    self.device.poll(wgpu::Maintain::Wait);
+
+            
+
+                                    rx.await??;
+
+            
+
+                                    let mapped = staging_node_buffer.slice(..).get_mapped_range();
+
+            
+
+                                    let nodes: &[OctreeNode] = bytemuck::cast_slice(&mapped);
+
+            
+
+                                    for n in &nodes[..count.min(max_extracted)] {
+
+            
+
+                                        all_potential_nodes.push(*n);
+
+            
+
+                                    }
+
+            
+
+                                    drop(mapped);
+
+            
+
+                                    staging_node_buffer.unmap();
+
+            
+
+                                }
+
+            
+
+                            }
+
+            
+
+                    
+
+            
+
+                            // Sort by "Importance": (Occupancy * Volume)
+
+            
+
+                            // Volume is proportional to 2^(3 * level)
+
+            
+
+                            all_potential_nodes.sort_by(|a, b| {
+
+            
+
+                                let imp_a = a.data[0] * (1u32 << (3 * a.data[1] as u32)) as f32;
+
+            
+
+                                let imp_b = b.data[0] * (1u32 << (3 * b.data[1] as u32)) as f32;
+
+            
+
+                                imp_b.partial_cmp(&imp_a).unwrap()
+
+            
+
+                            });
+
+            
+
+                    
+
+            
+
+                            self.primitives.clear();
+
+            
+
+                            for n in all_potential_nodes.iter().take(target_count) {
+
+            
+
+                                self.primitives.push(Primitive::new_cube(
+
+            
+
+                                    Vec3::new(n.pos[0], n.pos[1], n.pos[2]),
+
+            
+
+                                    Vec3::new(n.size[0], n.size[1], n.size[2]),
+
+            
+
+                                    BooleanOp::Union,
+
+            
+
+                                ));
+
+            
+
+                            }
+
+            
+
+                    
+
+            
+
+                            if !self.primitives.is_empty() {
+
+            
+
+                                println!("First 5 extracted primitives:");
+
+            
+
+                                for i in 0..5.min(self.primitives.len()) {
+
+            
+
+                                    println!("  {:?}", self.primitives[i]);
+
+            
+
+                                }
+
+            
+
+                            }
+
+            
+
+                    
+
+            
+
+                            println!(
+
+            
+
+                                "Octree initialization produced {} primitives from {} candidates.",
+
+            
+
+                                self.primitives.len(), all_potential_nodes.len()
+
+            
+
+                            );
+
+            
+
+                            Ok(())
+
+            
+
+                        }
 
     /// Initializes primitives using a greedy box-growing algorithm to cover all filled voxels.
     pub fn greedy_box_initialize(&mut self) {

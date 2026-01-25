@@ -1,5 +1,5 @@
 struct Config {
-    dims: vec3<u32>,
+    dims: vec4u, // Explicit padding
     level: u32,
     threshold_low: f32,
     threshold_high: f32,
@@ -16,7 +16,8 @@ fn mipmap_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let dst_coords = global_id;
     let src_coords = dst_coords * 2u;
     
-    if (any(dst_coords >= textureDimensions(dst_texture))) {
+    let dst_dims = textureDimensions(dst_texture);
+    if (any(dst_coords >= dst_dims)) {
         return;
     }
 
@@ -36,8 +37,7 @@ fn mipmap_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 struct Node {
     pos: vec4f,
     size: vec4f,
-    occupancy: f32,
-    _pad: vec3f,
+    data: vec4f, // x: occupancy, y: level
 }
 
 @group(0) @binding(3) var<storage, read_write> out_nodes: array<Node>;
@@ -53,14 +53,13 @@ fn extract_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let occupancy = textureLoad(src_texture, global_id, 0).r;
     
-    let is_full = occupancy >= config.threshold_high;
-    let is_partial = occupancy > config.threshold_low && occupancy < config.threshold_high;
-    let is_bottom_level = (config.level == 0u);
+    // Thresholds: high means we definitely take it, low means we might take it if it's fine-grained.
+    let is_leaf = (occupancy >= config.threshold_high) || (config.level == 0u && occupancy > config.threshold_low);
 
-    if (is_full || (is_partial && is_bottom_level)) {
+    if (is_leaf) {
         let idx = atomicAdd(&node_count, 1u);
         if (idx < config.max_nodes) {
-            let total_dims = vec3f(config.dims);
+            let total_dims = vec3f(config.dims.xyz);
             let level_scale = f32(1u << config.level);
             
             let node_size = vec3f(level_scale) / total_dims / 2.0;
@@ -68,7 +67,7 @@ fn extract_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             
             out_nodes[idx].pos = vec4f(node_pos, 0.0);
             out_nodes[idx].size = vec4f(node_size, 0.0);
-            out_nodes[idx].occupancy = occupancy;
+            out_nodes[idx].data = vec4f(occupancy, f32(config.level), 0.0, 0.0);
         }
     }
 }

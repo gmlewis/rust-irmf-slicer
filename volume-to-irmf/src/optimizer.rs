@@ -79,10 +79,7 @@ impl Optimizer {
         println!("Preparing Pass 3...");
         let mut z_to_runs = BTreeMap::new();
         for run in &self.pass2_results {
-            z_to_runs
-                .entry(run[3])
-                .or_insert_with(Vec::new)
-                .push(*run);
+            z_to_runs.entry(run[3]).or_insert_with(Vec::new).push(*run);
         }
         for runs in z_to_runs.values_mut() {
             // Sort first by X1, then by Y
@@ -128,7 +125,9 @@ impl Optimizer {
                     required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits {
                         max_buffer_size: adapter.limits().max_buffer_size,
-                        max_storage_buffer_binding_size: adapter.limits().max_storage_buffer_binding_size,
+                        max_storage_buffer_binding_size: adapter
+                            .limits()
+                            .max_storage_buffer_binding_size,
                         ..wgpu::Limits::default()
                     },
                     memory_hints: Default::default(),
@@ -191,7 +190,9 @@ impl Optimizer {
         let result_count_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Result Count Buffer"),
             size: 4,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         queue.write_buffer(&result_count_buffer, 0, bytemuck::cast_slice(&[0u32]));
@@ -229,18 +230,37 @@ impl Optimizer {
             label: Some("Pass 2 Bind Group"),
             layout: &pipeline.get_bind_group_layout(0),
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: x_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: offset_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 2, resource: count_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 3, resource: results_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 4, resource: result_count_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 5, resource: config_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: x_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: offset_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: count_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: results_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: result_count_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: config_buffer.as_entire_binding(),
+                },
             ],
         });
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
-            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+            let mut compute_pass =
+                encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
             compute_pass.set_pipeline(&pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
             compute_pass.dispatch_workgroups(num_yz.div_ceil(64), 1, 1);
@@ -259,14 +279,24 @@ impl Optimizer {
             mapped_at_creation: false,
         });
 
-        encoder.copy_buffer_to_buffer(&results_buffer, 0, &staging_buffer, 0, (max_results * 16) as u64);
+        encoder.copy_buffer_to_buffer(
+            &results_buffer,
+            0,
+            &staging_buffer,
+            0,
+            (max_results * 16) as u64,
+        );
         encoder.copy_buffer_to_buffer(&result_count_buffer, 0, &count_staging_buffer, 0, 4);
 
         queue.submit(Some(encoder.finish()));
 
         let count = {
             let (tx, rx) = futures::channel::oneshot::channel();
-            count_staging_buffer.slice(..).map_async(wgpu::MapMode::Read, move |res| { tx.send(res).unwrap(); });
+            count_staging_buffer
+                .slice(..)
+                .map_async(wgpu::MapMode::Read, move |res| {
+                    tx.send(res).unwrap();
+                });
             device.poll(wgpu::Maintain::Wait);
             rx.await??;
             let data = count_staging_buffer.slice(..).get_mapped_range();
@@ -278,10 +308,17 @@ impl Optimizer {
 
         let results = {
             let (tx, rx) = futures::channel::oneshot::channel();
-            staging_buffer.slice(..(count as u64 * 16)).map_async(wgpu::MapMode::Read, move |res| { tx.send(res).unwrap(); });
+            staging_buffer.slice(..(count as u64 * 16)).map_async(
+                wgpu::MapMode::Read,
+                move |res| {
+                    tx.send(res).unwrap();
+                },
+            );
             device.poll(wgpu::Maintain::Wait);
             rx.await??;
-            let data = staging_buffer.slice(..(count as u64 * 16)).get_mapped_range();
+            let data = staging_buffer
+                .slice(..(count as u64 * 16))
+                .get_mapped_range();
             let res: Vec<[i32; 4]> = bytemuck::cast_slice(&data).to_vec();
             drop(data);
             staging_buffer.unmap();
@@ -307,7 +344,9 @@ impl Optimizer {
                     required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits {
                         max_buffer_size: adapter.limits().max_buffer_size,
-                        max_storage_buffer_binding_size: adapter.limits().max_storage_buffer_binding_size,
+                        max_storage_buffer_binding_size: adapter
+                            .limits()
+                            .max_storage_buffer_binding_size,
                         ..wgpu::Limits::default()
                     },
                     memory_hints: Default::default(),
@@ -372,7 +411,9 @@ impl Optimizer {
         let result_count_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Result Count Buffer"),
             size: 4,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         queue.write_buffer(&result_count_buffer, 0, bytemuck::cast_slice(&[0u32]));
@@ -402,19 +443,41 @@ impl Optimizer {
             label: Some("Pass 3 Bind Group"),
             layout: &pipeline.get_bind_group_layout(0),
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: runs_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: offset_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 2, resource: count_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 3, resource: results_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 4, resource: results_extra_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 5, resource: result_count_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 6, resource: config_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: runs_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: offset_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: count_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: results_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: results_extra_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: result_count_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: config_buffer.as_entire_binding(),
+                },
             ],
         });
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
-            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+            let mut compute_pass =
+                encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
             compute_pass.set_pipeline(&pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
             compute_pass.dispatch_workgroups(num_z.div_ceil(64), 1, 1);
@@ -439,15 +502,31 @@ impl Optimizer {
             mapped_at_creation: false,
         });
 
-        encoder.copy_buffer_to_buffer(&results_buffer, 0, &staging_buffer, 0, (max_results * 16) as u64);
-        encoder.copy_buffer_to_buffer(&results_extra_buffer, 0, &extra_staging_buffer, 0, (max_results * 4) as u64);
+        encoder.copy_buffer_to_buffer(
+            &results_buffer,
+            0,
+            &staging_buffer,
+            0,
+            (max_results * 16) as u64,
+        );
+        encoder.copy_buffer_to_buffer(
+            &results_extra_buffer,
+            0,
+            &extra_staging_buffer,
+            0,
+            (max_results * 4) as u64,
+        );
         encoder.copy_buffer_to_buffer(&result_count_buffer, 0, &count_staging_buffer, 0, 4);
 
         queue.submit(Some(encoder.finish()));
 
         let count = {
             let (tx, rx) = futures::channel::oneshot::channel();
-            count_staging_buffer.slice(..).map_async(wgpu::MapMode::Read, move |res| { tx.send(res).unwrap(); });
+            count_staging_buffer
+                .slice(..)
+                .map_async(wgpu::MapMode::Read, move |res| {
+                    tx.send(res).unwrap();
+                });
             device.poll(wgpu::Maintain::Wait);
             rx.await??;
             let data = count_staging_buffer.slice(..).get_mapped_range();
@@ -459,10 +538,17 @@ impl Optimizer {
 
         let results = {
             let (tx, rx) = futures::channel::oneshot::channel();
-            staging_buffer.slice(..(count as u64 * 16)).map_async(wgpu::MapMode::Read, move |res| { tx.send(res).unwrap(); });
+            staging_buffer.slice(..(count as u64 * 16)).map_async(
+                wgpu::MapMode::Read,
+                move |res| {
+                    tx.send(res).unwrap();
+                },
+            );
             device.poll(wgpu::Maintain::Wait);
             rx.await??;
-            let data = staging_buffer.slice(..(count as u64 * 16)).get_mapped_range();
+            let data = staging_buffer
+                .slice(..(count as u64 * 16))
+                .get_mapped_range();
             let res: Vec<[i32; 4]> = bytemuck::cast_slice(&data).to_vec();
             drop(data);
             staging_buffer.unmap();
@@ -471,10 +557,17 @@ impl Optimizer {
 
         let extras = {
             let (tx, rx) = futures::channel::oneshot::channel();
-            extra_staging_buffer.slice(..(count as u64 * 4)).map_async(wgpu::MapMode::Read, move |res| { tx.send(res).unwrap(); });
+            extra_staging_buffer.slice(..(count as u64 * 4)).map_async(
+                wgpu::MapMode::Read,
+                move |res| {
+                    tx.send(res).unwrap();
+                },
+            );
             device.poll(wgpu::Maintain::Wait);
             rx.await??;
-            let data = extra_staging_buffer.slice(..(count as u64 * 4)).get_mapped_range();
+            let data = extra_staging_buffer
+                .slice(..(count as u64 * 4))
+                .get_mapped_range();
             let res: Vec<i32> = bytemuck::cast_slice(&data).to_vec();
             drop(data);
             extra_staging_buffer.unmap();
@@ -520,11 +613,12 @@ impl Optimizer {
         };
 
         for next in it {
-            if next.0[0] == current.x1 &&
-               next.0[1] == current.x2 &&
-               next.0[2] == current.y1 &&
-               next.0[3] == current.y2 &&
-               next.1 == current.z2 + 1 {
+            if next.0[0] == current.x1
+                && next.0[1] == current.x2
+                && next.0[2] == current.y1
+                && next.0[3] == current.y2
+                && next.1 == current.z2 + 1
+            {
                 current.z2 = next.1;
             } else {
                 final_cuboids.push(current);
@@ -573,7 +667,7 @@ impl Optimizer {
         let mut primitives_code = String::new();
         for c in &self.cuboids {
             primitives_code.push_str(&format!(
-                "  val = max(val, xyzRangeVuboid({}, {}, {}, {}, {}, {}));\n",
+                "  val = max(val, xyzRangeCuboid({}, {}, {}, {}, {}, {}));\n",
                 c.x1, c.x2, c.y1, c.y2, c.z1, c.z2
             ));
         }
@@ -584,9 +678,9 @@ impl Optimizer {
         let min = self.target_volume.min;
         let max = self.target_volume.max;
         let dims = self.target_volume.dims;
-        
+
         format!(
-            r###"/*{{ 
+            r###"/*{{
   "irmf": "1.0",
   "language": "wgsl",
   "materials": ["Material"],
@@ -601,7 +695,7 @@ const MIN_BOUND = vec3f({:.4}, {:.4}, {:.4});
 const MAX_BOUND = vec3f({:.4}, {:.4}, {:.4});
 const VOXEL_SIZE = (MAX_BOUND - MIN_BOUND) / DIMS;
 
-fn sd_box(p: vec3f, b: vec3f) -> f32 {{ 
+fn sd_box(p: vec3f, b: vec3f) -> f32 {{
   let q = abs(p) - b;
   return length(max(q, vec3f(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);
 }}
@@ -623,7 +717,7 @@ fn xyRangeCuboid(x1: i32, x2: i32, y1: i32, y2: i32, z: i32) -> f32 {{
     return cuboid(global_p, vec3i(x1, y1, z), vec3i(x2 + 1, y2 + 1, z + 1));
 }}
 
-fn xyzRangeVuboid(x1: i32, x2: i32, y1: i32, y2: i32, z1: i32, z2: i32) -> f32 {{
+fn xyzRangeCuboid(x1: i32, x2: i32, y1: i32, y2: i32, z1: i32, z2: i32) -> f32 {{
     return cuboid(global_p, vec3i(x1, y1, z1), vec3i(x2 + 1, y2 + 1, z2 + 1));
 }}
 
@@ -636,13 +730,23 @@ fn mainModel4(xyz: vec3f) -> vec4f {{
     return vec4f(val, 0.0, 0.0, 0.0);
   }}
   "###,
-              max.x, max.y, max.z, min.x, min.y, min.z,
-              notes,
-              dims[0] as f32, dims[1] as f32, dims[2] as f32,
-              min.x, min.y, min.z,
-              max.x, max.y, max.z,
-              primitives_code
-          )
-      }
-  }
-  
+            max.x,
+            max.y,
+            max.z,
+            min.x,
+            min.y,
+            min.z,
+            notes,
+            dims[0] as f32,
+            dims[1] as f32,
+            dims[2] as f32,
+            min.x,
+            min.y,
+            min.z,
+            max.x,
+            max.y,
+            max.z,
+            primitives_code
+        )
+    }
+}

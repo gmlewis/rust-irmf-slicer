@@ -572,7 +572,7 @@ impl Optimizer {
 
         // Pass 2: Extract Primitives (Multi-level)
         let mut all_potential_nodes = Vec::new();
-        let max_extracted = 10000;
+        let max_extracted = 1000000; // Increased to 1M to avoid bottom-slice bias
         let node_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Octree Node Output"),
             size: (std::mem::size_of::<OctreeNode>() * max_extracted) as u64,
@@ -609,16 +609,12 @@ impl Optimizer {
         for (view, dims, lvl) in level_textures {
             self.queue
                 .write_buffer(&count_buffer, 0, bytemuck::cast_slice(&[0u32]));
+            // Lower thresholds ensure sparse wires are captured at coarse levels.
             let config = OctreeConfig {
-                dims: [
-                    self.target_volume.dims[0],
-                    self.target_volume.dims[1],
-                    self.target_volume.dims[2],
-                    0,
-                ],
+                dims: [w, h, d, 0],
                 level: lvl,
-                threshold_low: 0.05,
-                threshold_high: 0.8,
+                threshold_low: 0.01,
+                threshold_high: 0.1,
                 max_nodes: max_extracted as u32,
             };
             let config_buffer = self
@@ -708,6 +704,11 @@ impl Optimizer {
             }
         }
 
+        // Randomize then stable sort to randomize ties in importance.
+        use rand::seq::SliceRandom;
+        let mut rng = rand::thread_rng();
+        all_potential_nodes.shuffle(&mut rng);
+
         all_potential_nodes.sort_by(|a, b| {
             let imp_a = a.data[0] * (1u32 << (3 * a.data[1] as u32)) as f32;
             let imp_b = b.data[0] * (1u32 << (3 * b.data[1] as u32)) as f32;
@@ -726,13 +727,21 @@ impl Optimizer {
         if !self.primitives.is_empty() {
             println!("First 5 extracted primitives:");
             for i in 0..5.min(self.primitives.len()) {
-                println!("  {:?}", self.primitives[i]);
+                let n = &all_potential_nodes[i];
+                println!(
+                    "  Level {}: pos={:?}, size={:?}, occupancy={}",
+                    n.data[1],
+                    Vec3::new(n.pos[0], n.pos[1], n.pos[2]),
+                    Vec3::new(n.size[0], n.size[1], n.size[2]),
+                    n.data[0]
+                );
             }
         }
 
         println!(
-            "Octree initialization produced {} primitives.",
-            self.primitives.len()
+            "Octree initialization produced {} primitives from {} candidates.",
+            self.primitives.len(),
+            all_potential_nodes.len()
         );
         Ok(())
     }
@@ -1227,9 +1236,9 @@ impl Optimizer {
         let results: &[ErrorResult] = bytemuck::cast_slice(&mapped);
         self.last_results = results.to_vec();
         let mut cand_errors = Vec::with_capacity(self.num_candidates as usize);
+        let groups_per_cand = self.samples_per_candidate / 256;
         for c in 0..self.num_candidates as usize {
             let mut mse_total = 0.0;
-            let groups_per_cand = self.samples_per_candidate / 256;
             for g in 0..groups_per_cand as usize {
                 mse_total += results[c * groups_per_cand as usize + g].mse_sum;
             }

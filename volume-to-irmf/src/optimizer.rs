@@ -1,38 +1,8 @@
-use crate::primitives::{BooleanOp, Primitive};
 use crate::volume::VoxelVolume;
 use anyhow::Result;
-use glam::Vec3;
-use std::cmp::Ordering;
-use std::collections::BinaryHeap;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct ErrorResult {
-    mse_sum: f32,
-    iou_min_sum: f32,
-    iou_max_sum: f32,
-    sample_idx: u32,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct OctreeNode {
-    pos: [f32; 4],
-    size: [f32; 4],
-    data: [f32; 4], // x: occupancy, y: level
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct OctreeConfig {
-    dims: [u32; 4], // Explicit padding for WGSL vec3 alignment
-    level: u32,
-    threshold_low: f32,
-    threshold_high: f32,
-    max_nodes: u32,
-}
 
 pub struct Stats {
     pub iterations: usize,
@@ -40,1214 +10,608 @@ pub struct Stats {
     pub final_error: f32,
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Config {
-    num_samples: u32,
-    num_primitives: u32,
-    seed: u32,
-    num_candidates: u32,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Perturbation {
-    prim_idx: u32,
-    pad1: u32,
-    pad2: u32,
-    pad3: u32,
-    pos_delta: [f32; 4],
-    size_scale: [f32; 4],
-    op: u32,
-    pad4: u32,
-    pad5: u32,
-    pad6: u32,
-}
-
 pub struct Optimizer {
-    device: Arc<wgpu::Device>,
-    queue: Arc<wgpu::Queue>,
     target_volume: Arc<VoxelVolume>,
-    primitives: Vec<Primitive>,
-
-    pipeline: wgpu::ComputePipeline,
-    bind_group_layout: wgpu::BindGroupLayout,
-    target_texture_view: wgpu::TextureView,
-
-    config_buffer: wgpu::Buffer,
-    primitive_buffer: wgpu::Buffer,
-    perturbation_buffer: wgpu::Buffer,
-    results_buffer: wgpu::Buffer,
-    results_staging_buffer: wgpu::Buffer,
-    samples_buffer: wgpu::Buffer,
-
-    mipmap_pipeline: wgpu::ComputePipeline,
-    octree_pipeline: wgpu::ComputePipeline,
-    octree_bind_group_layout: wgpu::BindGroupLayout,
-
-    num_candidates: u32,
-    samples_per_candidate: u32,
-    seed: u32,
-
-    samples: Vec<[f32; 4]>,
-    filled_voxels: Vec<Vec3>,
-    last_results: Vec<ErrorResult>,
-    last_best_error: f32,
-    iterations_since_improvement: u32,
-
+    cuboids: Vec<Cuboid>,
+    pass2_results: Vec<[i32; 4]>,
+    pass3_results: Vec<([i32; 4], i32)>,
     pub stats: Stats,
-    start_time: std::time::Instant,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Cuboid {
+    pub x1: i32,
+    pub x2: i32,
+    pub y1: i32,
+    pub y2: i32,
+    pub z1: i32,
+    pub z2: i32,
 }
 
 impl Optimizer {
     pub async fn new(target_volume: VoxelVolume) -> Result<Self> {
+        Ok(Self {
+            target_volume: Arc::new(target_volume),
+            cuboids: Vec::new(),
+            pass2_results: Vec::new(),
+            pass3_results: Vec::new(),
+            stats: Stats {
+                iterations: 0,
+                duration: std::time::Duration::from_secs(0),
+                final_error: 0.0,
+            },
+        })
+    }
+
+    pub async fn run_lossless(&mut self) -> Result<()> {
+        let start_time = std::time::Instant::now();
+
+        // Pass 1: CPU - Voxel to Map
+        println!("Pass 1: Voxel to Map...");
+        let mut yz_to_x = BTreeMap::new();
+        let dims = self.target_volume.dims;
+        for z in 0..dims[2] {
+            for y in 0..dims[1] {
+                for x in 0..dims[0] {
+                    if self.target_volume.get(x, y, z) > 0.5 {
+                        yz_to_x
+                            .entry((y as i32, z as i32))
+                            .or_insert_with(Vec::new)
+                            .push(x as i32);
+                    }
+                }
+            }
+        }
+
+        // Pass 2: GPU - Merge X
+        println!("Pass 2: GPU Merge X...");
+        self.pass2_results = self.run_gpu_pass2(&yz_to_x).await?;
+        println!("Pass 2 produced {} X-runs.", self.pass2_results.len());
+
+        // Preparation for Pass 3: Map Z -> Sorted List of vec4i
+        println!("Preparing Pass 3...");
+        let mut z_to_runs = BTreeMap::new();
+        for run in &self.pass2_results {
+            z_to_runs
+                .entry(run[3])
+                .or_insert_with(Vec::new)
+                .push(*run);
+        }
+        for runs in z_to_runs.values_mut() {
+            // Sort first by X1, then by Y
+            runs.sort_by(|a, b| {
+                if a[0] != b[0] {
+                    a[0].cmp(&b[0])
+                } else {
+                    a[2].cmp(&b[2])
+                }
+            });
+        }
+
+        // Pass 3: GPU - Merge Y
+        println!("Pass 3: GPU Merge Y...");
+        self.pass3_results = self.run_gpu_pass3(&z_to_runs).await?;
+        println!("Pass 3 produced {} XY-planes.", self.pass3_results.len());
+
+        // Pass 4: CPU - Merge Z
+        println!("Pass 4: CPU Merge Z...");
+        self.cuboids = self.run_cpu_pass4();
+        println!("Pass 4 produced {} final cuboids.", self.cuboids.len());
+
+        self.stats.duration = start_time.elapsed();
+        self.stats.iterations = 1;
+        self.stats.final_error = 0.0;
+
+        Ok(())
+    }
+
+    async fn run_gpu_pass2(
+        &self,
+        yz_to_x: &BTreeMap<(i32, i32), Vec<i32>>,
+    ) -> Result<Vec<[i32; 4]>> {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions::default())
             .await
-            .ok_or_else(|| anyhow::anyhow!("No suitable WGPU adapter found"))?;
-
+            .ok_or_else(|| anyhow::anyhow!("No WGPU adapter"))?;
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("Optimizer Device"),
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits {
-                        max_storage_buffer_binding_size: adapter
-                            .limits()
-                            .max_storage_buffer_binding_size,
-                        max_buffer_size: adapter.limits().max_buffer_size,
-                        ..wgpu::Limits::default()
-                    },
-                    memory_hints: Default::default(),
-                },
-                None,
-            )
+            .request_device(&wgpu::DeviceDescriptor::default(), None)
             .await?;
 
-        let device = Arc::new(device);
-        let queue = Arc::new(queue);
-
-        let texture_size = wgpu::Extent3d {
-            width: target_volume.dims[0],
-            height: target_volume.dims[1],
-            depth_or_array_layers: target_volume.dims[2],
-        };
-
-        let target_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Target Volume Texture"),
-            size: texture_size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D3,
-            format: wgpu::TextureFormat::R32Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &target_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            bytemuck::cast_slice(&target_volume.data),
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(4 * target_volume.dims[0]),
-                rows_per_image: Some(target_volume.dims[1]),
-            },
-            texture_size,
-        );
-
-        let target_texture_view =
-            target_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        let octree_shader_src = include_str!("octree.wgsl");
-        let octree_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Octree Shader"),
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(octree_shader_src)),
-        });
-
-        let octree_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Octree Bind Group Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                            view_dimension: wgpu::TextureViewDimension::D3,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::StorageTexture {
-                            access: wgpu::StorageTextureAccess::WriteOnly,
-                            format: wgpu::TextureFormat::R32Float,
-                            view_dimension: wgpu::TextureViewDimension::D3,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: false },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 4,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: false },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
-            });
-
-        let octree_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Octree Pipeline Layout"),
-                bind_group_layouts: &[&octree_bind_group_layout],
-                push_constant_ranges: &[],
-            });
-
-        let mipmap_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Mipmap Pipeline"),
-            layout: Some(&octree_pipeline_layout),
-            module: &octree_shader,
-            entry_point: Some("mipmap_main"),
-            compilation_options: Default::default(),
-            cache: None,
-        });
-
-        let octree_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Octree Extract Pipeline"),
-            layout: Some(&octree_pipeline_layout),
-            module: &octree_shader,
-            entry_point: Some("extract_main"),
-            compilation_options: Default::default(),
-            cache: None,
-        });
-
-        let shader_src = include_str!("optimizer.wgsl");
+        let shader_src = include_str!("pass2.wgsl");
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Optimizer Shader"),
+            label: Some("Pass 2 Shader"),
             source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_src)),
         });
 
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Optimizer Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                        view_dimension: wgpu::TextureViewDimension::D3,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 4,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 5,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
+        let dims = self.target_volume.dims;
+        let num_yz = dims[1] * dims[2];
+
+        let mut x_indices: Vec<i32> = Vec::new();
+        let mut yz_offsets = vec![0u32; num_yz as usize];
+        let mut yz_counts = vec![0u32; num_yz as usize];
+
+        for z in 0..dims[2] {
+            for y in 0..dims[1] {
+                let idx = (z * dims[1] + y) as usize;
+                if let Some(xs) = yz_to_x.get(&(y as i32, z as i32)) {
+                    yz_offsets[idx] = x_indices.len() as u32;
+                    yz_counts[idx] = xs.len() as u32;
+                    x_indices.extend(xs);
+                }
+            }
+        }
+
+        let x_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("X Indices Buffer"),
+            contents: bytemuck::cast_slice(&x_indices),
+            usage: wgpu::BufferUsages::STORAGE,
         });
 
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Optimizer Pipeline Layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
+        let offset_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Offsets Buffer"),
+            contents: bytemuck::cast_slice(&yz_offsets),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        let count_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Counts Buffer"),
+            contents: bytemuck::cast_slice(&yz_counts),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        // Max possible results is one per voxel
+        let max_results = self.target_volume.data.len();
+        let results_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Results Buffer"),
+            size: (max_results * 16) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        let result_count_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Result Count Buffer"),
+            size: 4,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        queue.write_buffer(&result_count_buffer, 0, bytemuck::cast_slice(&[0u32]));
+
+        #[repr(C)]
+        #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+        struct Config {
+            num_yz: u32,
+            dims_y: u32,
+            dims_z: u32,
+            pad: u32,
+        }
+        let config = Config {
+            num_yz,
+            dims_y: dims[1],
+            dims_z: dims[2],
+            pad: 0,
+        };
+        let config_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Config Buffer"),
+            contents: bytemuck::cast_slice(&[config]),
+            usage: wgpu::BufferUsages::UNIFORM,
         });
 
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Optimizer Pipeline"),
-            layout: Some(&pipeline_layout),
+            label: Some("Pass 2 Pipeline"),
+            layout: None,
             module: &shader,
             entry_point: Some("main"),
             compilation_options: Default::default(),
             cache: None,
         });
 
-        let num_candidates = 256;
-        let samples_per_candidate = 1024 * 128; // 128k
-        let total_workgroups = num_candidates * (samples_per_candidate / 256);
-
-        let samples_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Samples Buffer"),
-            size: (std::mem::size_of::<[f32; 4]>() * samples_per_candidate as usize) as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Pass 2 Bind Group"),
+            layout: &pipeline.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: x_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: offset_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: count_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: results_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 4, resource: result_count_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 5, resource: config_buffer.as_entire_binding() },
+            ],
         });
 
-        let mut filled_voxels = Vec::new();
-        for z in 0..target_volume.dims[2] {
-            for y in 0..target_volume.dims[1] {
-                for x in 0..target_volume.dims[0] {
-                    if target_volume.get(x, y, z) > 0.5 {
-                        filled_voxels.push(Vec3::new(
-                            (x as f32 + 0.5) / target_volume.dims[0] as f32,
-                            (y as f32 + 0.5) / target_volume.dims[1] as f32,
-                            (z as f32 + 0.5) / target_volume.dims[2] as f32,
-                        ));
-                    }
-                }
-            }
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        {
+            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+            compute_pass.set_pipeline(&pipeline);
+            compute_pass.set_bind_group(0, &bind_group, &[]);
+            compute_pass.dispatch_workgroups(num_yz.div_ceil(64), 1, 1);
         }
 
-        let mut rng = rand::thread_rng();
-        use rand::Rng;
-        let mut samples = Vec::with_capacity(samples_per_candidate as usize);
-        for i in 0..samples_per_candidate {
-            let s = if !filled_voxels.is_empty() && (i % 2 == 0 || i < samples_per_candidate / 4) {
-                filled_voxels[rng.gen_range(0..filled_voxels.len())]
-            } else {
-                Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen())
-            };
-            samples.push([s.x, s.y, s.z, 0.0]);
-        }
-        queue.write_buffer(&samples_buffer, 0, bytemuck::cast_slice(&samples));
-
-        let config_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Config Buffer"),
-            size: std::mem::size_of::<Config>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Staging Buffer"),
+            size: (max_results * 16) as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-
-        let primitive_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Primitive Buffer"),
-            size: (std::mem::size_of::<Primitive>() * 2048) as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let perturbation_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Perturbation Buffer"),
-            size: (std::mem::size_of::<Perturbation>() * num_candidates as usize) as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let results_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Results Buffer"),
-            size: (std::mem::size_of::<ErrorResult>() * total_workgroups as usize) as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-
-        let results_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Results Staging Buffer"),
-            size: (std::mem::size_of::<ErrorResult>() * total_workgroups as usize) as u64,
+        let count_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Count Staging Buffer"),
+            size: 4,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
-        Ok(Self {
-            device,
-            queue,
-            target_volume: Arc::new(target_volume),
-            primitives: Vec::new(),
-            pipeline,
-            bind_group_layout,
-            target_texture_view,
-            config_buffer,
-            primitive_buffer,
-            perturbation_buffer,
-            results_buffer,
-            results_staging_buffer,
-            samples_buffer,
-            mipmap_pipeline,
-            octree_pipeline,
-            octree_bind_group_layout,
-            num_candidates,
-            samples_per_candidate,
-            seed: 0,
-            samples,
-            filled_voxels,
-            last_results: Vec::new(),
-            last_best_error: 1.0,
-            iterations_since_improvement: 0,
-            stats: Stats {
-                iterations: 0,
-                duration: std::time::Duration::from_secs(0),
-                final_error: 1.0,
-            },
-            start_time: std::time::Instant::now(),
-        })
-    }
+        encoder.copy_buffer_to_buffer(&results_buffer, 0, &staging_buffer, 0, (max_results * 16) as u64);
+        encoder.copy_buffer_to_buffer(&result_count_buffer, 0, &count_staging_buffer, 0, 4);
 
-    pub fn add_primitive(&mut self, prim: Primitive) {
-        self.primitives.push(prim);
-    }
+        queue.submit(Some(encoder.finish()));
 
-    /// Initializes primitives using a hierarchical top-down octree subdivision.
-    pub async fn octree_initialize(&mut self, target_count: usize) -> Result<()> {
-        let [w, h, d] = self.target_volume.dims;
-        let mut pyramid = Vec::new();
-        
-        println!("Building CPU mipmap pyramid for octree initialization...");
-        let mut current_dims = [w, h, d];
-        let mut current_data = self.target_volume.data.clone();
-        pyramid.push((current_data.clone(), current_dims));
-
-        while current_dims[0] > 1 || current_dims[1] > 1 || current_dims[2] > 1 {
-            let next_dims = [
-                (current_dims[0] + 1) / 2,
-                (current_dims[1] + 1) / 2,
-                (current_dims[2] + 1) / 2,
-            ];
-            let mut next_data = vec![0.0; (next_dims[0] * next_dims[1] * next_dims[2]) as usize];
-            
-            for z in 0..next_dims[2] {
-                for y in 0..next_dims[1] {
-                    for x in 0..next_dims[0] {
-                        let mut sum = 0.0;
-                        let mut count = 0.0;
-                        for dz in 0..2 {
-                            for dy in 0..2 {
-                                for dx in 0..2 {
-                                    let sx = x * 2 + dx;
-                                    let sy = y * 2 + dy;
-                                    let sz = z * 2 + dz;
-                                    if sx < current_dims[0] && sy < current_dims[1] && sz < current_dims[2] {
-                                        let idx = (sz * current_dims[1] * current_dims[0] + sy * current_dims[0] + sx) as usize;
-                                        sum += current_data[idx];
-                                        count += 1.0;
-                                    }
-                                }
-                            }
-                        }
-                        let idx = (z * next_dims[1] * next_dims[0] + y * next_dims[0] + x) as usize;
-                        next_data[idx] = sum / count;
-                    }
-                }
-            }
-            current_dims = next_dims;
-            current_data = next_data;
-            pyramid.push((current_data.clone(), current_dims));
-        }
-
-        #[derive(Copy, Clone, PartialEq)]
-        struct PQNode {
-            level: usize,
-            x: u32, y: u32, z: u32,
-            priority: f32,
-        }
-        impl Eq for PQNode {}
-        impl Ord for PQNode {
-            fn cmp(&self, other: &Self) -> Ordering {
-                self.priority.partial_cmp(&other.priority).unwrap_or(Ordering::Equal)
-            }
-        }
-        impl PartialOrd for PQNode {
-            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-                Some(self.cmp(other))
-            }
-        }
-
-        let root_level = pyramid.len() - 1;
-        let mut pq = BinaryHeap::new();
-        let (root_data, root_dims) = &pyramid[root_level];
-        
-        let total_vol = (w * h * d) as f32;
-        pq.push(PQNode {
-            level: root_level,
-            x: 0, y: 0, z: 0,
-            priority: (root_data[0] - 0.01) * total_vol,
-        });
-
-        println!("Performing top-down subdivision to find {} best boxes...", target_count);
-        while pq.len() < target_count && !pq.is_empty() {
-            let best = pq.pop().unwrap();
-            if best.level == 0 || best.priority <= 0.0 {
-                pq.push(best);
-                break;
-            }
-            
-            let child_level = best.level - 1;
-            let (child_data, child_dims) = &pyramid[child_level];
-            
-            let mut added_children = 0;
-            for dz in 0..2 {
-                for dy in 0..2 {
-                    for dx in 0..2 {
-                        let cx = best.x * 2 + dx;
-                        let cy = best.y * 2 + dy;
-                        let cz = best.z * 2 + dz;
-                        if cx < child_dims[0] && cy < child_dims[1] && cz < child_dims[2] {
-                            let idx = (cz * child_dims[1] * child_dims[0] + cy * child_dims[0] + cx) as usize;
-                            let occupancy = child_data[idx];
-                            if occupancy > 0.0 {
-                                let nx = ((cx + 1) << child_level).min(w) - (cx << child_level);
-                                let ny = ((cy + 1) << child_level).min(h) - (cy << child_level);
-                                let nz = ((cz + 1) << child_level).min(d) - (cz << child_level);
-                                let vol = (nx * ny * nz) as f32;
-                                pq.push(PQNode {
-                                    level: child_level,
-                                    x: cx, y: cy, z: cz,
-                                    priority: (occupancy - 0.01) * vol,
-                                });
-                                added_children += 1;
-                            }
-                        }
-                    }
-                }
-            }
-            if added_children == 0 {
-                // Should not happen given occupancy > 0 check, but safety first
-                pq.push(best);
-                break;
-            }
-        }
-
-        self.primitives.clear();
-        let final_nodes: Vec<_> = pq.into_sorted_vec();
-        for n in final_nodes.iter().rev().take(target_count) {
-            let start_x = (n.x << n.level) as f32;
-            let start_y = (n.y << n.level) as f32;
-            let start_z = (n.z << n.level) as f32;
-            let end_x = ((n.x + 1) << n.level).min(w) as f32;
-            let end_y = ((n.y + 1) << n.level).min(h) as f32;
-            let end_z = ((n.z + 1) << n.level).min(d) as f32;
-            
-            let pos = Vec3::new(
-                (start_x + end_x) / 2.0 / w as f32,
-                (start_y + end_y) / 2.0 / h as f32,
-                (start_z + end_z) / 2.0 / d as f32,
-            );
-            let size = Vec3::new(
-                (end_x - start_x) / 2.0 / w as f32,
-                (end_y - start_y) / 2.0 / h as f32,
-                (end_z - start_z) / 2.0 / d as f32,
-            );
-            self.primitives.push(Primitive::new_cube(pos, size, BooleanOp::Union));
-        }
-
-        println!(
-            "Octree initialization produced {} primitives.",
-            self.primitives.len()
-        );
-        Ok(())
-    }
-
-    /// Initializes primitives using a greedy box-growing algorithm to cover all filled voxels.
-    pub fn greedy_box_initialize(&mut self) {
-        let [w, h, d] = self.target_volume.dims;
-        let mut covered = vec![false; (w * h * d) as usize];
-        let mut primitives = Vec::new();
-
-        let mut v_min = Vec3::splat(f32::MAX);
-        let mut v_max = Vec3::splat(f32::MIN);
-        let mut filled_count = 0;
-
-        for z in 0..d {
-            for y in 0..h {
-                for x in 0..w {
-                    let idx = ((z * h + y) * w + x) as usize;
-                    if self.target_volume.data[idx] > 0.5 {
-                        filled_count += 1;
-                        let p = Vec3::new(x as f32, y as f32, z as f32);
-                        v_min = v_min.min(p);
-                        v_max = v_max.max(p);
-
-                        if !covered[idx] {
-                            let mut dx = 0;
-                            while x + dx + 1 < w {
-                                let next_idx = idx + (dx + 1) as usize;
-                                if self.target_volume.data[next_idx] > 0.5 && !covered[next_idx] {
-                                    dx += 1;
-                                } else {
-                                    break;
-                                }
-                            }
-
-                            let mut dy = 0;
-                            'y_loop: while y + dy + 1 < h {
-                                for i in 0..=dx {
-                                    let next_idx =
-                                        (((z * h + (y + dy + 1)) * w) + (x + i)) as usize;
-                                    if !(self.target_volume.data[next_idx] > 0.5
-                                        && !covered[next_idx])
-                                    {
-                                        break 'y_loop;
-                                    }
-                                }
-                                dy += 1;
-                            }
-
-                            let mut dz = 0;
-                            'z_loop: while z + dz + 1 < d {
-                                for j in 0..=dy {
-                                    for i in 0..=dx {
-                                        let next_idx =
-                                            ((((z + dz + 1) * h + (y + j)) * w) + (x + i)) as usize;
-                                        if !(self.target_volume.data[next_idx] > 0.5
-                                            && !covered[next_idx])
-                                        {
-                                            break 'z_loop;
-                                        }
-                                    }
-                                }
-                                dz += 1;
-                            }
-
-                            let pos = Vec3::new(
-                                (x as f32 + (dx as f32 + 1.0) / 2.0) / w as f32,
-                                (y as f32 + (dy as f32 + 1.0) / 2.0) / h as f32,
-                                (z as f32 + (dz as f32 + 1.0) / 2.0) / d as f32,
-                            );
-                            let size = Vec3::new(
-                                (dx as f32 + 1.0) / 2.0 / w as f32,
-                                (dy as f32 + 1.0) / 2.0 / h as f32,
-                                (dz as f32 + 1.0) / 2.0 / d as f32,
-                            );
-
-                            primitives.push(Primitive::new_cube(pos, size, BooleanOp::Union));
-
-                            for k in 0..=dz {
-                                for j in 0..=dy {
-                                    for i in 0..=dx {
-                                        let c_idx =
-                                            ((((z + k) * h + (y + j)) * w) + (x + i)) as usize;
-                                        covered[c_idx] = true;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        println!(
-            "Greedy complete: Filled={}, VoxelBounds={:?} to {:?}, Prims={}",
-            filled_count,
-            v_min,
-            v_max,
-            primitives.len()
-        );
-
-        let mut p_min = Vec3::splat(f32::MAX);
-        let mut p_max = Vec3::splat(f32::MIN);
-        for p in &primitives {
-            let pos = Vec3::from_slice(&p.pos[..3]);
-            let size = Vec3::from_slice(&p.size[..3]);
-            p_min = p_min.min(pos - size);
-            p_max = p_max.max(pos + size);
-        }
-        println!("Primitive normalized bounds: {:?} to {:?}", p_min, p_max);
-
-        self.primitives = primitives;
-    }
-
-    /// Reduces the number of primitives by merging those that minimize introduced error.
-    pub fn decimate(&mut self, target_count: usize) {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-
-        println!(
-            "Decimating {} to {}...",
-            self.primitives.len(),
-            target_count
-        );
-
-        let mut dist_threshold_sq = 0.0001;
-        let mut min_efficiency = 0.5;
-
-        while self.primitives.len() > target_count {
-            // Sort by X position occasionally to keep neighbors close in the list
-            if self.primitives.len() % 1000 == 0 {
-                self.primitives.sort_by(|a, b| a.pos[0].partial_cmp(&b.pos[0]).unwrap());
-            }
-
-            let mut best_pair = (0, 0);
-            let mut min_cost = f32::MAX;
-
-            let samples = if self.primitives.len() > 10000 {
-                2000
-            } else {
-                5000
-            };
-
-            for _ in 0..samples {
-                let i = rng.gen_range(0..self.primitives.len());
-                // Pick a neighbor in the sorted list with high probability
-                let j = if rng.gen_bool(0.9) {
-                    let offset = rng.gen_range(1..20);
-                    if rng.gen_bool(0.5) {
-                        if i >= offset { i - offset } else { (i + offset).min(self.primitives.len() - 1) }
-                    } else {
-                        (i + offset).min(self.primitives.len() - 1)
-                    }
-                } else {
-                    rng.gen_range(0..self.primitives.len())
-                };
-
-                if i == j {
-                    continue;
-                }
-
-                let p1 = &self.primitives[i];
-                let p2 = &self.primitives[j];
-
-                let p1_pos = Vec3::from_slice(&p1.pos[..3]);
-                let p2_pos = Vec3::from_slice(&p2.pos[..3]);
-                let p1_size = Vec3::from_slice(&p1.size[..3]);
-                let p2_size = Vec3::from_slice(&p2.size[..3]);
-
-                let dist_sq = (p1_pos - p2_pos).length_squared();
-                if dist_sq > dist_threshold_sq {
-                    continue;
-                }
-
-                let combined_min = (p1_pos - p1_size).min(p2_pos - p2_size);
-                let combined_max = (p1_pos + p1_size).max(p2_pos + p2_size);
-                let combined_size = (combined_max - combined_min) / 2.0;
-                let combined_pos = (combined_min + combined_max) / 2.0;
-
-                let mut filled_count = 0;
-                let test_samples = 32; // Increased for better accuracy
-                for _ in 0..test_samples {
-                    let rp = combined_pos
-                        + combined_size
-                            * Vec3::new(
-                                rng.gen_range(-1.0..1.0),
-                                rng.gen_range(-1.0..1.0),
-                                rng.gen_range(-1.0..1.0),
-                            );
-                    let vx = (rp.x * self.target_volume.dims[0] as f32) as u32;
-                    let vy = (rp.y * self.target_volume.dims[1] as f32) as u32;
-                    let vz = (rp.z * self.target_volume.dims[2] as f32) as u32;
-                    if self.target_volume.get(vx, vy, vz) > 0.5 {
-                        filled_count += 1;
-                    }
-                }
-
-                let efficiency = filled_count as f32 / test_samples as f32;
-                let combined_vol = combined_size.x * combined_size.y * combined_size.z;
-                let cost = (1.0 - efficiency) * combined_vol;
-
-                if efficiency >= min_efficiency && cost < min_cost {
-                    min_cost = cost;
-                    best_pair = (i, j);
-                }
-            }
-
-            if min_cost == f32::MAX {
-                dist_threshold_sq *= 1.2;
-                if dist_threshold_sq > 0.1 { // Cap distance threshold
-                    dist_threshold_sq = 0.1;
-                    min_efficiency *= 0.9; // Lower efficiency requirement if stuck
-                    if min_efficiency < 0.01 {
-                        println!(
-                            "Gave up on efficiency. Stopping at {}.",
-                            self.primitives.len()
-                        );
-                        break;
-                    }
-                }
-                continue;
-            }
-
-            let (idx1, idx2) = if best_pair.0 > best_pair.1 {
-                (best_pair.0, best_pair.1)
-            } else {
-                (best_pair.1, best_pair.0)
-            };
-            let p1 = self.primitives.remove(idx1);
-            let p2 = self.primitives.remove(idx2);
-
-            let p1_pos = Vec3::from_slice(&p1.pos[..3]);
-            let p2_pos = Vec3::from_slice(&p2.pos[..3]);
-            let p1_size = Vec3::from_slice(&p1.size[..3]);
-            let p2_size = Vec3::from_slice(&p2.size[..3]);
-
-            let combined_min = (p1_pos - p1_size).min(p2_pos - p2_size);
-            let combined_max = (p1_pos + p1_size).max(p2_pos + p2_size);
-
-            self.primitives.push(Primitive::new_cube(
-                (combined_min + combined_max) / 2.0,
-                (combined_max - combined_min) / 2.0,
-                BooleanOp::Union,
-            ));
-
-            if self.primitives.len() % 1000 == 0 {
-                println!(
-                    "... remaining: {}, dist_thresh_sq: {:.6}",
-                    self.primitives.len(),
-                    dist_threshold_sq
-                );
-            }
-        }
-    }
-
-    pub async fn run_iteration(&mut self) -> Result<f32> {
-        self.stats.iterations += 1;
-        self.stats.duration = self.start_time.elapsed();
-
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-
-        self.samples.clear();
-        for i in 0..self.samples_per_candidate {
-            let s = if !self.filled_voxels.is_empty()
-                && (i % 2 == 0 || i < self.samples_per_candidate / 4)
-            {
-                self.filled_voxels[rng.gen_range(0..self.filled_voxels.len())]
-            } else {
-                Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen())
-            };
-            self.samples.push([s.x, s.y, s.z, 0.0]);
-        }
-        self.queue
-            .write_buffer(&self.samples_buffer, 0, bytemuck::cast_slice(&self.samples));
-
-        let mut seed_positions = Vec::new();
-        if !self.last_results.is_empty() {
-            let groups_per_cand = self.samples_per_candidate / 256;
-            let mut errors_with_idx: Vec<(f32, usize)> = self.last_results
-                [0..groups_per_cand as usize]
-                .iter()
-                .enumerate()
-                .map(|(i, r)| (r.mse_sum, i))
-                .collect();
-            errors_with_idx.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-
-            for i in 0..10.min(errors_with_idx.len()) {
-                let group_idx = errors_with_idx[i].1;
-                let sample_idx = group_idx as u32 * 256 + rng.gen_range(0..256);
-                let s = self.samples[sample_idx as usize];
-                seed_positions.push(Vec3::new(s[0], s[1], s[2]));
-            }
-        }
-        if seed_positions.is_empty() {
-            seed_positions.push(Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()));
-        }
-
-        let mut perts = Vec::with_capacity(self.num_candidates as usize);
-        perts.push(Perturbation {
-            prim_idx: 8888,
-            pad1: 0,
-            pad2: 0,
-            pad3: 0,
-            pos_delta: [0.0, 0.0, 0.0, 0.0],
-            size_scale: [1.0, 1.0, 1.0, 0.0],
-            op: 0,
-            pad4: 0,
-            pad5: 0,
-            pad6: 0,
-        });
-
-        let seed_pos = seed_positions[rng.gen_range(0..seed_positions.len())];
-        perts.push(Perturbation {
-            prim_idx: 9999,
-            pad1: 0,
-            pad2: 0,
-            pad3: 0,
-            pos_delta: [seed_pos.x, seed_pos.y, seed_pos.z, 0.0],
-            size_scale: [0.01, 0.01, 0.01, 0.0],
-            op: 0,
-            pad4: 0,
-            pad5: 0,
-            pad6: 0,
-        });
-
-        for _i in 2..self.num_candidates as usize {
-            let seed_pos = seed_positions[rng.gen_range(0..seed_positions.len())];
-            if self.primitives.len() < 2048 && (self.primitives.is_empty() || rng.gen_bool(0.3)) {
-                let size = rng.gen_range(0.005..0.05);
-                let aspect = Vec3::new(
-                    rng.gen_range(0.5..2.0),
-                    rng.gen_range(0.5..2.0),
-                    rng.gen_range(0.5..2.0),
-                );
-                let d = seed_pos
-                    + Vec3::new(
-                        rng.gen_range(-0.01..0.01),
-                        rng.gen_range(-0.01..0.01),
-                        rng.gen_range(-0.01..0.01),
-                    );
-                let s = Vec3::splat(size) * aspect;
-                perts.push(Perturbation {
-                    prim_idx: 9999,
-                    pad1: 0,
-                    pad2: 0,
-                    pad3: 0,
-                    pos_delta: [d.x, d.y, d.z, 0.0],
-                    size_scale: [s.x, s.y, s.z, 0.0],
-                    op: rng.gen_range(0..4),
-                    pad4: 0,
-                    pad5: 0,
-                    pad6: 0,
-                });
-            } else if !self.primitives.is_empty() {
-                let prim_idx = rng.gen_range(0..self.primitives.len()) as u32;
-                if rng.gen_bool(0.1) {
-                    let prim_pos = Vec3::from_slice(&self.primitives[prim_idx as usize].pos[..3]);
-                    let prim_size = Vec3::from_slice(&self.primitives[prim_idx as usize].size[..3]);
-                    let d = seed_pos - prim_pos;
-                    let s = Vec3::splat(rng.gen_range(0.005..0.05)) / prim_size;
-                    perts.push(Perturbation {
-                        prim_idx,
-                        pad1: 0,
-                        pad2: 0,
-                        pad3: 0,
-                        pos_delta: [d.x, d.y, d.z, 0.0],
-                        size_scale: [s.x, s.y, s.z, 0.0],
-                        op: rng.gen_range(0..4),
-                        pad4: 0,
-                        pad5: 0,
-                        pad6: 0,
-                    });
-                } else {
-                    let d = Vec3::new(
-                        rng.gen_range(-0.02..0.02),
-                        rng.gen_range(-0.02..0.02),
-                        rng.gen_range(-0.02..0.02),
-                    );
-                    let s = Vec3::new(
-                        rng.gen_range(0.9..1.1),
-                        rng.gen_range(0.9..1.1),
-                        rng.gen_range(0.9..1.1),
-                    );
-                    perts.push(Perturbation {
-                        prim_idx,
-                        pad1: 0,
-                        pad2: 0,
-                        pad3: 0,
-                        pos_delta: [d.x, d.y, d.z, 0.0],
-                        size_scale: [s.x, s.y, s.z, 0.0],
-                        op: self.primitives[prim_idx as usize].op,
-                        pad4: 0,
-                        pad5: 0,
-                        pad6: 0,
-                    });
-                }
-            } else {
-                perts.push(perts[0]);
-            }
-        }
-
-        let errors = self.calculate_errors(&perts).await?;
-        let identity_error = errors[0];
-        let mut best_idx = 0;
-        let mut min_error = identity_error;
-        let mut improved_count = 0;
-
-        for (i, &err) in errors.iter().enumerate() {
-            if err < identity_error {
-                improved_count += 1;
-            }
-            if err < min_error {
-                min_error = err;
-                best_idx = i;
-            }
-        }
-
-        if self.stats.iterations % 10 == 0 {
-            println!(
-                "Iteration {}: best_error = {}, improved = {}/{}",
-                self.stats.iterations, min_error, improved_count, self.num_candidates
-            );
-        }
-
-        if best_idx > 0 {
-            let pert = &perts[best_idx];
-            if pert.prim_idx == 9999 {
-                let op = match pert.op {
-                    0 | 2 => BooleanOp::Union,
-                    _ => BooleanOp::Difference,
-                };
-                let d = Vec3::from_slice(&pert.pos_delta[..3]);
-                let s = Vec3::from_slice(&pert.size_scale[..3]);
-                if pert.op >= 2 {
-                    self.primitives.push(Primitive::new_cube(d, s, op));
-                } else {
-                    self.primitives.push(Primitive::new_sphere(d, s.x, op));
-                }
-            } else if pert.prim_idx < 8888 {
-                let prim = &mut self.primitives[pert.prim_idx as usize];
-                let prim_pos = Vec3::from_slice(&prim.pos[..3]);
-                let prim_size = Vec3::from_slice(&prim.size[..3]);
-                let pos_delta = Vec3::from_slice(&pert.pos_delta[..3]);
-                let size_scale = Vec3::from_slice(&pert.size_scale[..3]);
-
-                let new_pos = (prim_pos + pos_delta).clamp(Vec3::ZERO, Vec3::ONE);
-                let new_size =
-                    (prim_size * size_scale).clamp(Vec3::splat(0.0005), Vec3::splat(0.5));
-
-                prim.pos = [new_pos.x, new_pos.y, new_pos.z, 0.0];
-                prim.size = [new_size.x, new_size.y, new_size.z, 0.0];
-
-                if pert.op < 4 && (pos_delta.length() > 0.5 || size_scale.min_element() < 0.1) {
-                    prim.prim_type = if pert.op >= 2 { 1 } else { 0 };
-                    prim.op = pert.op % 2;
-                }
-            }
-        }
-
-        if min_error < self.last_best_error * 0.999 {
-            self.last_best_error = min_error;
-            self.iterations_since_improvement = 0;
-        } else {
-            self.iterations_since_improvement += 1;
-        }
-
-        if self.iterations_since_improvement > 50 && self.primitives.len() < 2048 {
-            let seed_pos = seed_positions[rng.gen_range(0..seed_positions.len())];
-            self.primitives.push(Primitive::new_sphere(
-                seed_pos,
-                rng.gen_range(0.01..0.03),
-                BooleanOp::Union,
-            ));
-            self.iterations_since_improvement = 0;
-            println!("Forced adding primitive due to no improvement.");
-        }
-
-        self.stats.final_error = min_error;
-        Ok(min_error)
-    }
-
-    async fn calculate_errors(&mut self, perts: &[Perturbation]) -> Result<Vec<f32>> {
-        self.seed += 1;
-        let config = Config {
-            num_samples: self.samples_per_candidate,
-            num_primitives: self.primitives.len() as u32,
-            seed: self.seed,
-            num_candidates: self.num_candidates,
+        let count = {
+            let (tx, rx) = futures::channel::oneshot::channel();
+            count_staging_buffer.slice(..).map_async(wgpu::MapMode::Read, move |res| { tx.send(res).unwrap(); });
+            device.poll(wgpu::Maintain::Wait);
+            rx.await??;
+            let data = count_staging_buffer.slice(..).get_mapped_range();
+            let count = bytemuck::cast_slice::<u8, u32>(&data)[0];
+            drop(data);
+            count_staging_buffer.unmap();
+            count
         };
-        self.queue
-            .write_buffer(&self.config_buffer, 0, bytemuck::cast_slice(&[config]));
-        if !self.primitives.is_empty() {
-            self.queue.write_buffer(
-                &self.primitive_buffer,
-                0,
-                bytemuck::cast_slice(&self.primitives),
-            );
-        }
-        self.queue
-            .write_buffer(&self.perturbation_buffer, 0, bytemuck::cast_slice(perts));
 
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Optimizer Bind Group"),
-            layout: &self.bind_group_layout,
+        let results = {
+            let (tx, rx) = futures::channel::oneshot::channel();
+            staging_buffer.slice(..(count as u64 * 16)).map_async(wgpu::MapMode::Read, move |res| { tx.send(res).unwrap(); });
+            device.poll(wgpu::Maintain::Wait);
+            rx.await??;
+            let data = staging_buffer.slice(..(count as u64 * 16)).get_mapped_range();
+            let res: Vec<[i32; 4]> = bytemuck::cast_slice(&data).to_vec();
+            drop(data);
+            staging_buffer.unmap();
+            res
+        };
+
+        Ok(results)
+    }
+
+    async fn run_gpu_pass3(
+        &self,
+        z_to_runs: &BTreeMap<i32, Vec<[i32; 4]>>,
+    ) -> Result<Vec<([i32; 4], i32)>> {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions::default())
+            .await
+            .ok_or_else(|| anyhow::anyhow!("No WGPU adapter"))?;
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .await?;
+
+        let shader_src = include_str!("pass3.wgsl");
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Pass 3 Shader"),
+            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_src)),
+        });
+
+        let dims = self.target_volume.dims;
+        let num_z = dims[2];
+
+        let mut all_runs: Vec<[i32; 4]> = Vec::new();
+        let mut z_offsets = vec![0u32; num_z as usize];
+        let mut z_counts = vec![0u32; num_z as usize];
+
+        for z in 0..num_z {
+            if let Some(runs) = z_to_runs.get(&(z as i32)) {
+                z_offsets[z as usize] = all_runs.len() as u32;
+                z_counts[z as usize] = runs.len() as u32;
+                all_runs.extend(runs);
+            }
+        }
+
+        let runs_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Runs Buffer"),
+            contents: bytemuck::cast_slice(&all_runs),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        let offset_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Z Offsets Buffer"),
+            contents: bytemuck::cast_slice(&z_offsets),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        let count_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Z Counts Buffer"),
+            contents: bytemuck::cast_slice(&z_counts),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        let max_results = all_runs.len();
+        let results_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Results Buffer"),
+            size: (max_results * 16) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let results_extra_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Results Extra Buffer"),
+            size: (max_results * 4) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        let result_count_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Result Count Buffer"),
+            size: 4,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        queue.write_buffer(&result_count_buffer, 0, bytemuck::cast_slice(&[0u32]));
+
+        #[repr(C)]
+        #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+        struct Config {
+            num_z: u32,
+        }
+        let config = Config { num_z };
+        let config_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Config Buffer"),
+            contents: bytemuck::cast_slice(&[config]),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+
+        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Pass 3 Pipeline"),
+            layout: None,
+            module: &shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Pass 3 Bind Group"),
+            layout: &pipeline.get_bind_group_layout(0),
             entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: self.primitive_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&self.target_texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: self.results_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: self.config_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: self.perturbation_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: self.samples_buffer.as_entire_binding(),
-                },
+                wgpu::BindGroupEntry { binding: 0, resource: runs_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: offset_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: count_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: results_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 4, resource: results_extra_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 5, resource: result_count_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 6, resource: config_buffer.as_entire_binding() },
             ],
         });
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
-            let mut compute_pass =
-                encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-            compute_pass.set_pipeline(&self.pipeline);
+            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+            compute_pass.set_pipeline(&pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
-            compute_pass.dispatch_workgroups(
-                self.num_candidates,
-                self.samples_per_candidate / 256,
-                1,
-            );
+            compute_pass.dispatch_workgroups(num_z.div_ceil(64), 1, 1);
         }
-        let total_results = self.num_candidates * (self.samples_per_candidate / 256);
-        encoder.copy_buffer_to_buffer(
-            &self.results_buffer,
-            0,
-            &self.results_staging_buffer,
-            0,
-            (std::mem::size_of::<ErrorResult>() * total_results as usize) as u64,
-        );
-        self.queue.submit(Some(encoder.finish()));
 
-        let (tx, rx) = futures::channel::oneshot::channel();
-        self.results_staging_buffer
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |v| {
-                let _ = tx.send(v);
-            });
-        self.device.poll(wgpu::Maintain::Wait);
-        rx.await??;
+        let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Staging Buffer"),
+            size: (max_results * 16) as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let extra_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Extra Staging Buffer"),
+            size: (max_results * 4) as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let count_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Count Staging Buffer"),
+            size: 4,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
 
-        let mapped = self.results_staging_buffer.slice(..).get_mapped_range();
-        let results: &[ErrorResult] = bytemuck::cast_slice(&mapped);
-        self.last_results = results.to_vec();
-        let mut cand_errors = Vec::with_capacity(self.num_candidates as usize);
-        let groups_per_cand = self.samples_per_candidate / 256;
-        for c in 0..self.num_candidates as usize {
-            let mut mse_total = 0.0;
-            for g in 0..groups_per_cand as usize {
-                mse_total += results[c * groups_per_cand as usize + g].mse_sum;
+        encoder.copy_buffer_to_buffer(&results_buffer, 0, &staging_buffer, 0, (max_results * 16) as u64);
+        encoder.copy_buffer_to_buffer(&results_extra_buffer, 0, &extra_staging_buffer, 0, (max_results * 4) as u64);
+        encoder.copy_buffer_to_buffer(&result_count_buffer, 0, &count_staging_buffer, 0, 4);
+
+        queue.submit(Some(encoder.finish()));
+
+        let count = {
+            let (tx, rx) = futures::channel::oneshot::channel();
+            count_staging_buffer.slice(..).map_async(wgpu::MapMode::Read, move |res| { tx.send(res).unwrap(); });
+            device.poll(wgpu::Maintain::Wait);
+            rx.await??;
+            let data = count_staging_buffer.slice(..).get_mapped_range();
+            let count = bytemuck::cast_slice::<u8, u32>(&data)[0];
+            drop(data);
+            count_staging_buffer.unmap();
+            count
+        };
+
+        let results = {
+            let (tx, rx) = futures::channel::oneshot::channel();
+            staging_buffer.slice(..(count as u64 * 16)).map_async(wgpu::MapMode::Read, move |res| { tx.send(res).unwrap(); });
+            device.poll(wgpu::Maintain::Wait);
+            rx.await??;
+            let data = staging_buffer.slice(..(count as u64 * 16)).get_mapped_range();
+            let res: Vec<[i32; 4]> = bytemuck::cast_slice(&data).to_vec();
+            drop(data);
+            staging_buffer.unmap();
+            res
+        };
+
+        let extras = {
+            let (tx, rx) = futures::channel::oneshot::channel();
+            extra_staging_buffer.slice(..(count as u64 * 4)).map_async(wgpu::MapMode::Read, move |res| { tx.send(res).unwrap(); });
+            device.poll(wgpu::Maintain::Wait);
+            rx.await??;
+            let data = extra_staging_buffer.slice(..(count as u64 * 4)).get_mapped_range();
+            let res: Vec<i32> = bytemuck::cast_slice(&data).to_vec();
+            drop(data);
+            extra_staging_buffer.unmap();
+            res
+        };
+
+        let combined = results.into_iter().zip(extras.into_iter()).collect();
+        Ok(combined)
+    }
+
+    fn run_cpu_pass4(&self) -> Vec<Cuboid> {
+        // Pass 3 results are tuples (([X1, X2, Y1, Y2]), Z)
+        // Preparation for Pass 4: sort by X1, then Y1, then Z
+        let mut sorted_pass3 = self.pass3_results.clone();
+        sorted_pass3.sort_by(|a, b| {
+            if a.0[0] != b.0[0] {
+                a.0[0].cmp(&b.0[0])
+            } else if a.0[2] != b.0[2] {
+                a.0[2].cmp(&b.0[2])
+            } else if a.0[1] != b.0[1] {
+                a.0[1].cmp(&b.0[1])
+            } else if a.0[3] != b.0[3] {
+                a.0[3].cmp(&b.0[3])
+            } else {
+                a.1.cmp(&b.1)
             }
-            cand_errors.push(mse_total / self.samples_per_candidate as f32);
+        });
+
+        let mut final_cuboids = Vec::new();
+        if sorted_pass3.is_empty() {
+            return final_cuboids;
         }
-        drop(mapped);
-        self.results_staging_buffer.unmap();
-        Ok(cand_errors)
+
+        let mut it = sorted_pass3.into_iter();
+        let first = it.next().unwrap();
+        let mut current = Cuboid {
+            x1: first.0[0],
+            x2: first.0[1],
+            y1: first.0[2],
+            y2: first.0[3],
+            z1: first.1,
+            z2: first.1,
+        };
+
+        for next in it {
+            if next.0[0] == current.x1 &&
+               next.0[1] == current.x2 &&
+               next.0[2] == current.y1 &&
+               next.0[3] == current.y2 &&
+               next.1 == current.z2 + 1 {
+                current.z2 = next.1;
+            } else {
+                final_cuboids.push(current);
+                current = Cuboid {
+                    x1: next.0[0],
+                    x2: next.0[1],
+                    y1: next.0[2],
+                    y2: next.0[3],
+                    z1: next.1,
+                    z2: next.1,
+                };
+            }
+        }
+        final_cuboids.push(current);
+
+        final_cuboids
     }
 
     pub fn generate_irmf(&self) -> String {
+        self.generate_final_irmf()
+    }
+
+    pub fn generate_pass2_irmf(&self) -> String {
+        let mut primitives_code = String::new();
+        for res in &self.pass2_results {
+            primitives_code.push_str(&format!(
+                "  val = max(val, xRangeCuboid(vec4i({}, {}, {}, {})));\n",
+                res[0], res[1], res[2], res[3]
+            ));
+        }
+        self.wrap_irmf(primitives_code, "Pass 2 (X-runs)")
+    }
+
+    pub fn generate_pass3_irmf(&self) -> String {
+        let mut primitives_code = String::new();
+        for (rect, z) in &self.pass3_results {
+            primitives_code.push_str(&format!(
+                "  val = max(val, xyRangeCuboid({}, {}, {}, {}, {}));\n",
+                rect[0], rect[1], rect[2], rect[3], z
+            ));
+        }
+        self.wrap_irmf(primitives_code, "Pass 3 (XY-planes)")
+    }
+
+    pub fn generate_final_irmf(&self) -> String {
+        let mut primitives_code = String::new();
+        for c in &self.cuboids {
+            primitives_code.push_str(&format!(
+                "  val = max(val, xyzRangeVuboid({}, {}, {}, {}, {}, {}));\n",
+                c.x1, c.x2, c.y1, c.y2, c.z1, c.z2
+            ));
+        }
+        self.wrap_irmf(primitives_code, "Final Lossless Cuboids")
+    }
+
+    fn wrap_irmf(&self, primitives_code: String, notes: &str) -> String {
         let min = self.target_volume.min;
         let max = self.target_volume.max;
-        let size = max - min;
-        let notes = format!(
-            "Generated by volume-to-irmf. Iterations: {}, Primitives: {}, Error: {}",
-            self.stats.iterations,
-            self.primitives.len(),
-            self.stats.final_error
-        );
-        let mut primitives_code = String::new();
-        primitives_code.push_str("  var val = 0.0;\n");
-        primitives_code.push_str(&format!(
-            "  let p_norm = (xyz - vec3f({:.4}, {:.4}, {:.4})) / vec3f({:.4}, {:.4}, {:.4});\n",
-            min.x, min.y, min.z, size.x, size.y, size.z
-        ));
-        for prim in &self.primitives {
-            let df = if prim.prim_type == 0 {
-                format!(
-                    "length(p_norm - vec3f({:.4}, {:.4}, {:.4})) - {:.4}",
-                    prim.pos[0], prim.pos[1], prim.pos[2], prim.size[0]
-                )
-            } else {
-                format!(
-                    "sd_box(p_norm - vec3f({:.4}, {:.4}, {:.4}), vec3f({:.4}, {:.4}, {:.4}))",
-                    prim.pos[0], prim.pos[1], prim.pos[2], prim.size[0], prim.size[1], prim.size[2]
-                )
-            };
-            if prim.op == 0 {
-                primitives_code.push_str(&format!(
-                    "  val = max(val, clamp(0.5 - ({}) * 100.0, 0.0, 1.0));\n",
-                    df
-                ));
-            } else {
-                primitives_code.push_str(&format!(
-                    "  val = min(val, 1.0 - clamp(0.5 - ({}) * 100.0, 0.0, 1.0));\n",
-                    df
-                ));
-            }
-        }
+        let dims = self.target_volume.dims;
+        
         format!(
-            r#"/*{{
+            r###"/*{{ 
   "irmf": "1.0",
   "language": "wgsl",
   "materials": ["Material"],
   "max": [{:.4}, {:.4}, {:.4}],
   "min": [{:.4}, {:.4}, {:.4}],
-  "notes": {},
+  "notes": "{}",
   "units": "mm"
 }}*/
 
-fn sd_box(p: vec3f, b: vec3f) -> f32 {{
+const DIMS = vec3f({:.1}, {:.1}, {:.1});
+const MIN_BOUND = vec3f({:.4}, {:.4}, {:.4});
+const MAX_BOUND = vec3f({:.4}, {:.4}, {:.4});
+const VOXEL_SIZE = (MAX_BOUND - MIN_BOUND) / DIMS;
+
+fn sd_box(p: vec3f, b: vec3f) -> f32 {{ 
   let q = abs(p) - b;
   return length(max(q, vec3f(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);
 }}
 
-fn mainModel4(xyz: vec3f) -> vec4f {{
-{}
-  return vec4f(val, 0.0, 0.0, 0.0);
+fn cuboid(p: vec3f, b_min: vec3i, b_max: vec3i) -> f32 {{
+    let world_min = MIN_BOUND + vec3f(b_min) * VOXEL_SIZE;
+    let world_max = MIN_BOUND + vec3f(b_max) * VOXEL_SIZE;
+    let center = (world_min + world_max) * 0.5;
+    let half_size = (world_max - world_min) * 0.5;
+    let d = sd_box(p - center, half_size);
+    return clamp(0.5 - d * 1000.0, 0.0, 1.0);
 }}
-"#,
-            max.x,
-            max.y,
-            max.z,
-            min.x,
-            min.y,
-            min.z,
-            serde_json::to_string(&notes).unwrap(),
-            primitives_code
-        )
-    }
-}
+
+fn xRangeCuboid(val: vec4i) -> f32 {{
+    return cuboid(global_p, vec3i(val.x, val.z, val.w), vec3i(val.y + 1, val.z + 1, val.w + 1));
+}}
+
+fn xyRangeCuboid(x1: i32, x2: i32, y1: i32, y2: i32, z: i32) -> f32 {{
+    return cuboid(global_p, vec3i(x1, y1, z), vec3i(x2 + 1, y2 + 1, z + 1));
+}}
+
+fn xyzRangeVuboid(x1: i32, x2: i32, y1: i32, y2: i32, z1: i32, z2: i32) -> f32 {{
+    return cuboid(global_p, vec3i(x1, y1, z1), vec3i(x2 + 1, y2 + 1, z2 + 1));
+}}
+
+var<private> global_p: vec3f;
+
+fn mainModel4(xyz: vec3f) -> vec4f {{
+  global_p = xyz;
+  var val = 0.0;
+{}
+    return vec4f(val, 0.0, 0.0, 0.0);
+  }}
+  "###,
+              max.x, max.y, max.z, min.x, min.y, min.z,
+              notes,
+              dims[0] as f32, dims[1] as f32, dims[2] as f32,
+              min.x, min.y, min.z,
+              max.x, max.y, max.z,
+              primitives_code
+          )
+      }
+  }
+  

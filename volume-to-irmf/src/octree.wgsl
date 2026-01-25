@@ -13,25 +13,31 @@ struct Config {
 // Pass 1: Mipmap generation (Reduction)
 @compute @workgroup_size(8, 8, 1)
 fn mipmap_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let dst_coords = global_id;
-    let src_coords = dst_coords * 2u;
-    
     let dst_dims = textureDimensions(dst_texture);
-    if (any(dst_coords >= dst_dims)) {
+    if (any(global_id >= dst_dims)) {
         return;
     }
 
+    let src_coords = global_id * 2u;
+    let src_dims = textureDimensions(src_texture);
+
     var sum = 0.0;
+    var count = 0.0;
     for (var z = 0u; z < 2u; z++) {
         for (var y = 0u; y < 2u; y++) {
             for (var x = 0u; x < 2u; x++) {
                 let coords = src_coords + vec3<u32>(x, y, z);
-                sum += textureLoad(src_texture, coords, 0).r;
+                if (all(coords < src_dims)) {
+                    sum += textureLoad(src_texture, coords, 0).r;
+                    count += 1.0;
+                }
             }
         }
     }
     
-    textureStore(dst_texture, dst_coords, vec4f(sum / 8.0, 0.0, 0.0, 0.0));
+    // Average occupancy in this block
+    let avg = select(0.0, sum / count, count > 0.0);
+    textureStore(dst_texture, global_id, vec4f(avg, 0.0, 0.0, 0.0));
 }
 
 struct Node {
@@ -53,7 +59,7 @@ fn extract_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let occupancy = textureLoad(src_texture, global_id, 0).r;
     
-    // Thresholds: high means we definitely take it, low means we might take it if it's fine-grained.
+    // Low thresholds ensure we don't miss sparse features like the Rodin coil wires.
     let is_leaf = (occupancy >= config.threshold_high) || (config.level == 0u && occupancy > config.threshold_low);
 
     if (is_leaf) {
@@ -62,7 +68,9 @@ fn extract_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             let total_dims = vec3f(config.dims.xyz);
             let level_scale = f32(1u << config.level);
             
-            let node_size = vec3f(level_scale) / total_dims / 2.0;
+            // Half-size (radius) of the node in normalized [0, 1] space
+            let node_size = (vec3f(level_scale) / total_dims) / 2.0;
+            // Center position of the node in normalized [0, 1] space
             let node_pos = (vec3f(global_id) * level_scale + vec3f(level_scale) / 2.0) / total_dims;
             
             out_nodes[idx].pos = vec4f(node_pos, 0.0);

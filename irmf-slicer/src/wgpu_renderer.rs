@@ -195,12 +195,17 @@ fn vs_main(@location(0) vert: vec3<f32>) -> VertexOutput {{
                 model.shader, footer
             );
 
+            self.device.push_error_scope(wgpu::ErrorFilter::Validation);
             let shader = self
                 .device
                 .create_shader_module(wgpu::ShaderModuleDescriptor {
                     label: Some("Shader"),
                     source: wgpu::ShaderSource::Wgsl(Cow::Owned(shader_source)),
                 });
+
+            if let Some(error) = pollster::block_on(self.device.pop_error_scope()) {
+                return Err(IrmfError::ShaderError(error.to_string()));
+            }
 
             self.create_pipeline(&shader, "vs_main", &shader, "fs_main")
         } else {
@@ -226,6 +231,7 @@ void main() {
             let vs_wgsl = translate_glsl_to_wgsl(glsl_vs, naga::ShaderStage::Vertex)?;
             let fs_wgsl = translate_glsl_to_wgsl(&glsl_fs, naga::ShaderStage::Fragment)?;
 
+            self.device.push_error_scope(wgpu::ErrorFilter::Validation);
             let vs_module = self
                 .device
                 .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -238,6 +244,10 @@ void main() {
                     label: Some("FS Shader"),
                     source: wgpu::ShaderSource::Wgsl(Cow::Owned(fs_wgsl)),
                 });
+
+            if let Some(error) = pollster::block_on(self.device.pop_error_scope()) {
+                return Err(IrmfError::ShaderError(error.to_string()));
+            }
 
             self.create_pipeline(&vs_module, "main", &fs_module, "main")
         }

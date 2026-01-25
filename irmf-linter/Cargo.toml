@@ -1,0 +1,22 @@
+[package]
+name = "irmf-linter"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "A linter for IRMF (Infinite Resolution Materials Format) shaders"
+readme = "README.md"
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+irmf-slicer = { version = "0.1.0", path = "../irmf-slicer" }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1.0"
+wgpu = "24.0"
+glam = "0.29"
+irmf-include-resolver = { version = "0.1.0", path = "../irmf-include-resolver" }

@@ -1614,6 +1614,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "irmf-linter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "glam",
+ "irmf-include-resolver",
+ "irmf-slicer",
+ "tokio",
+ "wgpu",
+]
+
+[[package]]
 name = "irmf-output-stl"
 version = "0.1.0"
 dependencies = [

@@ -645,7 +645,7 @@ impl Optimizer {
         let mut primitives_code = String::new();
         for res in &self.pass2_results {
             primitives_code.push_str(&format!(
-                "  val = max(val, xRangeCuboid(vec4i({}, {}, {}, {})));\n",
+                "    val = max(val, xRangeCuboid(vec4i({}, {}, {}, {})));\n",
                 res[0], res[1], res[2], res[3]
             ));
         }
@@ -656,7 +656,7 @@ impl Optimizer {
         let mut primitives_code = String::new();
         for (rect, z) in &self.pass3_results {
             primitives_code.push_str(&format!(
-                "  val = max(val, xyRangeCuboid({}, {}, {}, {}, {}));\n",
+                "    val = max(val, xyRangeCuboid({}, {}, {}, {}, {}));\n",
                 rect[0], rect[1], rect[2], rect[3], z
             ));
         }
@@ -667,7 +667,7 @@ impl Optimizer {
         let mut primitives_code = String::new();
         for c in &self.cuboids {
             primitives_code.push_str(&format!(
-                "  val = max(val, xyzRangeCuboid({}, {}, {}, {}, {}, {}));\n",
+                "    val = max(val, xyzRangeCuboid({}, {}, {}, {}, {}, {}));\n",
                 c.x1, c.x2, c.y1, c.y2, c.z1, c.z2
             ));
         }
@@ -696,8 +696,8 @@ const MAX_BOUND = vec3f({:.4}, {:.4}, {:.4});
 const VOXEL_SIZE = (MAX_BOUND - MIN_BOUND) / DIMS;
 
 fn sd_box(p: vec3f, b: vec3f) -> f32 {{
-  let q = abs(p) - b;
-  return length(max(q, vec3f(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);
+    let q = abs(p) - b;
+    return length(max(q, vec3f(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);
 }}
 
 fn cuboid(p: vec3f, b_min: vec3i, b_max: vec3i) -> f32 {{
@@ -724,8 +724,8 @@ fn xyzRangeCuboid(x1: i32, x2: i32, y1: i32, y2: i32, z1: i32, z2: i32) -> f32 {
 var<private> global_p: vec3f;
 
 fn mainModel4(xyz: vec3f) -> vec4f {{
-  global_p = xyz;
-  var val = 0.0;
+    global_p = xyz;
+    var val = 0.0;
 {}
     return vec4f(val, 0.0, 0.0, 0.0);
   }}

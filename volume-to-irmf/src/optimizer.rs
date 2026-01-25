@@ -341,79 +341,89 @@ impl Optimizer {
         self.primitives.push(prim);
     }
 
-    /// Initializes primitives using a greedy box-growing algorithm to cover filled voxels.
-    pub fn greedy_box_initialize(&mut self, max_primitives: usize) {
+    /// Initializes primitives using a greedy box-growing algorithm to cover all filled voxels.
+    pub fn greedy_box_initialize(&mut self) {
         let [w, h, d] = self.target_volume.dims;
         let mut covered = vec![false; (w * h * d) as usize];
         let mut primitives = Vec::new();
+
+        let mut v_min = Vec3::splat(f32::MAX);
+        let mut v_max = Vec3::splat(f32::MIN);
+        let mut filled_count = 0;
 
         for z in 0..d {
             for y in 0..h {
                 for x in 0..w {
                     let idx = ((z * h + y) * w + x) as usize;
-                    if self.target_volume.data[idx] > 0.5 && !covered[idx] {
-                        if primitives.len() >= max_primitives {
-                            self.primitives = primitives;
-                            return;
-                        }
+                    if self.target_volume.data[idx] > 0.5 {
+                        filled_count += 1;
+                        let p = Vec3::new(x as f32, y as f32, z as f32);
+                        v_min = v_min.min(p);
+                        v_max = v_max.max(p);
 
-                        // Greedy expansion: X, then Y, then Z
-                        let mut dx = 0;
-                        while x + dx + 1 < w {
-                            let next_idx = idx + (dx + 1) as usize;
-                            if self.target_volume.data[next_idx] > 0.5 && !covered[next_idx] {
-                                dx += 1;
-                            } else {
-                                break;
-                            }
-                        }
-
-                        let mut dy = 0;
-                        'y_loop: while y + dy + 1 < h {
-                            for i in 0..=dx {
-                                let next_idx = (((z * h + (y + dy + 1)) * w) + (x + i)) as usize;
-                                if !(self.target_volume.data[next_idx] > 0.5 && !covered[next_idx]) {
-                                    break 'y_loop;
+                        if !covered[idx] {
+                            // Greedy expansion: X, then Y, then Z
+                            let mut dx = 0;
+                            while x + dx + 1 < w {
+                                let next_idx = idx + (dx + 1) as usize;
+                                if self.target_volume.data[next_idx] > 0.5 && !covered[next_idx] {
+                                    dx += 1;
+                                } else {
+                                    break;
                                 }
                             }
-                            dy += 1;
-                        }
 
-                        let mut dz = 0;
-                        'z_loop: while z + dz + 1 < d {
-                            for j in 0..=dy {
+                            let mut dy = 0;
+                            'y_loop: while y + dy + 1 < h {
                                 for i in 0..=dx {
-                                    let next_idx =
-                                        ((((z + dz + 1) * h + (y + j)) * w) + (x + i)) as usize;
-                                    if !(self.target_volume.data[next_idx] > 0.5 && !covered[next_idx])
+                                    let next_idx = (((z * h + (y + dy + 1)) * w) + (x + i)) as usize;
+                                    if !(self.target_volume.data[next_idx] > 0.5
+                                        && !covered[next_idx])
                                     {
-                                        break 'z_loop;
+                                        break 'y_loop;
                                     }
                                 }
+                                dy += 1;
                             }
-                            dz += 1;
-                        }
 
-                        // Add box in normalized coordinates [0, 1]
-                        let pos = Vec3::new(
-                            (x as f32 + (dx as f32 + 1.0) / 2.0) / w as f32,
-                            (y as f32 + (dy as f32 + 1.0) / 2.0) / h as f32,
-                            (z as f32 + (dz as f32 + 1.0) / 2.0) / d as f32,
-                        );
-                        let size = Vec3::new(
-                            (dx as f32 + 1.0) / 2.0 / w as f32,
-                            (dy as f32 + 1.0) / 2.0 / h as f32,
-                            (dz as f32 + 1.0) / 2.0 / d as f32,
-                        );
+                            let mut dz = 0;
+                            'z_loop: while z + dz + 1 < d {
+                                for j in 0..=dy {
+                                    for i in 0..=dx {
+                                        let next_idx =
+                                            ((((z + dz + 1) * h + (y + j)) * w) + (x + i)) as usize;
+                                        if !(self.target_volume.data[next_idx] > 0.5
+                                            && !covered[next_idx])
+                                        {
+                                            break 'z_loop;
+                                        }
+                                    }
+                                }
+                                dz += 1;
+                            }
 
-                        primitives.push(Primitive::new_cube(pos, size, BooleanOp::Union));
+                            // Add box in normalized coordinates [0, 1]
+                            let pos = Vec3::new(
+                                (x as f32 + (dx as f32 + 1.0) / 2.0) / w as f32,
+                                (y as f32 + (dy as f32 + 1.0) / 2.0) / h as f32,
+                                (z as f32 + (dz as f32 + 1.0) / 2.0) / d as f32,
+                            );
+                            let size = Vec3::new(
+                                (dx as f32 + 1.0) / 2.0 / w as f32,
+                                (dy as f32 + 1.0) / 2.0 / h as f32,
+                                (dz as f32 + 1.0) / 2.0 / d as f32,
+                            );
 
-                        // Mark covered
-                        for k in 0..=dz {
-                            for j in 0..=dy {
-                                for i in 0..=dx {
-                                    let c_idx = ((((z + k) * h + (y + j)) * w) + (x + i)) as usize;
-                                    covered[c_idx] = true;
+                            primitives.push(Primitive::new_cube(pos, size, BooleanOp::Union));
+
+                            // Mark covered
+                            for k in 0..=dz {
+                                for j in 0..=dy {
+                                    for i in 0..=dx {
+                                        let c_idx =
+                                            ((((z + k) * h + (y + j)) * w) + (x + i)) as usize;
+                                        covered[c_idx] = true;
+                                    }
                                 }
                             }
                         }
@@ -421,6 +431,19 @@ impl Optimizer {
                 }
             }
         }
+        println!(
+            "Greedy init complete: Filled={}, VoxelBounds={:?} to {:?}, Prims={}",
+            filled_count, v_min, v_max, primitives.len()
+        );
+
+        let mut p_min = Vec3::splat(f32::MAX);
+        let mut p_max = Vec3::splat(f32::MIN);
+        for p in &primitives {
+            p_min = p_min.min(p.pos - p.size);
+            p_max = p_max.max(p.pos + p.size);
+        }
+        println!("Primitive normalized bounds: {:?} to {:?}", p_min, p_max);
+
         self.primitives = primitives;
     }
 
@@ -429,12 +452,23 @@ impl Optimizer {
         use rand::Rng;
         let mut rng = rand::thread_rng();
 
+        println!(
+            "Decimating {} primitives to {}...",
+            self.primitives.len(),
+            target_count
+        );
+
         while self.primitives.len() > target_count {
             let mut best_pair = (0, 0);
             let mut min_cost = f32::MAX;
 
-            // Sample random pairs to find a good merge candidate (approximate O(N^2) search)
-            for _ in 0..1000 {
+            // Increased sample count for better merging
+            let samples = if self.primitives.len() > 10000 {
+                500
+            } else {
+                2000
+            };
+            for _ in 0..samples {
                 let i = rng.gen_range(0..self.primitives.len());
                 let j = rng.gen_range(0..self.primitives.len());
                 if i == j {
@@ -444,10 +478,12 @@ impl Optimizer {
                 let p1 = &self.primitives[i];
                 let p2 = &self.primitives[j];
 
-                // Merge heuristics: only merge if both are boxes
-                if p1.prim_type != 1 || p2.prim_type != 1 {
+                // Heuristic: Cost is (Volume of Union - Sum of Volumes)
+                // We prefer merging primitives that are close together.
+                let dist_sq = (p1.pos - p2.pos).length_squared();
+                if dist_sq > 0.01 {
                     continue;
-                }
+                } // Don't even consider distant merges
 
                 let min1 = p1.pos - p1.size;
                 let max1 = p1.pos + p1.size;
@@ -458,11 +494,10 @@ impl Optimizer {
                 let combined_max = max1.max(max2);
                 let combined_size = (combined_max - combined_min) / 2.0;
 
-                let vol1 = p1.size.x * p1.size.y * p1.size.z * 8.0;
-                let vol2 = p2.size.x * p2.size.y * p2.size.z * 8.0;
-                let combined_vol = combined_size.x * combined_size.y * combined_size.z * 8.0;
+                let vol1 = p1.size.x * p1.size.y * p1.size.z;
+                let vol2 = p2.size.x * p2.size.y * p2.size.z;
+                let combined_vol = combined_size.x * combined_size.y * combined_size.z;
 
-                // Cost is the "empty space" introduced by the merge
                 let cost = combined_vol - (vol1 + vol2);
                 if cost < min_cost {
                     min_cost = cost;
@@ -471,30 +506,37 @@ impl Optimizer {
             }
 
             if min_cost == f32::MAX {
-                break;
+                // If no good local merges found, relax the distance constraint
+                let i = rng.gen_range(0..self.primitives.len());
+                let j = rng.gen_range(0..self.primitives.len());
+                if i != j {
+                    best_pair = (i, j);
+                } else {
+                    continue;
+                }
             }
 
-            // Perform merge
             let (idx1, idx2) = if best_pair.0 > best_pair.1 {
                 (best_pair.0, best_pair.1)
             } else {
                 (best_pair.1, best_pair.0)
             };
+
             let p1 = self.primitives.remove(idx1);
             let p2 = self.primitives.remove(idx2);
 
-            let min1 = p1.pos - p1.size;
-            let max1 = p1.pos + p1.size;
-            let min2 = p2.pos - p2.size;
-            let max2 = p2.pos + p2.size;
-            let combined_min = min1.min(min2);
-            let combined_max = max1.max(max2);
+            let combined_min = (p1.pos - p1.size).min(p2.pos - p2.size);
+            let combined_max = (p1.pos + p1.size).max(p2.pos + p2.size);
 
             self.primitives.push(Primitive::new_cube(
                 (combined_min + combined_max) / 2.0,
                 (combined_max - combined_min) / 2.0,
                 BooleanOp::Union,
             ));
+
+            if self.primitives.len() % 1000 == 0 {
+                println!("... remaining: {}", self.primitives.len());
+            }
         }
     }
 

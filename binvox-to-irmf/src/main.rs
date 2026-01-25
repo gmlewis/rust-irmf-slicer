@@ -48,8 +48,7 @@ async fn main() -> Result<()> {
 
     if args.greedy {
         println!("Performing greedy box initialization...");
-        // Use a higher intermediate limit for greedy pass
-        optimizer.greedy_box_initialize(5000);
+        optimizer.greedy_box_initialize();
         let initial_count = optimizer.generate_irmf().split("val =").count() - 1;
         println!("Greedy pass produced {} primitives.", initial_count);
         

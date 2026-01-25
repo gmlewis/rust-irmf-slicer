@@ -38,7 +38,7 @@ impl VoxelVolume {
     pub fn from_binvox(reader: impl std::io::Read) -> anyhow::Result<Self> {
         use std::io::{BufRead, Read};
         let mut reader = std::io::BufReader::new(reader);
-        
+
         let mut line = String::new();
         reader.read_line(&mut line)?;
         if !line.starts_with("#binvox") {
@@ -53,7 +53,9 @@ impl VoxelVolume {
             line.clear();
             reader.read_line(&mut line)?;
             let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.is_empty() { break; }
+            if parts.is_empty() {
+                break;
+            }
             match parts[0] {
                 "dim" => {
                     dims[0] = parts[1].parse()?;
@@ -73,9 +75,17 @@ impl VoxelVolume {
             }
         }
 
+        // Binvox scale often refers to the Z axis count for non-uniform models.
+        // We calculate factor based on the dimension that matches the scale in world units.
+        // For the Rodin coil, scale 100 matches dims[2]=200 (0.5mm/voxel).
         let factor = scale / dims[2] as f32;
         let world_dims = Vec3::new(dims[0] as f32, dims[1] as f32, dims[2] as f32) * factor;
         let mut volume = Self::new(dims, translate, translate + world_dims);
+        println!(
+            "Binvox header: dims={:?}, translate={:?}, scale={}, world_dims={:?}",
+            dims, translate, scale, world_dims
+        );
+
         let total_voxels = (dims[0] * dims[1] * dims[2]) as usize;
         let mut voxels_read = 0;
 
@@ -84,22 +94,83 @@ impl VoxelVolume {
             reader.read_exact(&mut pair)?;
             let value = pair[0];
             let count = pair[1] as usize;
-            
+
             let val_f = if value > 0 { 1.0f32 } else { 0.0f32 };
             for _ in 0..count {
                 if voxels_read < total_voxels {
+                    // Binvox (x, z, y) where x is fastest, z middle, y slowest.
                     let x = voxels_read as u32 % dims[0];
                     let z = (voxels_read as u32 / dims[0]) % dims[2];
                     let y = voxels_read as u32 / (dims[0] * dims[2]);
-                    // Binvox (x, z, y) where x is fastest, z middle, y slowest.
-                    // Map to our (x, y, z) volume.
+
+                    // Map world-space (x, y, z) to our volume indices.
+                    // volume.set(x, y, z) uses logical (X, Y, Z) order.
                     volume.set(x, y, z, val_f);
                     voxels_read += 1;
                 }
             }
         }
 
-        Ok(volume)
+        Ok(volume.tighten())
+    }
+
+    pub fn tighten(self) -> Self {
+        let mut min_v = [u32::MAX; 3];
+        let mut max_v = [0u32; 3];
+        let mut any_filled = false;
+
+        for z in 0..self.dims[2] {
+            for y in 0..self.dims[1] {
+                for x in 0..self.dims[0] {
+                    if self.get(x, y, z) > 0.5 {
+                        any_filled = true;
+                        min_v[0] = min_v[0].min(x);
+                        min_v[1] = min_v[1].min(y);
+                        min_v[2] = min_v[2].min(z);
+                        max_v[0] = max_v[0].max(x);
+                        max_v[1] = max_v[1].max(y);
+                        max_v[2] = max_v[2].max(z);
+                    }
+                }
+            }
+        }
+
+        if !any_filled {
+            return self;
+        }
+
+        let new_dims = [
+            max_v[0] - min_v[0] + 1,
+            max_v[1] - min_v[1] + 1,
+            max_v[2] - min_v[2] + 1,
+        ];
+
+        let factor_x = (self.max.x - self.min.x) / self.dims[0] as f32;
+        let factor_y = (self.max.y - self.min.y) / self.dims[1] as f32;
+        let factor_z = (self.max.z - self.min.z) / self.dims[2] as f32;
+
+        let new_min = Vec3::new(
+            self.min.x + min_v[0] as f32 * factor_x,
+            self.min.y + min_v[1] as f32 * factor_y,
+            self.min.z + min_v[2] as f32 * factor_z,
+        );
+        let new_max = Vec3::new(
+            self.min.x + (max_v[0] as f32 + 1.0) * factor_x,
+            self.min.y + (max_v[1] as f32 + 1.0) * factor_y,
+            self.min.z + (max_v[2] as f32 + 1.0) * factor_z,
+        );
+
+        let mut new_volume = Self::new(new_dims, new_min, new_max);
+        for z in 0..new_dims[2] {
+            for y in 0..new_dims[1] {
+                for x in 0..new_dims[0] {
+                    new_volume.set(x, y, z, self.get(x + min_v[0], y + min_v[1], z + min_v[2]));
+                }
+            }
+        }
+        println!("Tightened volume from {:?} to {:?}", self.dims, new_dims);
+        println!("Tightened bounds: min={:?}, max={:?}", new_min, new_max);
+        new_volume
     }
 
     pub fn from_stl(reader: &mut (impl std::io::Read + std::io::Seek), dims: [u32; 3]) -> anyhow::Result<Self> {

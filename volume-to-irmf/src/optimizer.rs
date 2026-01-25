@@ -458,15 +458,17 @@ impl Optimizer {
             target_count
         );
 
+        let mut dist_threshold_sq = 0.0001; // Start very tight (0.01 normalized distance)
+
         while self.primitives.len() > target_count {
             let mut best_pair = (0, 0);
             let mut min_cost = f32::MAX;
 
-            // Increased sample count for better merging
+            // Sample random pairs to find a good merge candidate
             let samples = if self.primitives.len() > 10000 {
-                500
+                1000
             } else {
-                2000
+                5000
             };
             for _ in 0..samples {
                 let i = rng.gen_range(0..self.primitives.len());
@@ -478,12 +480,12 @@ impl Optimizer {
                 let p1 = &self.primitives[i];
                 let p2 = &self.primitives[j];
 
-                // Heuristic: Cost is (Volume of Union - Sum of Volumes)
+                // Merging cubes results in a larger cube.
                 // We prefer merging primitives that are close together.
                 let dist_sq = (p1.pos - p2.pos).length_squared();
-                if dist_sq > 0.01 {
+                if dist_sq > dist_threshold_sq {
                     continue;
-                } // Don't even consider distant merges
+                }
 
                 let min1 = p1.pos - p1.size;
                 let max1 = p1.pos + p1.size;
@@ -498,22 +500,33 @@ impl Optimizer {
                 let vol2 = p2.size.x * p2.size.y * p2.size.z;
                 let combined_vol = combined_size.x * combined_size.y * combined_size.z;
 
-                let cost = combined_vol - (vol1 + vol2);
+                // Cost is the extra volume introduced.
+                // We normalize by combined volume to prefer merging smaller things.
+                let cost = (combined_vol - (vol1 + vol2)) / (combined_vol + 1e-9);
+
                 if cost < min_cost {
-                    min_cost = cost;
-                    best_pair = (i, j);
+                    // Critical check: is the midpoint between the two primitives actually filled?
+                    // This prevents merging across the empty center of a torus.
+                    let mid = (p1.pos + p2.pos) / 2.0;
+                    let vx = (mid.x * self.target_volume.dims[0] as f32) as u32;
+                    let vy = (mid.y * self.target_volume.dims[1] as f32) as u32;
+                    let vz = (mid.z * self.target_volume.dims[2] as f32) as u32;
+                    
+                    if self.target_volume.get(vx, vy, vz) > 0.1 {
+                        min_cost = cost;
+                        best_pair = (i, j);
+                    }
                 }
             }
 
             if min_cost == f32::MAX {
-                // If no good local merges found, relax the distance constraint
-                let i = rng.gen_range(0..self.primitives.len());
-                let j = rng.gen_range(0..self.primitives.len());
-                if i != j {
-                    best_pair = (i, j);
-                } else {
-                    continue;
+                // Relax the distance threshold if we can't find any good local merges
+                dist_threshold_sq *= 1.5;
+                if dist_threshold_sq > 1.0 {
+                    println!("Warning: Could not find any more safe merges. Stopping at {} primitives.", self.primitives.len());
+                    break;
                 }
+                continue;
             }
 
             let (idx1, idx2) = if best_pair.0 > best_pair.1 {
@@ -535,7 +548,7 @@ impl Optimizer {
             ));
 
             if self.primitives.len() % 1000 == 0 {
-                println!("... remaining: {}", self.primitives.len());
+                println!("... remaining: {}, dist_thresh_sq: {:.6}", self.primitives.len(), dist_threshold_sq);
             }
         }
     }

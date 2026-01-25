@@ -1,17 +1,12 @@
-struct Vertex {
-    pos: vec3f,
-    padding: f32,
-};
-
-@group(0) @binding(0) var<storage, read> vertices: array<vec3f>;
+@group(0) @binding(0) var<storage, read> vertices: array<vec4f>;
 @group(0) @binding(1) var<storage, read> indices: array<u32>;
 @group(0) @binding(2) var voxel_volume: texture_storage_3d<r32float, write>;
 
 struct Config {
     num_triangles: u32,
-    padding: u32,
-    padding2: u32,
-    padding3: u32,
+    _pad1: u32,
+    _pad2: u32,
+    _pad3: u32,
     min_bound: vec4f,
     max_bound: vec4f,
 };
@@ -47,9 +42,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var intersections = 0u;
     
     for (var i = 0u; i < config.num_triangles; i++) {
-        let v0 = vertices[indices[i * 3u + 0u]];
-        let v1 = vertices[indices[i * 3u + 1u]];
-        let v2 = vertices[indices[i * 3u + 2u]];
+        let v0 = vertices[indices[i * 3u + 0u]].xyz;
+        let v1 = vertices[indices[i * 3u + 1u]].xyz;
+        let v2 = vertices[indices[i * 3u + 2u]].xyz;
         
         let t = intersect_ray_tri(p, ray_dir, v0, v1, v2);
         if (t > 0.0) {

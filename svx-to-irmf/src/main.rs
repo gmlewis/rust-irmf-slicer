@@ -49,12 +49,15 @@ async fn main() -> Result<()> {
     let mut optimizer = Optimizer::new(volume).await?;
 
     println!("Starting optimization...");
-    for _ in 0..100 { // Fewer iterations for quick test
+    for _ in 0..100 {
+        // Fewer iterations for quick test
         optimizer.run_iteration().await?;
     }
-    
+
     let irmf = optimizer.generate_irmf();
-    let output_path = args.output.unwrap_or_else(|| args.input.with_extension("irmf"));
+    let output_path = args
+        .output
+        .unwrap_or_else(|| args.input.with_extension("irmf"));
     std::fs::write(output_path, irmf)?;
 
     Ok(())

@@ -1,8 +1,10 @@
 struct Primitive {
-    pos: vec3f,
+    pos: vec4f,
     prim_type: u32,
-    size: vec3f,
+    _pad1: vec3u,
+    size: vec4f,
     op: u32,
+    _pad2: vec3u,
 }
 
 struct ErrorResult {
@@ -26,13 +28,15 @@ struct Config {
 
 struct Perturbation {
     prim_idx: u32,
-    pos_delta: vec3f,
-    size_scale: vec3f,
+    _pad1: vec3u,
+    pos_delta: vec4f,
+    size_scale: vec4f,
     op: u32,
+    _pad2: vec3u,
 }
 @group(0) @binding(4) var<storage, read> perturbations: array<Perturbation>;
 
-@group(0) @binding(5) var<storage, read> samples: array<vec3f>;
+@group(0) @binding(5) var<storage, read> samples: array<vec4f>;
 
 var<workgroup> local_mse: array<f32, 256>;
 var<workgroup> local_min: array<f32, 256>;
@@ -61,14 +65,7 @@ fn evaluate_model(p: vec3f, cand_idx: u32) -> f32 {
             if (i == pert.prim_idx) {
                 prim.pos += pert.pos_delta;
                 prim.size *= pert.size_scale;
-                // If pos_delta is large, it might be a replacement
-                // Let's use a simpler heuristic: if size_scale.x is very different from 1.0, 
-                // or if we just always use the encoded op for the perturbed primitive.
-                // Better: if pert.op >= 4, it means encoded replacement.
-                // Let's just always use encoded op for perturbed primitive too if we want.
-                // For now, let's keep it simple: only new primitives use encoded op.
-                // Wait, I changed the Rust code to send encoded op for refinement too if it's a replacement.
-                if (pert.op < 4u && (length(pert.pos_delta) > 0.5 || any(pert.size_scale < vec3f(0.1)))) {
+                if (pert.op < 4u && (length(pert.pos_delta.xyz) > 0.5 || any(pert.size_scale.xyz < vec3f(0.1)))) {
                      prim.prim_type = select(0u, 1u, pert.op >= 2u);
                      prim.op = pert.op % 2u;
                 }
@@ -80,12 +77,12 @@ fn evaluate_model(p: vec3f, cand_idx: u32) -> f32 {
             prim.op = pert.op % 2u;
         }
 
-        let p_local = p - prim.pos;
+        let p_local = p - prim.pos.xyz;
         var dist = 0.0;
         if (prim.prim_type == 0u) {
             dist = sd_sphere(p_local, prim.size.x);
         } else {
-            dist = sd_box(p_local, prim.size);
+            dist = sd_box(p_local, prim.size.xyz);
         }
         
         // Soft occupancy: 1.0 inside, 0.0 outside, smooth transition
@@ -115,9 +112,9 @@ fn main(
 
     let uvw = samples[sample_idx];
     let dims = textureDimensions(target_volume);
-    let coords = vec3<u32>(uvw * vec3f(dims));
+    let coords = vec3<u32>(uvw.xyz * vec3f(dims));
     let target_val = textureLoad(target_volume, coords, 0).r;
-    let candidate_val = evaluate_model(uvw, cand_idx);
+    let candidate_val = evaluate_model(uvw.xyz, cand_idx);
 
     let diff = target_val - candidate_val;
     local_mse[local_id.x] = diff * diff;

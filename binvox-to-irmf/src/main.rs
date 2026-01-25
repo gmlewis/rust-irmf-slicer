@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
         optimizer.greedy_box_initialize();
         let initial_count = optimizer.generate_irmf().split("val =").count() - 1;
         println!("Greedy pass produced {} primitives.", initial_count);
-        
+
         if initial_count > args.max_primitives {
             println!("Decimating to {} primitives...", args.max_primitives);
             optimizer.decimate(args.max_primitives);
@@ -73,7 +73,7 @@ async fn main() -> Result<()> {
         for i in 0..args.iterations {
             let error = optimizer.run_iteration().await?;
             let num_prims = optimizer.generate_irmf().split("val =").count() - 1;
-            
+
             if num_prims > last_num_prims {
                 println!("Iteration {}: Added primitive. Total: {}", i, num_prims);
                 last_num_prims = num_prims;
@@ -83,9 +83,12 @@ async fn main() -> Result<()> {
                 if error < best_error {
                     best_error = error;
                 }
-                println!("Iteration {}: error = {}, primitives = {}", i, error, num_prims);
+                println!(
+                    "Iteration {}: error = {}, primitives = {}",
+                    i, error, num_prims
+                );
             }
-            
+
             if error < args.error {
                 println!("Target error reached!");
                 break;

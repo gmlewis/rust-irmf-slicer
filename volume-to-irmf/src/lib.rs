@@ -7,5 +7,5 @@ pub mod primitives;
 pub mod volume;
 
 pub use optimizer::Optimizer;
-pub use primitives::{Primitive, BooleanOp};
+pub use primitives::{BooleanOp, Primitive};
 pub use volume::VoxelVolume;

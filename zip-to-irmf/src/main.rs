@@ -52,9 +52,11 @@ async fn main() -> Result<()> {
     for _ in 0..1000 {
         optimizer.run_iteration().await?;
     }
-    
+
     let irmf = optimizer.generate_irmf();
-    let output_path = args.output.unwrap_or_else(|| args.input.with_extension("irmf"));
+    let output_path = args
+        .output
+        .unwrap_or_else(|| args.input.with_extension("irmf"));
     std::fs::write(output_path, irmf)?;
 
     Ok(())

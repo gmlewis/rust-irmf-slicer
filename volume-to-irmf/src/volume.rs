@@ -173,12 +173,16 @@ impl VoxelVolume {
         new_volume
     }
 
-    pub fn from_stl(reader: &mut (impl std::io::Read + std::io::Seek), dims: [u32; 3]) -> anyhow::Result<Self> {
-        let mesh = stl_io::read_stl(reader).map_err(|e| anyhow::anyhow!("STL read error: {:?}", e))?;
-        
+    pub fn from_stl(
+        reader: &mut (impl std::io::Read + std::io::Seek),
+        dims: [u32; 3],
+    ) -> anyhow::Result<Self> {
+        let mesh =
+            stl_io::read_stl(reader).map_err(|e| anyhow::anyhow!("STL read error: {:?}", e))?;
+
         let mut min = Vec3::splat(f32::MAX);
         let mut max = Vec3::splat(f32::MIN);
-        
+
         for v in &mesh.vertices {
             let p = Vec3::new(v[0], v[1], v[2]);
             min = min.min(p);
@@ -190,12 +194,12 @@ impl VoxelVolume {
         max += size * 0.05;
 
         let mut volume = Self::new(dims, min, max);
-        
+
         for x in 0..dims[0] {
             for y in 0..dims[1] {
                 let px = min.x + (x as f32 + 0.5) / dims[0] as f32 * (max.x - min.x);
                 let py = min.y + (y as f32 + 0.5) / dims[1] as f32 * (max.y - min.y);
-                
+
                 let mut intersections = Vec::new();
                 for tri in &mesh.faces {
                     let v = [
@@ -207,17 +211,20 @@ impl VoxelVolume {
                         intersections.push(z);
                     }
                 }
-                
+
                 intersections.sort_by(|a, b| a.partial_cmp(b).unwrap());
-                
+
                 for i in (0..intersections.len()).step_by(2) {
                     if i + 1 < intersections.len() {
                         let z_start = intersections[i];
-                        let z_end = intersections[i+1];
-                        
-                        let vz_start = (((z_start - min.z) / (max.z - min.z) * dims[2] as f32) as u32).min(dims[2]-1);
-                        let vz_end = (((z_end - min.z) / (max.z - min.z) * dims[2] as f32) as u32).min(dims[2]-1);
-                        
+                        let z_end = intersections[i + 1];
+
+                        let vz_start = (((z_start - min.z) / (max.z - min.z) * dims[2] as f32)
+                            as u32)
+                            .min(dims[2] - 1);
+                        let vz_end = (((z_end - min.z) / (max.z - min.z) * dims[2] as f32) as u32)
+                            .min(dims[2] - 1);
+
                         for vz in vz_start..=vz_end {
                             volume.set(x, y, vz, 1.0);
                         }
@@ -229,23 +236,27 @@ impl VoxelVolume {
         Ok(volume)
     }
 
-    pub fn from_slices(slices: Vec<image::DynamicImage>, min: Vec3, max: Vec3) -> anyhow::Result<Self> {
+    pub fn from_slices(
+        slices: Vec<image::DynamicImage>,
+        min: Vec3,
+        max: Vec3,
+    ) -> anyhow::Result<Self> {
         if slices.is_empty() {
             anyhow::bail!("No slices provided");
         }
         let width = slices[0].width();
         let height = slices[0].height();
         let depth = slices.len() as u32;
-        
+
         let mut volume = Self::new([width, height, depth], min, max);
-        
+
         for (z, img) in slices.into_iter().enumerate() {
             let gray = img.to_luma8();
             for (x, y, pixel) in gray.enumerate_pixels() {
                 volume.set(x, y, z as u32, pixel[0] as f32 / 255.0);
             }
         }
-        
+
         Ok(volume)
     }
 
@@ -288,9 +299,10 @@ impl VoxelVolume {
             view_formats: &[],
         });
 
+        let vertices_f4: Vec<[f32; 4]> = vertices.iter().map(|v| [v.x, v.y, v.z, 0.0]).collect();
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(&vertices),
+            contents: bytemuck::cast_slice(&vertices_f4),
             usage: wgpu::BufferUsages::STORAGE,
         });
 
@@ -335,19 +347,38 @@ impl VoxelVolume {
             label: Some("Voxelizer Bind Group"),
             layout: &pipeline.get_bind_group_layout(0),
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: vertex_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: index_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&voxel_texture.create_view(&wgpu::TextureViewDescriptor::default())) },
-                wgpu::BindGroupEntry { binding: 3, resource: config_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: vertex_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: index_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(
+                        &voxel_texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: config_buffer.as_entire_binding(),
+                },
             ],
         });
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
-            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+            let mut compute_pass =
+                encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
             compute_pass.set_pipeline(&pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
-            compute_pass.dispatch_workgroups(dims[0].div_ceil(8), dims[1].div_ceil(8), dims[2].div_ceil(4));
+            compute_pass.dispatch_workgroups(
+                dims[0].div_ceil(8),
+                dims[1].div_ceil(8),
+                dims[2].div_ceil(4),
+            );
         }
 
         let output_buffer_size = (dims[0] * dims[1] * dims[2] * 4) as u64;
@@ -379,15 +410,23 @@ impl VoxelVolume {
         queue.submit(Some(encoder.finish()));
 
         let buffer_slice = output_buffer.slice(..);
-        let (sender, receiver) = futures::channel::oneshot::channel::<Result<(), wgpu::BufferAsyncError>>();
-        buffer_slice.map_async(wgpu::MapMode::Read, move |v| { let _ = sender.send(v); });
+        let (sender, receiver) =
+            futures::channel::oneshot::channel::<Result<(), wgpu::BufferAsyncError>>();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |v| {
+            let _ = sender.send(v);
+        });
         device.poll(wgpu::Maintain::Wait);
-        
+
         if let Ok(Ok(())) = receiver.await {
             let data = buffer_slice.get_mapped_range();
             let result: Vec<f32> = bytemuck::cast_slice(&data).to_vec();
             drop(data);
-            Ok(Self { data: result, dims, min, max })
+            Ok(Self {
+                data: result,
+                dims,
+                min,
+                max,
+            })
         } else {
             anyhow::bail!("GPU readback failed")
         }
@@ -398,13 +437,17 @@ fn intersect_tri_xy(px: f32, py: f32, v: &[stl_io::Vector<f32>; 3]) -> Option<f3
     let v0 = Vec3::new(v[0][0], v[0][1], v[0][2]);
     let v1 = Vec3::new(v[1][0], v[1][1], v[1][2]);
     let v2 = Vec3::new(v[2][0], v[2][1], v[2][2]);
-    
+
     let area = 0.5 * (-v1.y * v2.x + v0.y * (-v1.x + v2.x) + v0.x * (v1.y - v2.y) + v1.x * v2.y);
-    if area.abs() < 1e-9 { return None; }
-    
-    let s = 1.0 / (2.0 * area) * (v0.y * v2.x - v0.x * v2.y + (v2.y - v0.y) * px + (v0.x - v2.x) * py);
-    let t = 1.0 / (2.0 * area) * (v0.x * v1.y - v0.y * v1.x + (v0.y - v1.y) * px + (v1.x - v0.x) * py);
-    
+    if area.abs() < 1e-9 {
+        return None;
+    }
+
+    let s =
+        1.0 / (2.0 * area) * (v0.y * v2.x - v0.x * v2.y + (v2.y - v0.y) * px + (v0.x - v2.x) * py);
+    let t =
+        1.0 / (2.0 * area) * (v0.x * v1.y - v0.y * v1.x + (v0.y - v1.y) * px + (v1.x - v0.x) * py);
+
     if s >= 0.0 && t >= 0.0 && (1.0 - s - t) >= 0.0 {
         Some(v0.z + s * (v1.z - v0.z) + t * (v2.z - v0.z))
     } else {

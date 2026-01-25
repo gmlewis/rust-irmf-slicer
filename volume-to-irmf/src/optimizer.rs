@@ -51,9 +51,11 @@ struct Config {
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Perturbation {
     prim_idx: u32,
-    pos_delta: Vec3,
-    size_scale: Vec3,
+    _pad1: [u32; 3],
+    pos_delta: [f32; 4],
+    size_scale: [f32; 4],
     op: u32,
+    _pad2: [u32; 3],
 }
 
 pub struct Optimizer {
@@ -81,7 +83,7 @@ pub struct Optimizer {
     samples_per_candidate: u32,
     seed: u32,
 
-    samples: Vec<Vec3>,
+    samples: Vec<[f32; 4]>,
     filled_voxels: Vec<Vec3>,
     last_results: Vec<ErrorResult>,
     last_best_error: f32,
@@ -337,7 +339,7 @@ impl Optimizer {
 
         let samples_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Samples Buffer"),
-            size: (std::mem::size_of::<Vec3>() * samples_per_candidate as usize) as u64,
+            size: (std::mem::size_of::<[f32; 4]>() * samples_per_candidate as usize) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -361,11 +363,12 @@ impl Optimizer {
         use rand::Rng;
         let mut samples = Vec::with_capacity(samples_per_candidate as usize);
         for i in 0..samples_per_candidate {
-            if !filled_voxels.is_empty() && (i % 2 == 0 || i < samples_per_candidate / 4) {
-                samples.push(filled_voxels[rng.gen_range(0..filled_voxels.len())]);
+            let s = if !filled_voxels.is_empty() && (i % 2 == 0 || i < samples_per_candidate / 4) {
+                filled_voxels[rng.gen_range(0..filled_voxels.len())]
             } else {
-                samples.push(Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()));
-            }
+                Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen())
+            };
+            samples.push([s.x, s.y, s.z, 0.0]);
         }
         queue.write_buffer(&samples_buffer, 0, bytemuck::cast_slice(&samples));
 
@@ -614,7 +617,7 @@ impl Optimizer {
                 dims: [w, h, d, 0],
                 level: lvl,
                 threshold_low: 0.01,
-                threshold_high: 0.1,
+                threshold_high: 0.02, // Lowered from 0.1 to capture thin features like Rodin coil wires
                 max_nodes: max_extracted as u32,
             };
             let config_buffer = self
@@ -845,8 +848,10 @@ impl Optimizer {
         let mut p_min = Vec3::splat(f32::MAX);
         let mut p_max = Vec3::splat(f32::MIN);
         for p in &primitives {
-            p_min = p_min.min(p.pos - p.size);
-            p_max = p_max.max(p.pos + p.size);
+            let pos = Vec3::from_slice(&p.pos[..3]);
+            let size = Vec3::from_slice(&p.size[..3]);
+            p_min = p_min.min(pos - size);
+            p_max = p_max.max(pos + size);
         }
         println!("Primitive normalized bounds: {:?} to {:?}", p_min, p_max);
 
@@ -886,13 +891,18 @@ impl Optimizer {
                 let p1 = &self.primitives[i];
                 let p2 = &self.primitives[j];
 
-                let dist_sq = (p1.pos - p2.pos).length_squared();
+                let p1_pos = Vec3::from_slice(&p1.pos[..3]);
+                let p2_pos = Vec3::from_slice(&p2.pos[..3]);
+                let p1_size = Vec3::from_slice(&p1.size[..3]);
+                let p2_size = Vec3::from_slice(&p2.size[..3]);
+
+                let dist_sq = (p1_pos - p2_pos).length_squared();
                 if dist_sq > dist_threshold_sq {
                     continue;
                 }
 
-                let combined_min = (p1.pos - p1.size).min(p2.pos - p2.size);
-                let combined_max = (p1.pos + p1.size).max(p2.pos + p2.size);
+                let combined_min = (p1_pos - p1_size).min(p2_pos - p2_size);
+                let combined_max = (p1_pos + p1_size).max(p2_pos + p2_size);
                 let combined_size = (combined_max - combined_min) / 2.0;
                 let combined_pos = (combined_min + combined_max) / 2.0;
 
@@ -944,8 +954,13 @@ impl Optimizer {
             let p1 = self.primitives.remove(idx1);
             let p2 = self.primitives.remove(idx2);
 
-            let combined_min = (p1.pos - p1.size).min(p2.pos - p2.size);
-            let combined_max = (p1.pos + p1.size).max(p2.pos + p2.size);
+            let p1_pos = Vec3::from_slice(&p1.pos[..3]);
+            let p2_pos = Vec3::from_slice(&p2.pos[..3]);
+            let p1_size = Vec3::from_slice(&p1.size[..3]);
+            let p2_size = Vec3::from_slice(&p2.size[..3]);
+
+            let combined_min = (p1_pos - p1_size).min(p2_pos - p2_size);
+            let combined_max = (p1_pos + p1_size).max(p2_pos + p2_size);
 
             self.primitives.push(Primitive::new_cube(
                 (combined_min + combined_max) / 2.0,
@@ -972,14 +987,14 @@ impl Optimizer {
 
         self.samples.clear();
         for i in 0..self.samples_per_candidate {
-            if !self.filled_voxels.is_empty() && (i % 2 == 0 || i < self.samples_per_candidate / 4)
+            let s = if !self.filled_voxels.is_empty()
+                && (i % 2 == 0 || i < self.samples_per_candidate / 4)
             {
-                self.samples
-                    .push(self.filled_voxels[rng.gen_range(0..self.filled_voxels.len())]);
+                self.filled_voxels[rng.gen_range(0..self.filled_voxels.len())]
             } else {
-                self.samples
-                    .push(Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen()));
-            }
+                Vec3::new(rng.r#gen(), rng.r#gen(), rng.r#gen())
+            };
+            self.samples.push([s.x, s.y, s.z, 0.0]);
         }
         self.queue
             .write_buffer(&self.samples_buffer, 0, bytemuck::cast_slice(&self.samples));
@@ -998,7 +1013,8 @@ impl Optimizer {
             for i in 0..10.min(errors_with_idx.len()) {
                 let group_idx = errors_with_idx[i].1;
                 let sample_idx = group_idx as u32 * 256 + rng.gen_range(0..256);
-                seed_positions.push(self.samples[sample_idx as usize]);
+                let s = self.samples[sample_idx as usize];
+                seed_positions.push(Vec3::new(s[0], s[1], s[2]));
             }
         }
         if seed_positions.is_empty() {
@@ -1008,17 +1024,21 @@ impl Optimizer {
         let mut perts = Vec::with_capacity(self.num_candidates as usize);
         perts.push(Perturbation {
             prim_idx: 8888,
-            pos_delta: Vec3::ZERO,
-            size_scale: Vec3::ONE,
+            _pad1: [0; 3],
+            pos_delta: [0.0, 0.0, 0.0, 0.0],
+            size_scale: [1.0, 1.0, 1.0, 0.0],
             op: 0,
+            _pad2: [0; 3],
         });
 
         let seed_pos = seed_positions[rng.gen_range(0..seed_positions.len())];
         perts.push(Perturbation {
             prim_idx: 9999,
-            pos_delta: seed_pos,
-            size_scale: Vec3::splat(0.01),
+            _pad1: [0; 3],
+            pos_delta: [seed_pos.x, seed_pos.y, seed_pos.z, 0.0],
+            size_scale: [0.01, 0.01, 0.01, 0.0],
             op: 0,
+            _pad2: [0; 3],
         });
 
         for _i in 2..self.num_candidates as usize {
@@ -1030,41 +1050,54 @@ impl Optimizer {
                     rng.gen_range(0.5..2.0),
                     rng.gen_range(0.5..2.0),
                 );
+                let d = seed_pos
+                    + Vec3::new(
+                        rng.gen_range(-0.01..0.01),
+                        rng.gen_range(-0.01..0.01),
+                        rng.gen_range(-0.01..0.01),
+                    );
+                let s = Vec3::splat(size) * aspect;
                 perts.push(Perturbation {
                     prim_idx: 9999,
-                    pos_delta: seed_pos
-                        + Vec3::new(
-                            rng.gen_range(-0.01..0.01),
-                            rng.gen_range(-0.01..0.01),
-                            rng.gen_range(-0.01..0.01),
-                        ),
-                    size_scale: Vec3::splat(size) * aspect,
+                    _pad1: [0; 3],
+                    pos_delta: [d.x, d.y, d.z, 0.0],
+                    size_scale: [s.x, s.y, s.z, 0.0],
                     op: rng.gen_range(0..4),
+                    _pad2: [0; 3],
                 });
             } else if !self.primitives.is_empty() {
                 let prim_idx = rng.gen_range(0..self.primitives.len()) as u32;
                 if rng.gen_bool(0.1) {
+                    let prim_pos = Vec3::from_slice(&self.primitives[prim_idx as usize].pos[..3]);
+                    let prim_size = Vec3::from_slice(&self.primitives[prim_idx as usize].size[..3]);
+                    let d = seed_pos - prim_pos;
+                    let s = Vec3::splat(rng.gen_range(0.005..0.05)) / prim_size;
                     perts.push(Perturbation {
                         prim_idx,
-                        pos_delta: seed_pos - self.primitives[prim_idx as usize].pos,
-                        size_scale: Vec3::splat(rng.gen_range(0.005..0.05))
-                            / self.primitives[prim_idx as usize].size,
+                        _pad1: [0; 3],
+                        pos_delta: [d.x, d.y, d.z, 0.0],
+                        size_scale: [s.x, s.y, s.z, 0.0],
                         op: rng.gen_range(0..4),
+                        _pad2: [0; 3],
                     });
                 } else {
+                    let d = Vec3::new(
+                        rng.gen_range(-0.02..0.02),
+                        rng.gen_range(-0.02..0.02),
+                        rng.gen_range(-0.02..0.02),
+                    );
+                    let s = Vec3::new(
+                        rng.gen_range(0.9..1.1),
+                        rng.gen_range(0.9..1.1),
+                        rng.gen_range(0.9..1.1),
+                    );
                     perts.push(Perturbation {
                         prim_idx,
-                        pos_delta: Vec3::new(
-                            rng.gen_range(-0.02..0.02),
-                            rng.gen_range(-0.02..0.02),
-                            rng.gen_range(-0.02..0.02),
-                        ),
-                        size_scale: Vec3::new(
-                            rng.gen_range(0.9..1.1),
-                            rng.gen_range(0.9..1.1),
-                            rng.gen_range(0.9..1.1),
-                        ),
+                        _pad1: [0; 3],
+                        pos_delta: [d.x, d.y, d.z, 0.0],
+                        size_scale: [s.x, s.y, s.z, 0.0],
                         op: self.primitives[prim_idx as usize].op,
+                        _pad2: [0; 3],
                     });
                 }
             } else {
@@ -1102,24 +1135,28 @@ impl Optimizer {
                     0 | 2 => BooleanOp::Union,
                     _ => BooleanOp::Difference,
                 };
+                let d = Vec3::from_slice(&pert.pos_delta[..3]);
+                let s = Vec3::from_slice(&pert.size_scale[..3]);
                 if pert.op >= 2 {
-                    self.primitives
-                        .push(Primitive::new_cube(pert.pos_delta, pert.size_scale, op));
+                    self.primitives.push(Primitive::new_cube(d, s, op));
                 } else {
-                    self.primitives.push(Primitive::new_sphere(
-                        pert.pos_delta,
-                        pert.size_scale.x,
-                        op,
-                    ));
+                    self.primitives.push(Primitive::new_sphere(d, s.x, op));
                 }
             } else if pert.prim_idx < 8888 {
                 let prim = &mut self.primitives[pert.prim_idx as usize];
-                prim.pos = (prim.pos + pert.pos_delta).clamp(Vec3::ZERO, Vec3::ONE);
-                prim.size =
-                    (prim.size * pert.size_scale).clamp(Vec3::splat(0.0005), Vec3::splat(0.5));
-                if pert.op < 4
-                    && (pert.pos_delta.length() > 0.5 || pert.size_scale.min_element() < 0.1)
-                {
+                let prim_pos = Vec3::from_slice(&prim.pos[..3]);
+                let prim_size = Vec3::from_slice(&prim.size[..3]);
+                let pos_delta = Vec3::from_slice(&pert.pos_delta[..3]);
+                let size_scale = Vec3::from_slice(&pert.size_scale[..3]);
+
+                let new_pos = (prim_pos + pos_delta).clamp(Vec3::ZERO, Vec3::ONE);
+                let new_size =
+                    (prim_size * size_scale).clamp(Vec3::splat(0.0005), Vec3::splat(0.5));
+
+                prim.pos = [new_pos.x, new_pos.y, new_pos.z, 0.0];
+                prim.size = [new_size.x, new_size.y, new_size.z, 0.0];
+
+                if pert.op < 4 && (pos_delta.length() > 0.5 || size_scale.min_element() < 0.1) {
                     prim.prim_type = if pert.op >= 2 { 1 } else { 0 };
                     prim.op = pert.op % 2;
                 }
@@ -1269,12 +1306,12 @@ impl Optimizer {
             let df = if prim.prim_type == 0 {
                 format!(
                     "length(p_norm - vec3f({:.4}, {:.4}, {:.4})) - {:.4}",
-                    prim.pos.x, prim.pos.y, prim.pos.z, prim.size.x
+                    prim.pos[0], prim.pos[1], prim.pos[2], prim.size[0]
                 )
             } else {
                 format!(
                     "sd_box(p_norm - vec3f({:.4}, {:.4}, {:.4}), vec3f({:.4}, {:.4}, {:.4}))",
-                    prim.pos.x, prim.pos.y, prim.pos.z, prim.size.x, prim.size.y, prim.size.z
+                    prim.pos[0], prim.pos[1], prim.pos[2], prim.size[0], prim.size[1], prim.size[2]
                 )
             };
             if prim.op == 0 {

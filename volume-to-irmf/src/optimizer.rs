@@ -874,20 +874,37 @@ impl Optimizer {
         );
 
         let mut dist_threshold_sq = 0.0001;
+        let mut min_efficiency = 0.5;
 
         while self.primitives.len() > target_count {
+            // Sort by X position occasionally to keep neighbors close in the list
+            if self.primitives.len() % 1000 == 0 {
+                self.primitives.sort_by(|a, b| a.pos[0].partial_cmp(&b.pos[0]).unwrap());
+            }
+
             let mut best_pair = (0, 0);
             let mut min_cost = f32::MAX;
 
             let samples = if self.primitives.len() > 10000 {
-                1000
+                2000
             } else {
                 5000
             };
 
             for _ in 0..samples {
                 let i = rng.gen_range(0..self.primitives.len());
-                let j = rng.gen_range(0..self.primitives.len());
+                // Pick a neighbor in the sorted list with high probability
+                let j = if rng.gen_bool(0.9) {
+                    let offset = rng.gen_range(1..20);
+                    if rng.gen_bool(0.5) {
+                        if i >= offset { i - offset } else { (i + offset).min(self.primitives.len() - 1) }
+                    } else {
+                        (i + offset).min(self.primitives.len() - 1)
+                    }
+                } else {
+                    rng.gen_range(0..self.primitives.len())
+                };
+
                 if i == j {
                     continue;
                 }
@@ -911,7 +928,7 @@ impl Optimizer {
                 let combined_pos = (combined_min + combined_max) / 2.0;
 
                 let mut filled_count = 0;
-                let test_samples = 8;
+                let test_samples = 32; // Increased for better accuracy
                 for _ in 0..test_samples {
                     let rp = combined_pos
                         + combined_size
@@ -932,7 +949,7 @@ impl Optimizer {
                 let combined_vol = combined_size.x * combined_size.y * combined_size.z;
                 let cost = (1.0 - efficiency) * combined_vol;
 
-                if efficiency >= 0.5 && cost < min_cost {
+                if efficiency >= min_efficiency && cost < min_cost {
                     min_cost = cost;
                     best_pair = (i, j);
                 }
@@ -940,12 +957,16 @@ impl Optimizer {
 
             if min_cost == f32::MAX {
                 dist_threshold_sq *= 1.2;
-                if dist_threshold_sq > 1.0 {
-                    println!(
-                        "No more efficient merges. Stopping at {}.",
-                        self.primitives.len()
-                    );
-                    break;
+                if dist_threshold_sq > 0.1 { // Cap distance threshold
+                    dist_threshold_sq = 0.1;
+                    min_efficiency *= 0.9; // Lower efficiency requirement if stuck
+                    if min_efficiency < 0.01 {
+                        println!(
+                            "Gave up on efficiency. Stopping at {}.",
+                            self.primitives.len()
+                        );
+                        break;
+                    }
                 }
                 continue;
             }

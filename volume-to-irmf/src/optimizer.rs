@@ -2,6 +2,8 @@ use crate::primitives::{BooleanOp, Primitive};
 use crate::volume::VoxelVolume;
 use anyhow::Result;
 use glam::Vec3;
+use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
@@ -449,32 +451,15 @@ impl Optimizer {
         self.primitives.push(prim);
     }
 
-    /// Initializes primitives using a hierarchical octree-based algorithm.
+    /// Initializes primitives using a hierarchical top-down octree subdivision.
     pub async fn octree_initialize(&mut self, target_count: usize) -> Result<()> {
         let [w, h, d] = self.target_volume.dims;
-        let mut current_dims = [w, h, d];
         let mut pyramid = Vec::new();
-
-        // Ensure we have dummy objects for bindings
-        let dummy_texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Dummy Texture"),
-            size: wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D3,
-            format: wgpu::TextureFormat::R32Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
-            view_formats: &[],
-        });
-        let dummy_view = dummy_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        // Pass 1: Generate Mipmap Pyramid
-        let mut current_view = self.target_texture_view.clone();
-        let mut level = 0;
+        
+        println!("Building CPU mipmap pyramid for octree initialization...");
+        let mut current_dims = [w, h, d];
+        let mut current_data = self.target_volume.data.clone();
+        pyramid.push((current_data.clone(), current_dims));
 
         while current_dims[0] > 1 || current_dims[1] > 1 || current_dims[2] > 1 {
             let next_dims = [
@@ -482,273 +467,136 @@ impl Optimizer {
                 (current_dims[1] + 1) / 2,
                 (current_dims[2] + 1) / 2,
             ];
-
-            let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(&format!("Mipmap Level {}", level + 1)),
-                size: wgpu::Extent3d {
-                    width: next_dims[0],
-                    height: next_dims[1],
-                    depth_or_array_layers: next_dims[2],
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D3,
-                format: wgpu::TextureFormat::R32Float,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
-                view_formats: &[],
-            });
-
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-            let config = OctreeConfig {
-                dims: [current_dims[0], current_dims[1], current_dims[2], 0],
-                level,
-                threshold_low: 0.05,
-                threshold_high: 0.95,
-                max_nodes: 10000,
-            };
-            let config_buffer = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Octree Config"),
-                    contents: bytemuck::cast_slice(&[config]),
-                    usage: wgpu::BufferUsages::UNIFORM,
-                });
-
-            let dummy_nodes = self.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Dummy Nodes"),
-                size: 1024,
-                usage: wgpu::BufferUsages::STORAGE,
-                mapped_at_creation: false,
-            });
-            let dummy_count = self.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Dummy Count"),
-                size: 4,
-                usage: wgpu::BufferUsages::STORAGE,
-                mapped_at_creation: false,
-            });
-
-            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Mipmap Bind Group"),
-                layout: &self.octree_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: config_buffer.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&current_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: dummy_nodes.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 4,
-                        resource: dummy_count.as_entire_binding(),
-                    },
-                ],
-            });
-
-            let mut encoder = self
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-            {
-                let mut compute_pass =
-                    encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-                compute_pass.set_pipeline(&self.mipmap_pipeline);
-                compute_pass.set_bind_group(0, &bind_group, &[]);
-                compute_pass.dispatch_workgroups(
-                    next_dims[0].div_ceil(8),
-                    next_dims[1].div_ceil(8),
-                    next_dims[2],
-                );
-            }
-            self.queue.submit(Some(encoder.finish()));
-
-            pyramid.push((view.clone(), next_dims, level + 1));
-            current_view = view;
-            current_dims = next_dims;
-            level += 1;
-        }
-
-        // Pass 2: Extract Primitives (Multi-level)
-        let mut all_potential_nodes = Vec::new();
-        let max_extracted = 1000000; // Increased to 1M to avoid bottom-slice bias
-        let node_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Octree Node Output"),
-            size: (std::mem::size_of::<OctreeNode>() * max_extracted) as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-        let count_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Octree Count Output"),
-            size: 4,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let staging_node_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Staging Node Buffer"),
-            size: (std::mem::size_of::<OctreeNode>() * max_extracted) as u64,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let staging_count_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Staging Count Buffer"),
-            size: 4,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let mut level_textures = pyramid;
-        level_textures.insert(
-            0,
-            (self.target_texture_view.clone(), self.target_volume.dims, 0),
-        );
-
-        for (view, dims, lvl) in level_textures {
-            self.queue
-                .write_buffer(&count_buffer, 0, bytemuck::cast_slice(&[0u32]));
-            // Lower thresholds ensure sparse wires are captured at coarse levels.
-            let config = OctreeConfig {
-                dims: [w, h, d, 0],
-                level: lvl,
-                threshold_low: 0.01,
-                threshold_high: 0.02, // Lowered from 0.1 to capture thin features like Rodin coil wires
-                max_nodes: max_extracted as u32,
-            };
-            let config_buffer = self
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Octree Extract Config"),
-                    contents: bytemuck::cast_slice(&[config]),
-                    usage: wgpu::BufferUsages::UNIFORM,
-                });
-
-            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Extract Bind Group"),
-                layout: &self.octree_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: config_buffer.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(&dummy_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: node_buffer.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 4,
-                        resource: count_buffer.as_entire_binding(),
-                    },
-                ],
-            });
-
-            let mut encoder = self
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-            {
-                let mut compute_pass =
-                    encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-                compute_pass.set_pipeline(&self.octree_pipeline);
-                compute_pass.set_bind_group(0, &bind_group, &[]);
-                compute_pass.dispatch_workgroups(dims[0].div_ceil(8), dims[1].div_ceil(8), dims[2]);
-            }
-            encoder.copy_buffer_to_buffer(
-                &node_buffer,
-                0,
-                &staging_node_buffer,
-                0,
-                (std::mem::size_of::<OctreeNode>() * max_extracted) as u64,
-            );
-            encoder.copy_buffer_to_buffer(&count_buffer, 0, &staging_count_buffer, 0, 4);
-            self.queue.submit(Some(encoder.finish()));
-
-            let (tx, rx) = futures::channel::oneshot::channel();
-            staging_count_buffer
-                .slice(..)
-                .map_async(wgpu::MapMode::Read, move |v| {
-                    let _ = tx.send(v);
-                });
-            self.device.poll(wgpu::Maintain::Wait);
-            rx.await??;
-            let count =
-                bytemuck::cast_slice::<u8, u32>(&staging_count_buffer.slice(..).get_mapped_range())
-                    [0] as usize;
-            staging_count_buffer.unmap();
-
-            if count > 0 {
-                let (tx, rx) = futures::channel::oneshot::channel();
-                staging_node_buffer
-                    .slice(..)
-                    .map_async(wgpu::MapMode::Read, move |v| {
-                        let _ = tx.send(v);
-                    });
-                self.device.poll(wgpu::Maintain::Wait);
-                rx.await??;
-                let mapped = staging_node_buffer.slice(..).get_mapped_range();
-                let nodes: &[OctreeNode] = bytemuck::cast_slice(&mapped);
-                for n in &nodes[..count.min(max_extracted)] {
-                    all_potential_nodes.push(*n);
+            let mut next_data = vec![0.0; (next_dims[0] * next_dims[1] * next_dims[2]) as usize];
+            
+            for z in 0..next_dims[2] {
+                for y in 0..next_dims[1] {
+                    for x in 0..next_dims[0] {
+                        let mut sum = 0.0;
+                        let mut count = 0.0;
+                        for dz in 0..2 {
+                            for dy in 0..2 {
+                                for dx in 0..2 {
+                                    let sx = x * 2 + dx;
+                                    let sy = y * 2 + dy;
+                                    let sz = z * 2 + dz;
+                                    if sx < current_dims[0] && sy < current_dims[1] && sz < current_dims[2] {
+                                        let idx = (sz * current_dims[1] * current_dims[0] + sy * current_dims[0] + sx) as usize;
+                                        sum += current_data[idx];
+                                        count += 1.0;
+                                    }
+                                }
+                            }
+                        }
+                        let idx = (z * next_dims[1] * next_dims[0] + y * next_dims[0] + x) as usize;
+                        next_data[idx] = sum / count;
+                    }
                 }
-                drop(mapped);
-                staging_node_buffer.unmap();
+            }
+            current_dims = next_dims;
+            current_data = next_data;
+            pyramid.push((current_data.clone(), current_dims));
+        }
+
+        #[derive(Copy, Clone, PartialEq)]
+        struct PQNode {
+            level: usize,
+            x: u32, y: u32, z: u32,
+            priority: f32,
+        }
+        impl Eq for PQNode {}
+        impl Ord for PQNode {
+            fn cmp(&self, other: &Self) -> Ordering {
+                self.priority.partial_cmp(&other.priority).unwrap_or(Ordering::Equal)
+            }
+        }
+        impl PartialOrd for PQNode {
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                Some(self.cmp(other))
             }
         }
 
-        // Randomize then stable sort to randomize ties in importance.
-        use rand::seq::SliceRandom;
-        let mut rng = rand::thread_rng();
-        all_potential_nodes.shuffle(&mut rng);
-
-        all_potential_nodes.sort_by(|a, b| {
-            let imp_a = a.data[0] * (1u32 << (3 * a.data[1] as u32)) as f32;
-            let imp_b = b.data[0] * (1u32 << (3 * b.data[1] as u32)) as f32;
-            imp_b.partial_cmp(&imp_a).unwrap()
+        let root_level = pyramid.len() - 1;
+        let mut pq = BinaryHeap::new();
+        let (root_data, root_dims) = &pyramid[root_level];
+        
+        let total_vol = (w * h * d) as f32;
+        pq.push(PQNode {
+            level: root_level,
+            x: 0, y: 0, z: 0,
+            priority: (root_data[0] - 0.01) * total_vol,
         });
+
+        println!("Performing top-down subdivision to find {} best boxes...", target_count);
+        while pq.len() < target_count && !pq.is_empty() {
+            let best = pq.pop().unwrap();
+            if best.level == 0 || best.priority <= 0.0 {
+                pq.push(best);
+                break;
+            }
+            
+            let child_level = best.level - 1;
+            let (child_data, child_dims) = &pyramid[child_level];
+            
+            let mut added_children = 0;
+            for dz in 0..2 {
+                for dy in 0..2 {
+                    for dx in 0..2 {
+                        let cx = best.x * 2 + dx;
+                        let cy = best.y * 2 + dy;
+                        let cz = best.z * 2 + dz;
+                        if cx < child_dims[0] && cy < child_dims[1] && cz < child_dims[2] {
+                            let idx = (cz * child_dims[1] * child_dims[0] + cy * child_dims[0] + cx) as usize;
+                            let occupancy = child_data[idx];
+                            if occupancy > 0.0 {
+                                let nx = ((cx + 1) << child_level).min(w) - (cx << child_level);
+                                let ny = ((cy + 1) << child_level).min(h) - (cy << child_level);
+                                let nz = ((cz + 1) << child_level).min(d) - (cz << child_level);
+                                let vol = (nx * ny * nz) as f32;
+                                pq.push(PQNode {
+                                    level: child_level,
+                                    x: cx, y: cy, z: cz,
+                                    priority: (occupancy - 0.01) * vol,
+                                });
+                                added_children += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            if added_children == 0 {
+                // Should not happen given occupancy > 0 check, but safety first
+                pq.push(best);
+                break;
+            }
+        }
 
         self.primitives.clear();
-        for n in all_potential_nodes.iter().take(target_count) {
-            self.primitives.push(Primitive::new_cube(
-                Vec3::new(n.pos[0], n.pos[1], n.pos[2]),
-                Vec3::new(n.size[0], n.size[1], n.size[2]),
-                BooleanOp::Union,
-            ));
-        }
-
-        if !self.primitives.is_empty() {
-            println!("First 5 extracted primitives:");
-            for i in 0..5.min(self.primitives.len()) {
-                let n = &all_potential_nodes[i];
-                println!(
-                    "  Level {}: pos={:?}, size={:?}, occupancy={}",
-                    n.data[1],
-                    Vec3::new(n.pos[0], n.pos[1], n.pos[2]),
-                    Vec3::new(n.size[0], n.size[1], n.size[2]),
-                    n.data[0]
-                );
-            }
+        let final_nodes: Vec<_> = pq.into_sorted_vec();
+        for n in final_nodes.iter().rev().take(target_count) {
+            let start_x = (n.x << n.level) as f32;
+            let start_y = (n.y << n.level) as f32;
+            let start_z = (n.z << n.level) as f32;
+            let end_x = ((n.x + 1) << n.level).min(w) as f32;
+            let end_y = ((n.y + 1) << n.level).min(h) as f32;
+            let end_z = ((n.z + 1) << n.level).min(d) as f32;
+            
+            let pos = Vec3::new(
+                (start_x + end_x) / 2.0 / w as f32,
+                (start_y + end_y) / 2.0 / h as f32,
+                (start_z + end_z) / 2.0 / d as f32,
+            );
+            let size = Vec3::new(
+                (end_x - start_x) / 2.0 / w as f32,
+                (end_y - start_y) / 2.0 / h as f32,
+                (end_z - start_z) / 2.0 / d as f32,
+            );
+            self.primitives.push(Primitive::new_cube(pos, size, BooleanOp::Union));
         }
 
         println!(
-            "Octree initialization produced {} primitives from {} candidates.",
-            self.primitives.len(),
-            all_potential_nodes.len()
+            "Octree initialization produced {} primitives.",
+            self.primitives.len()
         );
         Ok(())
     }

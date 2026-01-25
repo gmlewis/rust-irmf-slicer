@@ -17,6 +17,14 @@ struct Args {
     /// Resolution for voxelization
     #[arg(short, long, default_value_t = 128)]
     res: u32,
+
+    /// Save intermediate Pass 2 (X-runs) debug IRMF
+    #[arg(long)]
+    pass2: Option<PathBuf>,
+
+    /// Save intermediate Pass 3 (XY-planes) debug IRMF
+    #[arg(long)]
+    pass3: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -48,7 +56,7 @@ async fn main() -> Result<()> {
         indices.push(tri.vertices[2] as u32);
     }
 
-    println!("Voxelizing mesh on GPU...");
+    println!("Voxelizing mesh on GPU at resolution {}...", args.res);
     let volume =
         VoxelVolume::gpu_voxelize(vertices, indices, [args.res, args.res, args.res], min, max)
             .await?;
@@ -58,26 +66,31 @@ async fn main() -> Result<()> {
         volume.dims[0], volume.dims[1], volume.dims[2]
     );
 
-    println!("Initializing optimizer...");
+    println!("Initializing lossless optimizer...");
     let mut optimizer = Optimizer::new(volume).await?;
 
-    println!("Starting optimization...");
-    let mut best_error = f32::MAX;
-    for i in 0..1000 {
-        let error = optimizer.run_iteration().await?;
-        if error < best_error {
-            best_error = error;
-            println!("Iteration {}: error = {}", i, error);
-        }
+    println!("Running lossless cuboid merging algorithm...");
+    optimizer.run_lossless().await?;
+
+    if let Some(path) = args.pass2 {
+        println!("Writing Pass 2 debug IRMF to {}...", path.display());
+        std::fs::write(path, optimizer.generate_pass2_irmf())?;
+    }
+
+    if let Some(path) = args.pass3 {
+        println!("Writing Pass 3 debug IRMF to {}...", path.display());
+        std::fs::write(path, optimizer.generate_pass3_irmf())?;
     }
 
     let irmf = optimizer.generate_irmf();
-
     let output_path = args
         .output
         .unwrap_or_else(|| args.input.with_extension("irmf"));
-    println!("Writing {}...", output_path.display());
+    println!("Writing final IRMF to {}...", output_path.display());
     std::fs::write(output_path, irmf)?;
+
+    let stats = &optimizer.stats;
+    println!("Done in {:?}. Produced {} cuboids.", stats.duration, optimizer.generate_irmf().split("xyzRangeVuboid").count() - 1);
 
     Ok(())
 }

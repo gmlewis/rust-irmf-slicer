@@ -13,25 +13,13 @@ struct Args {
     #[arg(short, long)]
     output: Option<PathBuf>,
 
-    /// Maximum number of primitives
-    #[arg(short, long, default_value_t = 100)]
-    max_primitives: usize,
-
-    /// Target error
-    #[arg(short, long, default_value_t = 0.01)]
-    error: f32,
-
-    /// Number of optimization iterations
-    #[arg(short, long, default_value_t = 1000)]
-    iterations: usize,
-
-    /// Use greedy box initialization
-    #[arg(short, long)]
-    greedy: bool,
-
-    /// Use hierarchical octree initialization
+    /// Save intermediate Pass 2 (X-runs) debug IRMF
     #[arg(long)]
-    octree: bool,
+    pass2: Option<PathBuf>,
+
+    /// Save intermediate Pass 3 (XY-planes) debug IRMF
+    #[arg(long)]
+    pass3: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -47,64 +35,31 @@ async fn main() -> Result<()> {
         volume.dims[0], volume.dims[1], volume.dims[2]
     );
 
-    println!("Initializing optimizer...");
+    println!("Initializing lossless optimizer...");
     let mut optimizer = Optimizer::new(volume).await?;
 
-    if args.greedy {
-        println!("Performing greedy box initialization...");
-        optimizer.greedy_box_initialize();
-        let initial_count = optimizer.generate_irmf().split("val =").count() - 1;
-        println!("Greedy pass produced {} primitives.", initial_count);
+    println!("Running lossless cuboid merging algorithm...");
+    optimizer.run_lossless().await?;
 
-        if initial_count > args.max_primitives {
-            println!("Decimating to {} primitives...", args.max_primitives);
-            optimizer.decimate(args.max_primitives);
-        }
-    } else {
-        // Default to octree if no greedy flag, or if octree flag is set
-        println!("Performing hierarchical octree initialization...");
-        optimizer.octree_initialize(args.max_primitives).await?;
+    if let Some(path) = args.pass2 {
+        println!("Writing Pass 2 debug IRMF to {}...", path.display());
+        std::fs::write(path, optimizer.generate_pass2_irmf())?;
     }
 
-    if args.iterations > 0 {
-        println!("Starting optimization...");
-        let mut best_error = f32::MAX;
-        let mut last_num_prims = 0;
-        for i in 0..args.iterations {
-            let error = optimizer.run_iteration().await?;
-            let num_prims = optimizer.generate_irmf().split("val =").count() - 1;
-
-            if num_prims > last_num_prims {
-                println!("Iteration {}: Added primitive. Total: {}", i, num_prims);
-                last_num_prims = num_prims;
-            }
-
-            if i % 100 == 0 || error < best_error {
-                if error < best_error {
-                    best_error = error;
-                }
-                println!(
-                    "Iteration {}: error = {}, primitives = {}",
-                    i, error, num_prims
-                );
-            }
-
-            if error < args.error {
-                println!("Target error reached!");
-                break;
-            }
-        }
-    } else {
-        println!("Skipping optimization iterations as requested.");
+    if let Some(path) = args.pass3 {
+        println!("Writing Pass 3 debug IRMF to {}...", path.display());
+        std::fs::write(path, optimizer.generate_pass3_irmf())?;
     }
 
     let irmf = optimizer.generate_irmf();
-
     let output_path = args
         .output
         .unwrap_or_else(|| args.input.with_extension("irmf"));
-    println!("Writing {}...", output_path.display());
+    println!("Writing final IRMF to {}...", output_path.display());
     std::fs::write(output_path, irmf)?;
+
+    let stats = &optimizer.stats;
+    println!("Done in {:?}. Produced {} cuboids.", stats.duration, optimizer.generate_irmf().split("xyzRangeVuboid").count() - 1);
 
     Ok(())
 }

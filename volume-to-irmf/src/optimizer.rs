@@ -115,7 +115,19 @@ impl Optimizer {
             .await
             .ok_or_else(|| anyhow::anyhow!("No WGPU adapter"))?;
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("Pass 2 Device"),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits {
+                        max_buffer_size: adapter.limits().max_buffer_size,
+                        max_storage_buffer_binding_size: adapter.limits().max_storage_buffer_binding_size,
+                        ..wgpu::Limits::default()
+                    },
+                    memory_hints: Default::default(),
+                },
+                None,
+            )
             .await?;
 
         let shader_src = include_str!("pass2.wgsl");
@@ -282,7 +294,19 @@ impl Optimizer {
             .await
             .ok_or_else(|| anyhow::anyhow!("No WGPU adapter"))?;
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("Pass 2 Device"),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits {
+                        max_buffer_size: adapter.limits().max_buffer_size,
+                        max_storage_buffer_binding_size: adapter.limits().max_storage_buffer_binding_size,
+                        ..wgpu::Limits::default()
+                    },
+                    memory_hints: Default::default(),
+                },
+                None,
+            )
             .await?;
 
         let shader_src = include_str!("pass3.wgsl");

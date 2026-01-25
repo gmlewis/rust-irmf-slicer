@@ -28,6 +28,10 @@ struct Args {
     /// Use greedy box initialization
     #[arg(short, long)]
     greedy: bool,
+
+    /// Use hierarchical octree initialization
+    #[arg(long)]
+    octree: bool,
 }
 
 #[tokio::main]
@@ -56,6 +60,10 @@ async fn main() -> Result<()> {
             println!("Decimating to {} primitives...", args.max_primitives);
             optimizer.decimate(args.max_primitives);
         }
+    } else {
+        // Default to octree if no greedy flag, or if octree flag is set
+        println!("Performing hierarchical octree initialization...");
+        optimizer.octree_initialize(args.max_primitives).await?;
     }
 
     if args.iterations > 0 {

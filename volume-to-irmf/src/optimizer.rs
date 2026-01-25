@@ -63,6 +63,13 @@ impl Optimizer {
             }
         }
 
+        if yz_to_x.is_empty() {
+            println!("Volume is empty, skipping GPU passes.");
+            self.stats.duration = start_time.elapsed();
+            self.stats.iterations = 1;
+            return Ok(());
+        }
+
         // Pass 2: GPU - Merge X
         println!("Pass 2: GPU Merge X...");
         self.pass2_results = self.run_gpu_pass2(&yz_to_x).await?;

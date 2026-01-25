@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
     std::fs::write(output_path, irmf)?;
 
     let stats = &optimizer.stats;
-    println!("Done in {:?}. Produced {} cuboids.", stats.duration, optimizer.generate_irmf().split("xyzRangeVuboid").count() - 1);
+    println!("Done in {:?}. Produced {} cuboids.", stats.duration, optimizer.generate_irmf().split("val = max(val, xyzRangeVuboid").count() - 1);
 
     Ok(())
 }

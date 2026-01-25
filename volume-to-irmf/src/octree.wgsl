@@ -68,10 +68,15 @@ fn extract_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             let total_dims = vec3f(config.dims.xyz);
             let level_scale = f32(1u << config.level);
             
+            let start = vec3f(global_id) * level_scale;
+            let end = min(start + level_scale, total_dims);
+            let size = end - start;
+            let center = (start + end) / 2.0;
+            
             // Half-size (radius) of the node in normalized [0, 1] space
-            let node_size = (vec3f(level_scale) / total_dims) / 2.0;
+            let node_size = size / total_dims / 2.0;
             // Center position of the node in normalized [0, 1] space
-            let node_pos = (vec3f(global_id) * level_scale + vec3f(level_scale) / 2.0) / total_dims;
+            let node_pos = center / total_dims;
             
             out_nodes[idx].pos = vec4f(node_pos, 0.0);
             out_nodes[idx].size = vec4f(node_size, 0.0);

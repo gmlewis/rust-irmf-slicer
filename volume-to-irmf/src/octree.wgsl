@@ -34,17 +34,16 @@ fn mipmap_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 }
 
 struct Node {
-    pos: vec3f,
-    size: vec3f,
+    pos: vec4f,
+    size: vec4f,
     occupancy: f32,
-    _pad: f32,
+    _pad: vec3f,
 }
 
 @group(0) @binding(3) var<storage, read_write> out_nodes: array<Node>;
 @group(0) @binding(4) var<storage, read_write> node_count: atomic<u32>;
 
 // Pass 2: Node extraction
-// Each workgroup checks a region at the current level.
 @compute @workgroup_size(8, 8, 1)
 fn extract_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let dims = textureDimensions(src_texture);
@@ -54,8 +53,6 @@ fn extract_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let occupancy = textureLoad(src_texture, global_id, 0).r;
     
-    // If it's a leaf node (mostly full or we are at the target resolution)
-    // threshold_high ~ 0.9, threshold_low ~ 0.1
     let is_full = occupancy >= config.threshold_high;
     let is_partial = occupancy > config.threshold_low && occupancy < config.threshold_high;
     let is_bottom_level = (config.level == 0u);
@@ -69,8 +66,8 @@ fn extract_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             let node_size = vec3f(level_scale) / total_dims / 2.0;
             let node_pos = (vec3f(global_id) * level_scale + vec3f(level_scale) / 2.0) / total_dims;
             
-            out_nodes[idx].pos = node_pos;
-            out_nodes[idx].size = node_size;
+            out_nodes[idx].pos = vec4f(node_pos, 0.0);
+            out_nodes[idx].size = vec4f(node_size, 0.0);
             out_nodes[idx].occupancy = occupancy;
         }
     }

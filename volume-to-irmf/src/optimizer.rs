@@ -17,10 +17,10 @@ struct ErrorResult {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct OctreeNode {
-    pos: Vec3,
-    size: Vec3,
+    pos: [f32; 4],
+    size: [f32; 4],
     occupancy: f32,
-    _pad: f32,
+    _pad: [f32; 3],
 }
 
 #[repr(C)]
@@ -769,21 +769,39 @@ impl Optimizer {
 
             
 
-                        self.queue.write_buffer(&count_buffer, 0, bytemuck::cast_slice(&[0u32]));
+                                    self.queue.write_buffer(&count_buffer, 0, bytemuck::cast_slice(&[0u32]));
 
-                        let config = OctreeConfig {
+            
 
-                            dims: [w, h, d, 0],
+                                    let config = OctreeConfig {
 
-                            level: lvl,
+            
 
-                            threshold_low: 0.1,
+                                        dims: [w, h, d, 0],
 
-                            threshold_high: 0.9,
+            
 
-                            max_nodes: max_extracted as u32,
+                                        level: lvl,
 
-                        };
+            
+
+                                        threshold_low: 0.01,
+
+            
+
+                                        threshold_high: 0.3,
+
+            
+
+                                        max_nodes: max_extracted as u32,
+
+            
+
+                                    };
+
+            
+
+                        
 
                         let config_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 
@@ -935,7 +953,11 @@ impl Optimizer {
                 let nodes: &[OctreeNode] = bytemuck::cast_slice(&mapped_range);
                 for n in &nodes[..count.min(max_extracted)] {
                     if final_primitives.len() < target_count {
-                        final_primitives.push(Primitive::new_cube(n.pos, n.size, BooleanOp::Union));
+                        final_primitives.push(Primitive::new_cube(
+                            glam::Vec3::new(n.pos[0], n.pos[1], n.pos[2]),
+                            glam::Vec3::new(n.size[0], n.size[1], n.size[2]),
+                            BooleanOp::Union,
+                        ));
                     }
                 }
                 drop(mapped_range);

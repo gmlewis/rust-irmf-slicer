@@ -690,8 +690,8 @@ impl Optimizer {
             primitives_code.push_str(&format!("        case {}: {{\n", z));
             for res in runs {
                 primitives_code.push_str(&format!(
-                    "            if (xRangeCuboid(vec4i({}, {}, {}, {}), v)) {{ return solidMaterial; }}\n",
-                    res[0], res[1], res[2], res[3]
+                    "            if (cuboid(vi, vec3i({}, {}, {}), vec3i({}, {}, {}))) {{ return solidMaterial; }}\n",
+                    res[0], res[2], res[3], res[1], res[2], res[3],
                 ));
             }
             primitives_code.push_str("        }\n");
@@ -712,8 +712,8 @@ impl Optimizer {
             primitives_code.push_str(&format!("        case {}: {{\n", z));
             for r in rects {
                 primitives_code.push_str(&format!(
-                    "            if (xyRangeCuboid({}, {}, {}, {}, {}, v)) {{ return solidMaterial; }}\n",
-                    r[0], r[1], r[2], r[3], z
+                    "            if (cuboid(vi, vec3i({}, {}, {}), vec3i({}, {}, {}))) {{ return solidMaterial; }}\n",
+                    r[0], r[2], z, r[1], r[3], z,
                 ));
             }
             primitives_code.push_str("        }\n");
@@ -755,8 +755,8 @@ impl Optimizer {
                 for i in cuboid_indices {
                     let c = &self.cuboids[i];
                     primitives_code.push_str(&format!(
-                        "                    if (xyzRangeCuboid({}, {}, {}, {}, {}, {}, v)) {{ return solidMaterial; }}\n",
-                        c.x1, c.x2, c.y1, c.y2, c.z1, c.z2
+                        "                    if (cuboid(vi, vec3i({}, {}, {}), vec3i({}, {}, {}))) {{ return solidMaterial; }}\n",
+                        c.x1, c.y1, c.z1, c.x2, c.y2, c.z2,
                     ));
                 }
                 primitives_code.push_str("                }\n");
@@ -795,24 +795,13 @@ const DIMS = vec3f({:.1}, {:.1}, {:.1});
 const VOXEL_SIZE = (MAX_BOUND - MIN_BOUND) / DIMS;
 const solidMaterial = vec4f(1.0, 0.0, 0.0, 0.0);
 
-fn cuboid(v: vec3f, b_min: vec3i, b_max: vec3i) -> bool {{
-    return all(v >= vec3f(b_min)) && all(v <= vec3f(b_max));
-}}
-
-fn xRangeCuboid(val: vec4i, v: vec3f) -> bool {{
-    return cuboid(v, vec3i(val.x, val.z, val.w), vec3i(val.y + 1, val.z + 1, val.w + 1));
-}}
-
-fn xyRangeCuboid(x1: i32, x2: i32, y1: i32, y2: i32, z: i32, v: vec3f) -> bool {{
-    return cuboid(v, vec3i(x1, y1, z), vec3i(x2 + 1, y2 + 1, z + 1));
-}}
-
-fn xyzRangeCuboid(x1: i32, x2: i32, y1: i32, y2: i32, z1: i32, z2: i32, v: vec3f) -> bool {{
-    return cuboid(v, vec3i(x1, y1, z1), vec3i(x2 + 1, y2 + 1, z2 + 1));
+fn cuboid(v: vec3i, b_min: vec3i, b_max: vec3i) -> bool {{
+    return all(v >= b_min) && all(v <= b_max);
 }}
 
 fn mainModel4(xyz: vec3f) -> vec4f {{
     let v = (xyz - MIN_BOUND) / VOXEL_SIZE;
+    let vi = vec3i(floor(v + vec3f(0.5)));
     let iy = i32(floor(v.y));
     let iz = i32(floor(v.z));
 {}

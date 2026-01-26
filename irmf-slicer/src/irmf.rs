@@ -69,19 +69,25 @@ pub enum IrmfError {
 #[serde(rename_all = "camelCase")]
 pub struct IrmfHeader {
     /// Author of the model.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
     /// License of the model.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
     /// Date the model was created.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<String>,
     /// Encoding of the shader (e.g., "gzip", "gzip+base64").
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding: Option<String>,
     /// IRMF version.
     #[serde(rename = "irmf")]
     pub irmf_version: String,
     /// GLSL version if applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub glsl_version: Option<String>,
     /// Language of the shader ("glsl" or "wgsl").
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>, // Default is "glsl"
     /// List of material names.
     pub materials: Vec<String>,
@@ -90,15 +96,28 @@ pub struct IrmfHeader {
     /// Minimum coordinates of the bounding box.
     pub min: [f32; 3],
     /// Additional notes.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
     /// Format-specific options.
+    #[serde(skip_serializing_if = "is_option_empty_map")]
     pub options: Option<serde_json::Value>,
     /// Title of the model.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     /// Units of measurement (e.g., "mm").
     pub units: String,
     /// Version of the model.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+}
+
+/// Helper function for serde to skip optional empty maps (mimicking Go's omitempty).
+fn is_option_empty_map(v: &Option<serde_json::Value>) -> bool {
+    match v {
+        Some(serde_json::Value::Object(map)) => map.is_empty(),
+        None => true,
+        _ => false,
+    }
 }
 
 /// A parsed IRMF model.
@@ -383,8 +402,8 @@ void main() {}";
 
     fn test_encoding_decoding(header: &mut IrmfHeader, shader: &str, use_b64: bool) {
         use base64::engine::general_purpose::STANDARD_NO_PAD;
-        use flate2::write::GzEncoder;
         use flate2::Compression;
+        use flate2::write::GzEncoder;
         use std::io::Write;
 
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
@@ -392,14 +411,17 @@ void main() {}";
         let compressed = encoder.finish().unwrap();
 
         let (encoding, payload) = if use_b64 {
-            ("gzip+base64", STANDARD_NO_PAD.encode(&compressed).into_bytes())
+            (
+                "gzip+base64",
+                STANDARD_NO_PAD.encode(&compressed).into_bytes(),
+            )
         } else {
             ("gzip", compressed)
         };
 
         header.encoding = Some(encoding.to_string());
         let header_json = serde_json::to_string_pretty(header).unwrap();
-        
+
         let mut full_data = Vec::new();
         full_data.extend_from_slice(b"/*");
         full_data.extend_from_slice(header_json.as_bytes());
@@ -433,7 +455,7 @@ void main() {}";
         };
 
         test_encoding_decoding(&mut header, glsl_shader, false); // gzip
-        test_encoding_decoding(&mut header, glsl_shader, true);  // gzip+base64
+        test_encoding_decoding(&mut header, glsl_shader, true); // gzip+base64
     }
 
     #[test]
@@ -458,6 +480,34 @@ void main() {}";
         };
 
         test_encoding_decoding(&mut header, wgsl_shader, false); // gzip
-        test_encoding_decoding(&mut header, wgsl_shader, true);  // gzip+base64
+        test_encoding_decoding(&mut header, wgsl_shader, true); // gzip+base64
+    }
+
+    #[test]
+    fn test_irmf_header_omitempty() {
+        let header = IrmfHeader {
+            author: None,
+            license: None,
+            date: None,
+            encoding: None,
+            irmf_version: "1.0".into(),
+            glsl_version: None,
+            language: None,
+            materials: vec!["M1".into()],
+            max: [1.0, 1.0, 1.0],
+            min: [0.0, 0.0, 0.0],
+            notes: None,
+            options: Some(serde_json::json!({})), // Empty map should be skipped
+            title: None,
+            units: "mm".into(),
+            version: None,
+        };
+
+        let json = serde_json::to_string(&header).unwrap();
+        assert!(!json.contains("author"));
+        assert!(!json.contains("options"));
+        assert!(!json.contains("glslVersion"));
+        assert!(json.contains("\"irmf\":\"1.0\""));
+        assert!(json.contains("\"materials\":[\"M1\"]"));
     }
 }

@@ -703,33 +703,29 @@ fn sd_box(p: vec3f, b: vec3f) -> f32 {{
 fn cuboid(p: vec3f, b_min: vec3i, b_max: vec3i) -> f32 {{
     let world_min = MIN_BOUND + vec3f(b_min) * VOXEL_SIZE;
     let world_max = MIN_BOUND + vec3f(b_max) * VOXEL_SIZE;
-    let center = (world_min + world_max) * 0.5;
-    let half_size = (world_max - world_min) * 0.5;
-    let d = sd_box(p - center, half_size);
-    return clamp(0.5 - d * 1000.0, 0.0, 1.0);
+    // Exact inside/outside test: inside if p in [world_min, world_max]
+    let inside = all(p>=world_min) && all(p<=world_max);
+    return select(0.0, 1.0, inside);
 }}
 
-fn xRangeCuboid(val: vec4i) -> f32 {{
-    return cuboid(global_p, vec3i(val.x, val.z, val.w), vec3i(val.y + 1, val.z + 1, val.w + 1));
+fn xRangeCuboid(val: vec4i, p: vec3f) -> f32 {{
+    return cuboid(p, vec3i(val.x, val.z, val.w), vec3i(val.y + 1, val.z + 1, val.w + 1));
 }}
 
-fn xyRangeCuboid(x1: i32, x2: i32, y1: i32, y2: i32, z: i32) -> f32 {{
-    return cuboid(global_p, vec3i(x1, y1, z), vec3i(x2 + 1, y2 + 1, z + 1));
+fn xyRangeCuboid(x1: i32, x2: i32, y1: i32, y2: i32, z: i32, p: vec3f) -> f32 {{
+    return cuboid(p, vec3i(x1, y1, z), vec3i(x2 + 1, y2 + 1, z + 1));
 }}
 
-fn xyzRangeCuboid(x1: i32, x2: i32, y1: i32, y2: i32, z1: i32, z2: i32) -> f32 {{
-    return cuboid(global_p, vec3i(x1, y1, z1), vec3i(x2 + 1, y2 + 1, z2 + 1));
+fn xyzRangeCuboid(x1: i32, x2: i32, y1: i32, y2: i32, z1: i32, z2: i32, p: vec3f) -> f32 {{
+    return cuboid(p, vec3i(x1, y1, z1), vec3i(x2 + 1, y2 + 1, z2 + 1));
 }}
-
-var<private> global_p: vec3f;
 
 fn mainModel4(xyz: vec3f) -> vec4f {{
-    global_p = xyz;
     var val = 0.0;
 {}
     return vec4f(val, 0.0, 0.0, 0.0);
-  }}
-  "###,
+}}
+"###,
             max.x,
             max.y,
             max.z,

@@ -13,6 +13,10 @@ struct Args {
     #[arg(short, long)]
     output: Option<PathBuf>,
 
+    /// IRMF shader language (glsl or wgsl)
+    #[arg(short, long)]
+    language: Option<String>,
+
     /// Save intermediate Pass 2 (X-runs) debug IRMF
     #[arg(long)]
     pass2: Option<PathBuf>,
@@ -51,7 +55,8 @@ async fn main() -> Result<()> {
         std::fs::write(path, optimizer.generate_pass3_irmf())?;
     }
 
-    let irmf = optimizer.generate_irmf();
+    let language = args.language.unwrap_or_else(|| "glsl".to_string());
+    let irmf = optimizer.generate_irmf(language);
     let output_path = args
         .output
         .unwrap_or_else(|| args.input.with_extension("irmf"));

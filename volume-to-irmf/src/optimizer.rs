@@ -674,8 +674,8 @@ impl Optimizer {
         final_cuboids
     }
 
-    pub fn generate_irmf(&self) -> String {
-        self.generate_final_irmf()
+    pub fn generate_irmf(&self, language: String) -> String {
+        self.generate_final_irmf(language)
     }
 
     pub fn generate_pass2_irmf(&self) -> String {
@@ -697,7 +697,7 @@ impl Optimizer {
             primitives_code.push_str("        }\n");
         }
         primitives_code.push_str("        default: {}\n    }\n");
-        self.wrap_irmf("".to_string(), primitives_code, "Pass 2 (X-runs)")
+        self.wrap_wgsl_irmf("".to_string(), primitives_code, "Pass 2 (X-runs)")
     }
 
     pub fn generate_pass3_irmf(&self) -> String {
@@ -719,10 +719,10 @@ impl Optimizer {
             primitives_code.push_str("        }\n");
         }
         primitives_code.push_str("        default: {}\n    }\n");
-        self.wrap_irmf("".to_string(), primitives_code, "Pass 3 (XY-planes)")
+        self.wrap_wgsl_irmf("".to_string(), primitives_code, "Pass 3 (XY-planes)")
     }
 
-    pub fn generate_final_irmf(&self) -> String {
+    pub fn generate_final_irmf(&self, language: String) -> String {
         let bucket_size_z = (self.target_volume.dims[2] as f32 / 32.0).ceil() as i32;
         let bucket_size_y = (self.target_volume.dims[1] as f32 / 32.0).ceil() as i32;
         let bucket_size_z = bucket_size_z.max(1);
@@ -746,45 +746,80 @@ impl Optimizer {
         let mut bz_by_switch_cases = String::new();
         let mut bz_switch_cases = String::new();
         let mut primitives_code = String::new();
-        primitives_code.push_str(&format!("    let bz = iz / {};\n", bucket_size_z));
-        primitives_code.push_str(&format!("    let by = iy / {};\n", bucket_size_y));
+        let int_let = if language == "glsl" { "int" } else { "let" };
+        let vec3i = if language == "glsl" { "ivec3" } else { "vec3i" };
+        primitives_code.push_str(&format!("    {} bz = iz / {};\n", int_let, bucket_size_z));
+        primitives_code.push_str(&format!("    {} by = iy / {};\n", int_let, bucket_size_y));
         primitives_code.push_str("    switch (bz) {\n");
         for (bz, y_buckets) in buckets {
-            primitives_code.push_str(&format!(
-                "        case {}: {{ return bz{}SwitchCase(vi, by); }}\n",
-                bz, bz
-            ));
-            bz_switch_cases.push_str(&format!(
-                "fn bz{}SwitchCase(vi: vec3i, by: i32) -> vec4f {{\n",
-                bz
-            ));
+            if language == "glsl" {
+                primitives_code.push_str(&format!(
+                    "        case {}: {{ materials = bz{}SwitchCase(vi, by); }}\n",
+                    bz, bz
+                ));
+                bz_switch_cases
+                    .push_str(&format!("\nvec4 bz{}SwitchCase(ivec3 vi, int by) {{\n", bz));
+            } else {
+                primitives_code.push_str(&format!(
+                    "        case {}: {{ return bz{}SwitchCase(vi, by); }}\n",
+                    bz, bz
+                ));
+                bz_switch_cases.push_str(&format!(
+                    "fn bz{}SwitchCase(vi: vec3i, by: i32) -> vec4f {{\n",
+                    bz
+                ));
+            }
             bz_switch_cases.push_str("    switch (by) {\n");
             for (by, cuboid_indices) in y_buckets {
                 bz_switch_cases.push_str(&format!(
                     "        case {}: {{ return bz{}by{}SwitchCase(vi); }}\n",
                     by, bz, by
                 ));
-                bz_by_switch_cases.push_str(&format!(
-                    "fn bz{}by{}SwitchCase(vi: vec3i) -> vec4f {{\n",
-                    bz, by
-                ));
+                if language == "glsl" {
+                    bz_by_switch_cases
+                        .push_str(&format!("vec4 bz{}by{}SwitchCase(ivec3 vi) {{\n", bz, by));
+                } else {
+                    bz_by_switch_cases.push_str(&format!(
+                        "fn bz{}by{}SwitchCase(vi: vec3i) -> vec4f {{\n",
+                        bz, by
+                    ));
+                }
                 for i in cuboid_indices {
                     let c = &self.cuboids[i];
                     bz_by_switch_cases.push_str(&format!(
-                        "    if (cuboid(vi, vec3i({}, {}, {}), vec3i({}, {}, {}))) {{ return solidMaterial; }}\n",
-                        c.x1, c.y1, c.z1, c.x2, c.y2, c.z2,
+                        "    if (cuboid(vi, {}({}, {}, {}), {}({}, {}, {}))) {{ return solidMaterial; }}\n",
+                        vec3i, c.x1, c.y1, c.z1, vec3i, c.x2, c.y2, c.z2,
                     ));
                 }
-                bz_by_switch_cases.push_str("    return vec4f(0,0,0,0);\n}\n\n");
+                if language == "glsl" {
+                    bz_by_switch_cases.push_str("    return vec4(0,0,0,0);\n}\n\n");
+                } else {
+                    bz_by_switch_cases.push_str("    return vec4f(0,0,0,0);\n}\n\n");
+                }
             }
             bz_switch_cases.push_str("        default: {}\n");
             bz_switch_cases.push_str("    }\n");
-            bz_switch_cases.push_str("    return vec4f(0,0,0,0);\n");
+            if language == "glsl" {
+                bz_switch_cases.push_str("    return vec4(0,0,0,0);\n");
+            } else {
+                bz_switch_cases.push_str("    return vec4f(0,0,0,0);\n");
+            }
             bz_switch_cases.push_str("}\n");
         }
-        primitives_code.push_str("        default: {}\n    }\n");
+        if language == "glsl" {
+            primitives_code.push_str("        default: { materials = vec4(0,0,0,0); }\n    }\n");
+        } else {
+            primitives_code.push_str("        default: {}\n    }\n");
+        }
         bz_by_switch_cases.push_str(&bz_switch_cases);
-        self.wrap_irmf(
+        if language == "glsl" {
+            return self.wrap_glsl_irmf(
+                bz_by_switch_cases,
+                primitives_code,
+                "Final Lossless Cuboids",
+            );
+        }
+        self.wrap_wgsl_irmf(
             bz_by_switch_cases,
             primitives_code,
             "Final Lossless Cuboids",
@@ -795,7 +830,73 @@ impl Optimizer {
         self.cuboids.len()
     }
 
-    fn wrap_irmf(&self, helper_functions: String, primitives_code: String, notes: &str) -> String {
+    fn wrap_glsl_irmf(
+        &self,
+        helper_functions: String,
+        primitives_code: String,
+        notes: &str,
+    ) -> String {
+        let min = self.target_volume.min;
+        let max = self.target_volume.max;
+        let dims = self.target_volume.dims;
+
+        format!(
+            r###"/*{{
+  "irmf": "1.0",
+  "language": "glsl",
+  "materials": ["Material"],
+  "min": [{:.4}, {:.4}, {:.4}],
+  "max": [{:.4}, {:.4}, {:.4}],
+  "notes": "{}",
+  "units": "mm"
+}}*/
+
+const vec3 MIN_BOUND = vec3({:.4}, {:.4}, {:.4});
+const vec3 MAX_BOUND = vec3({:.4}, {:.4}, {:.4});
+const vec3 DIMS = vec3({:.1}, {:.1}, {:.1});
+const vec3 VOXEL_SIZE = (MAX_BOUND - MIN_BOUND) / DIMS;
+const vec4 solidMaterial = vec4(1.0, 0.0, 0.0, 0.0);
+
+bool cuboid(ivec3 v, ivec3 b_min, ivec3 b_max) {{
+    return all(greaterThanEqual(v, b_min)) && all(lessThanEqual(v, b_max));
+}}
+
+{}
+void mainModel4(out vec4 materials, in vec3 xyz) {{
+    vec3 v = (xyz - MIN_BOUND) / VOXEL_SIZE;
+    ivec3 vi = ivec3(floor(v + vec3(0.5)));
+    int iy = int(floor(v.y));
+    int iz = int(floor(v.z));
+{}
+}}
+"###,
+            min.x,
+            min.y,
+            min.z,
+            max.x,
+            max.y,
+            max.z,
+            notes,
+            min.x,
+            min.y,
+            min.z,
+            max.x,
+            max.y,
+            max.z,
+            dims[0] as f32,
+            dims[1] as f32,
+            dims[2] as f32,
+            helper_functions,
+            primitives_code
+        )
+    }
+
+    fn wrap_wgsl_irmf(
+        &self,
+        helper_functions: String,
+        primitives_code: String,
+        notes: &str,
+    ) -> String {
         let min = self.target_volume.min;
         let max = self.target_volume.max;
         let dims = self.target_volume.dims;
@@ -805,8 +906,8 @@ impl Optimizer {
   "irmf": "1.0",
   "language": "wgsl",
   "materials": ["Material"],
-  "max": [{:.4}, {:.4}, {:.4}],
   "min": [{:.4}, {:.4}, {:.4}],
+  "max": [{:.4}, {:.4}, {:.4}],
   "notes": "{}",
   "units": "mm"
 }}*/
@@ -831,12 +932,12 @@ fn mainModel4(xyz: vec3f) -> vec4f {{
     return vec4f(0.0, 0.0, 0.0, 0.0);
 }}
 "###,
-            max.x,
-            max.y,
-            max.z,
             min.x,
             min.y,
             min.z,
+            max.x,
+            max.y,
+            max.z,
             notes,
             min.x,
             min.y,

@@ -23,7 +23,7 @@ async fn test_optimizer_lossless_cube() {
         .await
         .expect("Lossless pass failed");
 
-    let irmf = optimizer.generate_irmf();
+    let irmf = optimizer.generate_irmf("wgsl".to_string());
 
     // For a single solid cube, the lossless algorithm should ideally produce exactly 1 cuboid.
     // However, depending on how it's implemented, it might produce more if merging is not perfectly greedy across all axes.

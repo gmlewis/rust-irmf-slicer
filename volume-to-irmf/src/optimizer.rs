@@ -724,26 +724,39 @@ impl Optimizer {
 
     pub fn generate_final_irmf(&self) -> String {
         let bucket_size = 32;
-        let mut buckets: BTreeMap<i32, Vec<&Cuboid>> = BTreeMap::new();
+        let mut buckets: BTreeMap<i32, BTreeMap<i32, Vec<&Cuboid>>> = BTreeMap::new();
         for c in &self.cuboids {
-            let b1 = c.z1 / bucket_size;
-            let b2 = c.z2 / bucket_size;
-            for b in b1..=b2 {
-                buckets.entry(b).or_default().push(c);
+            let bz1 = c.z1 / bucket_size;
+            let bz2 = c.z2 / bucket_size;
+            let by1 = c.y1 / bucket_size;
+            let by2 = c.y2 / bucket_size;
+            for bz in bz1..=bz2 {
+                let y_buckets = buckets.entry(bz).or_default();
+                for by in by1..=by2 {
+                    y_buckets.entry(by).or_default().push(c);
+                }
             }
         }
 
         let mut primitives_code = String::new();
-        primitives_code.push_str(&format!("    let b = iz / {};\n", bucket_size));
-        primitives_code.push_str("    switch (b) {\n");
-        for (b, cuboids) in buckets {
-            primitives_code.push_str(&format!("        case {}: {{\n", b));
-            for c in cuboids {
-                primitives_code.push_str(&format!(
-                    "            if (iz >= {} && iz <= {}) {{ if (xyzRangeCuboid({}, {}, {}, {}, {}, {}, v)) {{ return vec4f(1.0, 0.0, 0.0, 0.0); }} }}\n",
-                    c.z1, c.z2, c.x1, c.x2, c.y1, c.y2, c.z1, c.z2
-                ));
+        primitives_code.push_str(&format!("    let bz = iz / {};\n", bucket_size));
+        primitives_code.push_str(&format!("    let by = iy / {};\n", bucket_size));
+        primitives_code.push_str("    switch (bz) {\n");
+        for (bz, y_buckets) in buckets {
+            primitives_code.push_str(&format!("        case {}: {{\n", bz));
+            primitives_code.push_str("            switch (by) {\n");
+            for (by, cuboids) in y_buckets {
+                primitives_code.push_str(&format!("                case {}: {{\n", by));
+                for c in cuboids {
+                    primitives_code.push_str(&format!(
+                        "                    if (xyzRangeCuboid({}, {}, {}, {}, {}, {}, v)) {{ return vec4f(1.0, 0.0, 0.0, 0.0); }}\n",
+                        c.x1, c.x2, c.y1, c.y2, c.z1, c.z2
+                    ));
+                }
+                primitives_code.push_str("                }\n");
             }
+            primitives_code.push_str("                default: {}\n");
+            primitives_code.push_str("            }\n");
             primitives_code.push_str("        }\n");
         }
         primitives_code.push_str("        default: {}\n    }\n");
@@ -789,6 +802,7 @@ fn xyzRangeCuboid(x1: i32, x2: i32, y1: i32, y2: i32, z1: i32, z2: i32, v: vec3f
 
 fn mainModel4(xyz: vec3f) -> vec4f {{
     let v = (xyz - MIN_BOUND) / VOXEL_SIZE;
+    let iy = i32(floor(v.y));
     let iz = i32(floor(v.z));
 {}
     return vec4f(0.0, 0.0, 0.0, 0.0);

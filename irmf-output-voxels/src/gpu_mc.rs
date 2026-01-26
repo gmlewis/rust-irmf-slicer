@@ -196,6 +196,7 @@ impl GpuMarchingCubes {
         encoder.copy_buffer_to_buffer(&output_buffer, 0, &readback_buffer, 0, output_buffer_size);
 
         queue.submit(Some(encoder.finish()));
+        device.poll(wgpu::Maintain::Wait);
 
         if let Some(error) = device.pop_error_scope().await {
             return Err(IrmfError::RendererError(format!(

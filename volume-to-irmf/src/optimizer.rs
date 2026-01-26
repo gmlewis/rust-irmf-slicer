@@ -315,6 +315,7 @@ impl Optimizer {
         encoder.copy_buffer_to_buffer(&result_count_buffer, 0, &count_staging_buffer, 0, 4);
 
         self.queue.submit(Some(encoder.finish()));
+        self.device.poll(wgpu::Maintain::Wait);
 
         if let Some(error) = self.device.pop_error_scope().await {
             anyhow::bail!("WGPU Out of Memory error in Pass 2: {}", error);
@@ -547,6 +548,7 @@ impl Optimizer {
         encoder.copy_buffer_to_buffer(&result_count_buffer, 0, &count_staging_buffer, 0, 4);
 
         self.queue.submit(Some(encoder.finish()));
+        self.device.poll(wgpu::Maintain::Wait);
 
         if let Some(error) = self.device.pop_error_scope().await {
             anyhow::bail!("WGPU Out of Memory error in Pass 3: {}", error);

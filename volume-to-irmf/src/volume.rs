@@ -415,6 +415,7 @@ impl VoxelVolume {
         );
 
         queue.submit(Some(encoder.finish()));
+        device.poll(wgpu::Maintain::Wait);
 
         if let Some(error) = device.pop_error_scope().await {
             anyhow::bail!("WGPU Out of Memory error in gpu_voxelize: {}", error);

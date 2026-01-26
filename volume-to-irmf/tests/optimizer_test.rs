@@ -46,7 +46,7 @@ async fn test_optimizer_empty_volume() {
         .await
         .expect("Lossless pass failed on empty volume");
 
-    let irmf = optimizer.generate_irmf();
+    let irmf = optimizer.generate_irmf("wgsl".to_string());
 
     let cuboid_count = irmf.split("if (xyzRangeCuboid(").count() - 1;
     assert_eq!(cuboid_count, 0, "Empty volume should produce 0 cuboids");

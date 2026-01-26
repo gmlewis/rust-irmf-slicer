@@ -690,7 +690,7 @@ impl Optimizer {
             primitives_code.push_str(&format!("        case {}: {{\n", z));
             for res in runs {
                 primitives_code.push_str(&format!(
-                    "            if (xRangeCuboid(vec4i({}, {}, {}, {}), v)) {{ return vec4f(1.0, 0.0, 0.0, 0.0); }}\n",
+                    "            if (xRangeCuboid(vec4i({}, {}, {}, {}), v)) {{ return solidMaterial; }}\n",
                     res[0], res[1], res[2], res[3]
                 ));
             }
@@ -712,7 +712,7 @@ impl Optimizer {
             primitives_code.push_str(&format!("        case {}: {{\n", z));
             for r in rects {
                 primitives_code.push_str(&format!(
-                    "            if (xyRangeCuboid({}, {}, {}, {}, {}, v)) {{ return vec4f(1.0, 0.0, 0.0, 0.0); }}\n",
+                    "            if (xyRangeCuboid({}, {}, {}, {}, {}, v)) {{ return solidMaterial; }}\n",
                     r[0], r[1], r[2], r[3], z
                 ));
             }
@@ -723,33 +723,39 @@ impl Optimizer {
     }
 
     pub fn generate_final_irmf(&self) -> String {
-        let bucket_size = 32;
-        let mut buckets: BTreeMap<i32, BTreeMap<i32, Vec<&Cuboid>>> = BTreeMap::new();
-        for c in &self.cuboids {
-            let bz1 = c.z1 / bucket_size;
-            let bz2 = c.z2 / bucket_size;
-            let by1 = c.y1 / bucket_size;
-            let by2 = c.y2 / bucket_size;
+        let bucket_size_z = (self.target_volume.dims[2] as f32 / 32.0).ceil() as i32;
+        let bucket_size_y = (self.target_volume.dims[1] as f32 / 32.0).ceil() as i32;
+        let bucket_size_z = bucket_size_z.max(1);
+        let bucket_size_y = bucket_size_y.max(1);
+
+        let mut buckets: BTreeMap<i32, BTreeMap<i32, std::collections::BTreeSet<usize>>> =
+            BTreeMap::new();
+        for (i, c) in self.cuboids.iter().enumerate() {
+            let bz1 = c.z1 / bucket_size_z;
+            let bz2 = c.z2 / bucket_size_z;
+            let by1 = c.y1 / bucket_size_y;
+            let by2 = c.y2 / bucket_size_y;
             for bz in bz1..=bz2 {
                 let y_buckets = buckets.entry(bz).or_default();
                 for by in by1..=by2 {
-                    y_buckets.entry(by).or_default().push(c);
+                    y_buckets.entry(by).or_default().insert(i);
                 }
             }
         }
 
         let mut primitives_code = String::new();
-        primitives_code.push_str(&format!("    let bz = iz / {};\n", bucket_size));
-        primitives_code.push_str(&format!("    let by = iy / {};\n", bucket_size));
+        primitives_code.push_str(&format!("    let bz = iz / {};\n", bucket_size_z));
+        primitives_code.push_str(&format!("    let by = iy / {};\n", bucket_size_y));
         primitives_code.push_str("    switch (bz) {\n");
         for (bz, y_buckets) in buckets {
             primitives_code.push_str(&format!("        case {}: {{\n", bz));
             primitives_code.push_str("            switch (by) {\n");
-            for (by, cuboids) in y_buckets {
+            for (by, cuboid_indices) in y_buckets {
                 primitives_code.push_str(&format!("                case {}: {{\n", by));
-                for c in cuboids {
+                for i in cuboid_indices {
+                    let c = &self.cuboids[i];
                     primitives_code.push_str(&format!(
-                        "                    if (xyzRangeCuboid({}, {}, {}, {}, {}, {}, v)) {{ return vec4f(1.0, 0.0, 0.0, 0.0); }}\n",
+                        "                    if (xyzRangeCuboid({}, {}, {}, {}, {}, {}, v)) {{ return solidMaterial; }}\n",
                         c.x1, c.x2, c.y1, c.y2, c.z1, c.z2
                     ));
                 }
@@ -783,6 +789,7 @@ const MIN_BOUND = vec3f({:.4}, {:.4}, {:.4});
 const MAX_BOUND = vec3f({:.4}, {:.4}, {:.4});
 const DIMS = vec3f({:.1}, {:.1}, {:.1});
 const VOXEL_SIZE = (MAX_BOUND - MIN_BOUND) / DIMS;
+const solidMaterial = vec4f(1.0, 0.0, 0.0, 0.0);
 
 fn cuboid(v: vec3f, b_min: vec3i, b_max: vec3i) -> bool {{
     return all(v >= vec3f(b_min)) && all(v <= vec3f(b_max));

@@ -398,7 +398,12 @@ impl VoxelVolume {
             compute_pass.dispatch_workgroups(dims[0].div_ceil(16), dims[1].div_ceil(16), 1);
         }
 
-        let output_buffer_size = (dims[0] * dims[1] * dims[2] * 4) as u64;
+        let unaligned_bytes_per_row = dims[0] * 4;
+        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let padding = (align - unaligned_bytes_per_row % align) % align;
+        let aligned_bytes_per_row = unaligned_bytes_per_row + padding;
+
+        let output_buffer_size = (aligned_bytes_per_row * dims[1] * dims[2]) as u64;
         let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Output Buffer"),
             size: output_buffer_size,
@@ -417,7 +422,7 @@ impl VoxelVolume {
                 buffer: &output_buffer,
                 layout: wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(4 * dims[0]),
+                    bytes_per_row: Some(aligned_bytes_per_row),
                     rows_per_image: Some(dims[1]),
                 },
             },
@@ -444,7 +449,15 @@ impl VoxelVolume {
 
         if let Ok(Ok(())) = receiver.await {
             let data = buffer_slice.get_mapped_range();
-            let result: Vec<f32> = bytemuck::cast_slice(&data).to_vec();
+            let mut result = Vec::with_capacity((dims[0] * dims[1] * dims[2]) as usize);
+            for z in 0..dims[2] {
+                for y in 0..dims[1] {
+                    let start =
+                        (z * dims[1] * aligned_bytes_per_row + y * aligned_bytes_per_row) as usize;
+                    let end = start + unaligned_bytes_per_row as usize;
+                    result.extend_from_slice(bytemuck::cast_slice(&data[start..end]));
+                }
+            }
             drop(data);
             Ok(Self {
                 data: result,

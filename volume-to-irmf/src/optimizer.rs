@@ -780,7 +780,7 @@ impl Optimizer {
             bz_switch_cases.push_str("        default: {}\n");
             bz_switch_cases.push_str("    }\n");
             bz_switch_cases.push_str("    return vec4f(0,0,0,0);\n");
-            bz_switch_cases.push_str("}\n\n");
+            bz_switch_cases.push_str("}\n");
         }
         primitives_code.push_str("        default: {}\n    }\n");
         bz_by_switch_cases.push_str(&bz_switch_cases);
@@ -822,7 +822,6 @@ fn cuboid(v: vec3i, b_min: vec3i, b_max: vec3i) -> bool {{
 }}
 
 {}
-
 fn mainModel4(xyz: vec3f) -> vec4f {{
     let v = (xyz - MIN_BOUND) / VOXEL_SIZE;
     let vi = vec3i(floor(v + vec3f(0.5)));

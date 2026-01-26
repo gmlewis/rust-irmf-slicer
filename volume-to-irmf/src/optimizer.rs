@@ -55,6 +55,10 @@ impl Optimizer {
             )
             .await?;
 
+        device.on_uncaptured_error(Box::new(|error| {
+            panic!("WGPU error: {}", error);
+        }));
+
         Ok(Self {
             target_volume: Arc::new(target_volume),
             cuboids: Vec::new(),
@@ -140,6 +144,9 @@ impl Optimizer {
         &self,
         yz_to_x: &BTreeMap<(i32, i32), Vec<i32>>,
     ) -> Result<Vec<[i32; 4]>> {
+        self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+
         let shader_src = include_str!("pass2.wgsl");
         let shader = self
             .device
@@ -309,6 +316,13 @@ impl Optimizer {
 
         self.queue.submit(Some(encoder.finish()));
 
+        if let Some(error) = self.device.pop_error_scope().await {
+            anyhow::bail!("WGPU Out of Memory error in Pass 2: {}", error);
+        }
+        if let Some(error) = self.device.pop_error_scope().await {
+            anyhow::bail!("WGPU Validation error in Pass 2: {}", error);
+        }
+
         let count = {
             let (tx, rx) = futures::channel::oneshot::channel();
             count_staging_buffer
@@ -351,6 +365,9 @@ impl Optimizer {
         &self,
         z_to_runs: &BTreeMap<i32, Vec<[i32; 4]>>,
     ) -> Result<Vec<([i32; 4], i32)>> {
+        self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+
         let shader_src = include_str!("pass3.wgsl");
         let shader = self
             .device
@@ -530,6 +547,13 @@ impl Optimizer {
         encoder.copy_buffer_to_buffer(&result_count_buffer, 0, &count_staging_buffer, 0, 4);
 
         self.queue.submit(Some(encoder.finish()));
+
+        if let Some(error) = self.device.pop_error_scope().await {
+            anyhow::bail!("WGPU Out of Memory error in Pass 3: {}", error);
+        }
+        if let Some(error) = self.device.pop_error_scope().await {
+            anyhow::bail!("WGPU Validation error in Pass 3: {}", error);
+        }
 
         let count = {
             let (tx, rx) = futures::channel::oneshot::channel();

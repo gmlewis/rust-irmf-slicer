@@ -61,7 +61,7 @@ fn main() -> Result<()> {
 
     // Wrapping pretty JSON in /* and */ ensures /*{ and }*/ are on their own lines
     // because to_string_pretty puts { and } on their own lines.
-    write!(output_file, "/*{}*/\n", header_json)?;
+    writeln!(output_file, "/*{}*/", header_json)?;
     output_file.write_all(&payload)?;
 
     println!(

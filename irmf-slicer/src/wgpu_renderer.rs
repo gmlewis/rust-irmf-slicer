@@ -71,6 +71,10 @@ impl WgpuRenderer {
             )
             .await?;
 
+        device.on_uncaptured_error(Box::new(|error| {
+            panic!("WgpuRenderer WGPU error: {}", error);
+        }));
+
         Ok(Self {
             device,
             queue,
@@ -254,6 +258,9 @@ void main() {
     }
 
     fn render_start(&mut self, slice_depth: f32, material_num: usize) -> IrmfResult<()> {
+        self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+
         let pipeline = self
             .pipeline
             .as_ref()
@@ -360,15 +367,28 @@ void main() {
     }
 
     fn render_finish(&mut self) -> IrmfResult<DynamicImage> {
+        // Wait for the GPU to finish and the buffer to be mapped
+        self.device.poll(wgpu::Maintain::Wait);
+
+        if let Some(error) = pollster::block_on(self.device.pop_error_scope()) {
+            return Err(IrmfError::RendererError(format!(
+                "WGPU Out of Memory error: {}",
+                error
+            )));
+        }
+        if let Some(error) = pollster::block_on(self.device.pop_error_scope()) {
+            return Err(IrmfError::RendererError(format!(
+                "WGPU Validation error: {}",
+                error
+            )));
+        }
+
         let read_buffer =
             self.read_buffers[self.current_buffer]
                 .as_ref()
                 .ok_or(IrmfError::RendererError(
                     "Read buffer not initialized".into(),
                 ))?;
-
-        // Wait for the GPU to finish and the buffer to be mapped
-        self.device.poll(wgpu::Maintain::Wait);
 
         let bytes_per_row = (self.width * 4 + 255) & !255;
         let buffer_slice = read_buffer.slice(..);

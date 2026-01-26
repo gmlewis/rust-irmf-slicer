@@ -276,6 +276,13 @@ impl VoxelVolume {
             .request_device(&wgpu::DeviceDescriptor::default(), None)
             .await?;
 
+        device.on_uncaptured_error(Box::new(|error| {
+            panic!("WGPU error in gpu_voxelize: {}", error);
+        }));
+
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+
         let shader_src = include_str!("voxelizer.wgsl");
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Voxelizer Shader"),
@@ -408,6 +415,13 @@ impl VoxelVolume {
         );
 
         queue.submit(Some(encoder.finish()));
+
+        if let Some(error) = device.pop_error_scope().await {
+            anyhow::bail!("WGPU Out of Memory error in gpu_voxelize: {}", error);
+        }
+        if let Some(error) = device.pop_error_scope().await {
+            anyhow::bail!("WGPU Validation error in gpu_voxelize: {}", error);
+        }
 
         let buffer_slice = output_buffer.slice(..);
         let (sender, receiver) =

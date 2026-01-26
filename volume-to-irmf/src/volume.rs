@@ -273,7 +273,21 @@ impl VoxelVolume {
             .await
             .ok_or_else(|| anyhow::anyhow!("No WGPU adapter"))?;
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("Voxelizer Device"),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits {
+                        max_buffer_size: adapter.limits().max_buffer_size,
+                        max_storage_buffer_binding_size: adapter
+                            .limits()
+                            .max_storage_buffer_binding_size,
+                        ..wgpu::Limits::default()
+                    },
+                    memory_hints: Default::default(),
+                },
+                None,
+            )
             .await?;
 
         device.on_uncaptured_error(Box::new(|error| {
@@ -381,11 +395,7 @@ impl VoxelVolume {
                 encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
             compute_pass.set_pipeline(&pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
-            compute_pass.dispatch_workgroups(
-                dims[0].div_ceil(8),
-                dims[1].div_ceil(8),
-                dims[2].div_ceil(4),
-            );
+            compute_pass.dispatch_workgroups(dims[0].div_ceil(16), dims[1].div_ceil(16), 1);
         }
 
         let output_buffer_size = (dims[0] * dims[1] * dims[2] * 4) as u64;

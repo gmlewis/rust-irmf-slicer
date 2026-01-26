@@ -18,7 +18,7 @@ fn intersect_ray_tri(orig: vec3f, dir: vec3f, v0: vec3f, v1: vec3f, v2: vec3f) -
     let edge2 = v2 - v0;
     let h = cross(dir, edge2);
     let a = dot(edge1, h);
-    if (a > -0.00001 && a < 0.00001) { return -1.0; }
+    if (a > -0.000001 && a < 0.000001) { return -1.0; }
     let f = 1.0 / a;
     let s = orig - v0;
     let u = f * dot(s, h);
@@ -30,28 +30,50 @@ fn intersect_ray_tri(orig: vec3f, dir: vec3f, v0: vec3f, v1: vec3f, v2: vec3f) -
     return t;
 }
 
-@compute @workgroup_size(8, 8, 4)
+@compute @workgroup_size(16, 16, 1)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let dims = textureDimensions(voxel_volume);
-    if (any(global_id >= dims)) { return; }
+    if (global_id.x >= dims.x || global_id.y >= dims.y) { return; }
 
-    let p = config.min_bound.xyz + (vec3f(global_id) + 0.5) / vec3f(dims) * (config.max_bound.xyz - config.min_bound.xyz);
+    let x = global_id.x;
+    let y = global_id.y;
+
+    // We'll collect intersection parity in a bitset (up to 1024 Z-resolution)
+    var bits: array<u32, 32>;
+    for (var i = 0u; i < 32u; i++) {
+        bits[i] = 0u;
+    }
+
+    let world_size = config.max_bound.xyz - config.min_bound.xyz;
+    let voxel_size = world_size / vec3f(dims);
     
-    // Ray cast along +Z
+    // Ray origin at the bottom of the (X, Y) column, slightly offset to avoid edge cases
+    let orig = config.min_bound.xyz + 
+               (vec3f(f32(x), f32(y), 0.0) + 0.50013) * voxel_size;
     let ray_dir = vec3f(0.0, 0.0, 1.0);
-    var intersections = 0u;
     
     for (var i = 0u; i < config.num_triangles; i++) {
         let v0 = vertices[indices[i * 3u + 0u]].xyz;
         let v1 = vertices[indices[i * 3u + 1u]].xyz;
         let v2 = vertices[indices[i * 3u + 2u]].xyz;
         
-        let t = intersect_ray_tri(p, ray_dir, v0, v1, v2);
-        if (t > 0.0) {
-            intersections++;
+        let t = intersect_ray_tri(orig, ray_dir, v0, v1, v2);
+        if (t >= 0.0) {
+            let z_inter = t / voxel_size.z;
+            let z_idx = u32(round(z_inter));
+            if (z_idx < dims.z) {
+                bits[z_idx / 32u] ^= (1u << (z_idx % 32u));
+            }
         }
     }
 
-    let val = f32(intersections % 2u);
-    textureStore(voxel_volume, global_id, vec4f(val, 0.0, 0.0, 0.0));
+    // Scan through bits and fill voxels along the Z column
+    var inside = false;
+    for (var z = 0u; z < dims.z; z++) {
+        // If an intersection happened in this voxel (or at its boundary), flip inside/outside
+        if (((bits[z / 32u] >> (z % 32u)) & 1u) == 1u) {
+            inside = !inside;
+        }
+        textureStore(voxel_volume, vec3u(x, y, z), vec4f(f32(inside), 0.0, 0.0, 0.0));
+    }
 }

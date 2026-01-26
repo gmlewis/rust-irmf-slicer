@@ -16,6 +16,8 @@ pub struct Optimizer {
     pass2_results: Vec<[i32; 4]>,
     pass3_results: Vec<([i32; 4], i32)>,
     pub stats: Stats,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -30,6 +32,29 @@ pub struct Cuboid {
 
 impl Optimizer {
     pub async fn new(target_volume: VoxelVolume) -> Result<Self> {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions::default())
+            .await
+            .ok_or_else(|| anyhow::anyhow!("No WGPU adapter"))?;
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("Optimizer Device"),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits {
+                        max_buffer_size: adapter.limits().max_buffer_size,
+                        max_storage_buffer_binding_size: adapter
+                            .limits()
+                            .max_storage_buffer_binding_size,
+                        ..wgpu::Limits::default()
+                    },
+                    memory_hints: Default::default(),
+                },
+                None,
+            )
+            .await?;
+
         Ok(Self {
             target_volume: Arc::new(target_volume),
             cuboids: Vec::new(),
@@ -40,6 +65,8 @@ impl Optimizer {
                 duration: std::time::Duration::from_secs(0),
                 final_error: 0.0,
             },
+            device,
+            queue,
         })
     }
 
@@ -113,34 +140,13 @@ impl Optimizer {
         &self,
         yz_to_x: &BTreeMap<(i32, i32), Vec<i32>>,
     ) -> Result<Vec<[i32; 4]>> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
-            .await
-            .ok_or_else(|| anyhow::anyhow!("No WGPU adapter"))?;
-        let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("Pass 2 Device"),
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits {
-                        max_buffer_size: adapter.limits().max_buffer_size,
-                        max_storage_buffer_binding_size: adapter
-                            .limits()
-                            .max_storage_buffer_binding_size,
-                        ..wgpu::Limits::default()
-                    },
-                    memory_hints: Default::default(),
-                },
-                None,
-            )
-            .await?;
-
         let shader_src = include_str!("pass2.wgsl");
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Pass 2 Shader"),
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_src)),
-        });
+        let shader = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("Pass 2 Shader"),
+                source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_src)),
+            });
 
         let dims = self.target_volume.dims;
         let num_yz = dims[1] * dims[2];
@@ -160,34 +166,40 @@ impl Optimizer {
             }
         }
 
-        let x_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("X Indices Buffer"),
-            contents: bytemuck::cast_slice(&x_indices),
-            usage: wgpu::BufferUsages::STORAGE,
-        });
+        let x_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("X Indices Buffer"),
+                contents: bytemuck::cast_slice(&x_indices),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
 
-        let offset_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Offsets Buffer"),
-            contents: bytemuck::cast_slice(&yz_offsets),
-            usage: wgpu::BufferUsages::STORAGE,
-        });
+        let offset_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Offsets Buffer"),
+                contents: bytemuck::cast_slice(&yz_offsets),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
 
-        let count_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Counts Buffer"),
-            contents: bytemuck::cast_slice(&yz_counts),
-            usage: wgpu::BufferUsages::STORAGE,
-        });
+        let count_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Counts Buffer"),
+                contents: bytemuck::cast_slice(&yz_counts),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
 
         // Max possible results is one per voxel
         let max_results = self.target_volume.data.len();
-        let results_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let results_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Results Buffer"),
             size: (max_results * 16) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
-        let result_count_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let result_count_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Result Count Buffer"),
             size: 4,
             usage: wgpu::BufferUsages::STORAGE
@@ -195,7 +207,8 @@ impl Optimizer {
                 | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        queue.write_buffer(&result_count_buffer, 0, bytemuck::cast_slice(&[0u32]));
+        self.queue
+            .write_buffer(&result_count_buffer, 0, bytemuck::cast_slice(&[0u32]));
 
         #[repr(C)]
         #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -211,22 +224,26 @@ impl Optimizer {
             dims_z: dims[2],
             pad: 0,
         };
-        let config_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Config Buffer"),
-            contents: bytemuck::cast_slice(&[config]),
-            usage: wgpu::BufferUsages::UNIFORM,
-        });
+        let config_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Config Buffer"),
+                contents: bytemuck::cast_slice(&[config]),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
 
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Pass 2 Pipeline"),
-            layout: None,
-            module: &shader,
-            entry_point: Some("main"),
-            compilation_options: Default::default(),
-            cache: None,
-        });
+        let pipeline = self
+            .device
+            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Pass 2 Pipeline"),
+                layout: None,
+                module: &shader,
+                entry_point: Some("main"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Pass 2 Bind Group"),
             layout: &pipeline.get_bind_group_layout(0),
             entries: &[
@@ -257,7 +274,9 @@ impl Optimizer {
             ],
         });
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
             let mut compute_pass =
                 encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
@@ -266,13 +285,13 @@ impl Optimizer {
             compute_pass.dispatch_workgroups(num_yz.div_ceil(64), 1, 1);
         }
 
-        let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Staging Buffer"),
             size: (max_results * 16) as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let count_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let count_staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Count Staging Buffer"),
             size: 4,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
@@ -288,7 +307,7 @@ impl Optimizer {
         );
         encoder.copy_buffer_to_buffer(&result_count_buffer, 0, &count_staging_buffer, 0, 4);
 
-        queue.submit(Some(encoder.finish()));
+        self.queue.submit(Some(encoder.finish()));
 
         let count = {
             let (tx, rx) = futures::channel::oneshot::channel();
@@ -297,7 +316,7 @@ impl Optimizer {
                 .map_async(wgpu::MapMode::Read, move |res| {
                     tx.send(res).unwrap();
                 });
-            device.poll(wgpu::Maintain::Wait);
+            self.device.poll(wgpu::Maintain::Wait);
             rx.await??;
             let data = count_staging_buffer.slice(..).get_mapped_range();
             let count = bytemuck::cast_slice::<u8, u32>(&data)[0];
@@ -314,7 +333,7 @@ impl Optimizer {
                     tx.send(res).unwrap();
                 },
             );
-            device.poll(wgpu::Maintain::Wait);
+            self.device.poll(wgpu::Maintain::Wait);
             rx.await??;
             let data = staging_buffer
                 .slice(..(count as u64 * 16))
@@ -332,34 +351,13 @@ impl Optimizer {
         &self,
         z_to_runs: &BTreeMap<i32, Vec<[i32; 4]>>,
     ) -> Result<Vec<([i32; 4], i32)>> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
-            .await
-            .ok_or_else(|| anyhow::anyhow!("No WGPU adapter"))?;
-        let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("Pass 2 Device"),
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits {
-                        max_buffer_size: adapter.limits().max_buffer_size,
-                        max_storage_buffer_binding_size: adapter
-                            .limits()
-                            .max_storage_buffer_binding_size,
-                        ..wgpu::Limits::default()
-                    },
-                    memory_hints: Default::default(),
-                },
-                None,
-            )
-            .await?;
-
         let shader_src = include_str!("pass3.wgsl");
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Pass 3 Shader"),
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_src)),
-        });
+        let shader = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("Pass 3 Shader"),
+                source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_src)),
+            });
 
         let dims = self.target_volume.dims;
         let num_z = dims[2];
@@ -376,39 +374,45 @@ impl Optimizer {
             }
         }
 
-        let runs_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Runs Buffer"),
-            contents: bytemuck::cast_slice(&all_runs),
-            usage: wgpu::BufferUsages::STORAGE,
-        });
+        let runs_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Runs Buffer"),
+                contents: bytemuck::cast_slice(&all_runs),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
 
-        let offset_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Z Offsets Buffer"),
-            contents: bytemuck::cast_slice(&z_offsets),
-            usage: wgpu::BufferUsages::STORAGE,
-        });
+        let offset_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Z Offsets Buffer"),
+                contents: bytemuck::cast_slice(&z_offsets),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
 
-        let count_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Z Counts Buffer"),
-            contents: bytemuck::cast_slice(&z_counts),
-            usage: wgpu::BufferUsages::STORAGE,
-        });
+        let count_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Z Counts Buffer"),
+                contents: bytemuck::cast_slice(&z_counts),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
 
         let max_results = all_runs.len();
-        let results_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let results_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Results Buffer"),
             size: (max_results * 16) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
-        let results_extra_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let results_extra_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Results Extra Buffer"),
             size: (max_results * 4) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
-        let result_count_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let result_count_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Result Count Buffer"),
             size: 4,
             usage: wgpu::BufferUsages::STORAGE
@@ -416,7 +420,8 @@ impl Optimizer {
                 | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        queue.write_buffer(&result_count_buffer, 0, bytemuck::cast_slice(&[0u32]));
+        self.queue
+            .write_buffer(&result_count_buffer, 0, bytemuck::cast_slice(&[0u32]));
 
         #[repr(C)]
         #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -424,22 +429,26 @@ impl Optimizer {
             num_z: u32,
         }
         let config = Config { num_z };
-        let config_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Config Buffer"),
-            contents: bytemuck::cast_slice(&[config]),
-            usage: wgpu::BufferUsages::UNIFORM,
-        });
+        let config_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Config Buffer"),
+                contents: bytemuck::cast_slice(&[config]),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
 
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Pass 3 Pipeline"),
-            layout: None,
-            module: &shader,
-            entry_point: Some("main"),
-            compilation_options: Default::default(),
-            cache: None,
-        });
+        let pipeline = self
+            .device
+            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Pass 3 Pipeline"),
+                layout: None,
+                module: &shader,
+                entry_point: Some("main"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Pass 3 Bind Group"),
             layout: &pipeline.get_bind_group_layout(0),
             entries: &[
@@ -474,7 +483,9 @@ impl Optimizer {
             ],
         });
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
             let mut compute_pass =
                 encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
@@ -483,19 +494,19 @@ impl Optimizer {
             compute_pass.dispatch_workgroups(num_z.div_ceil(64), 1, 1);
         }
 
-        let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Staging Buffer"),
             size: (max_results * 16) as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let extra_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let extra_staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Extra Staging Buffer"),
             size: (max_results * 4) as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let count_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let count_staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Count Staging Buffer"),
             size: 4,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
@@ -518,7 +529,7 @@ impl Optimizer {
         );
         encoder.copy_buffer_to_buffer(&result_count_buffer, 0, &count_staging_buffer, 0, 4);
 
-        queue.submit(Some(encoder.finish()));
+        self.queue.submit(Some(encoder.finish()));
 
         let count = {
             let (tx, rx) = futures::channel::oneshot::channel();
@@ -527,7 +538,7 @@ impl Optimizer {
                 .map_async(wgpu::MapMode::Read, move |res| {
                     tx.send(res).unwrap();
                 });
-            device.poll(wgpu::Maintain::Wait);
+            self.device.poll(wgpu::Maintain::Wait);
             rx.await??;
             let data = count_staging_buffer.slice(..).get_mapped_range();
             let count = bytemuck::cast_slice::<u8, u32>(&data)[0];
@@ -544,7 +555,7 @@ impl Optimizer {
                     tx.send(res).unwrap();
                 },
             );
-            device.poll(wgpu::Maintain::Wait);
+            self.device.poll(wgpu::Maintain::Wait);
             rx.await??;
             let data = staging_buffer
                 .slice(..(count as u64 * 16))
@@ -563,7 +574,7 @@ impl Optimizer {
                     tx.send(res).unwrap();
                 },
             );
-            device.poll(wgpu::Maintain::Wait);
+            self.device.poll(wgpu::Maintain::Wait);
             rx.await??;
             let data = extra_staging_buffer
                 .slice(..(count as u64 * 4))

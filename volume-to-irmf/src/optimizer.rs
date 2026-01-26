@@ -697,7 +697,7 @@ impl Optimizer {
             primitives_code.push_str("        }\n");
         }
         primitives_code.push_str("        default: {}\n    }\n");
-        self.wrap_irmf(primitives_code, "Pass 2 (X-runs)")
+        self.wrap_irmf("".to_string(), primitives_code, "Pass 2 (X-runs)")
     }
 
     pub fn generate_pass3_irmf(&self) -> String {
@@ -719,7 +719,7 @@ impl Optimizer {
             primitives_code.push_str("        }\n");
         }
         primitives_code.push_str("        default: {}\n    }\n");
-        self.wrap_irmf(primitives_code, "Pass 3 (XY-planes)")
+        self.wrap_irmf("".to_string(), primitives_code, "Pass 3 (XY-planes)")
     }
 
     pub fn generate_final_irmf(&self) -> String {
@@ -743,37 +743,59 @@ impl Optimizer {
             }
         }
 
+        let mut bz_by_switch_cases = String::new();
+        let mut bz_switch_cases = String::new();
         let mut primitives_code = String::new();
         primitives_code.push_str(&format!("    let bz = iz / {};\n", bucket_size_z));
         primitives_code.push_str(&format!("    let by = iy / {};\n", bucket_size_y));
         primitives_code.push_str("    switch (bz) {\n");
         for (bz, y_buckets) in buckets {
-            primitives_code.push_str(&format!("        case {}: {{\n", bz));
-            primitives_code.push_str("            switch (by) {\n");
+            primitives_code.push_str(&format!(
+                "        case {}: {{ return bz{}SwitchCase(vi, by); }}\n",
+                bz, bz
+            ));
+            bz_switch_cases.push_str(&format!(
+                "fn bz{}SwitchCase(vi: vec3i, by: i32) -> vec4f {{\n",
+                bz
+            ));
+            bz_switch_cases.push_str("    switch (by) {\n");
             for (by, cuboid_indices) in y_buckets {
-                primitives_code.push_str(&format!("                case {}: {{\n", by));
+                bz_switch_cases.push_str(&format!(
+                    "        case {}: {{ return bz{}by{}SwitchCase(vi); }}\n",
+                    by, bz, by
+                ));
+                bz_by_switch_cases.push_str(&format!(
+                    "fn bz{}by{}SwitchCase(vi: vec3i) -> vec4f {{\n",
+                    bz, by
+                ));
                 for i in cuboid_indices {
                     let c = &self.cuboids[i];
-                    primitives_code.push_str(&format!(
-                        "                    if (cuboid(vi, vec3i({}, {}, {}), vec3i({}, {}, {}))) {{ return solidMaterial; }}\n",
+                    bz_by_switch_cases.push_str(&format!(
+                        "    if (cuboid(vi, vec3i({}, {}, {}), vec3i({}, {}, {}))) {{ return solidMaterial; }}\n",
                         c.x1, c.y1, c.z1, c.x2, c.y2, c.z2,
                     ));
                 }
-                primitives_code.push_str("                }\n");
+                bz_by_switch_cases.push_str("    return vec4f(0,0,0,0);\n}\n\n");
             }
-            primitives_code.push_str("                default: {}\n");
-            primitives_code.push_str("            }\n");
-            primitives_code.push_str("        }\n");
+            bz_switch_cases.push_str("        default: {}\n");
+            bz_switch_cases.push_str("    }\n");
+            bz_switch_cases.push_str("    return vec4f(0,0,0,0);\n");
+            bz_switch_cases.push_str("}\n\n");
         }
         primitives_code.push_str("        default: {}\n    }\n");
-        self.wrap_irmf(primitives_code, "Final Lossless Cuboids")
+        bz_by_switch_cases.push_str(&bz_switch_cases);
+        self.wrap_irmf(
+            bz_by_switch_cases,
+            primitives_code,
+            "Final Lossless Cuboids",
+        )
     }
 
     pub fn cuboid_count(&self) -> usize {
         self.cuboids.len()
     }
 
-    fn wrap_irmf(&self, primitives_code: String, notes: &str) -> String {
+    fn wrap_irmf(&self, helper_functions: String, primitives_code: String, notes: &str) -> String {
         let min = self.target_volume.min;
         let max = self.target_volume.max;
         let dims = self.target_volume.dims;
@@ -798,6 +820,8 @@ const solidMaterial = vec4f(1.0, 0.0, 0.0, 0.0);
 fn cuboid(v: vec3i, b_min: vec3i, b_max: vec3i) -> bool {{
     return all(v >= b_min) && all(v <= b_max);
 }}
+
+{}
 
 fn mainModel4(xyz: vec3f) -> vec4f {{
     let v = (xyz - MIN_BOUND) / VOXEL_SIZE;
@@ -824,6 +848,7 @@ fn mainModel4(xyz: vec3f) -> vec4f {{
             dims[0] as f32,
             dims[1] as f32,
             dims[2] as f32,
+            helper_functions,
             primitives_code
         )
     }

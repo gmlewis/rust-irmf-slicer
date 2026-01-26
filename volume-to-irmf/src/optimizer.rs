@@ -769,6 +769,10 @@ impl Optimizer {
         self.wrap_irmf(primitives_code, "Final Lossless Cuboids")
     }
 
+    pub fn cuboid_count(&self) -> usize {
+        self.cuboids.len()
+    }
+
     fn wrap_irmf(&self, primitives_code: String, notes: &str) -> String {
         let min = self.target_volume.min;
         let max = self.target_volume.max;

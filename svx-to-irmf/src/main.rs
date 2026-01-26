@@ -85,11 +85,7 @@ async fn main() -> Result<()> {
     println!(
         "Done in {:?}. Produced {} cuboids.",
         stats.duration,
-        optimizer
-            .generate_irmf()
-            .split("val = max(val, xyzRangeCuboid")
-            .count()
-            - 1
+        optimizer.cuboid_count()
     );
 
     Ok(())

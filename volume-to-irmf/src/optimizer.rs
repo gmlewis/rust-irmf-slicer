@@ -679,35 +679,74 @@ impl Optimizer {
     }
 
     pub fn generate_pass2_irmf(&self) -> String {
-        let mut primitives_code = String::new();
+        let mut buckets: BTreeMap<i32, Vec<[i32; 4]>> = BTreeMap::new();
         for res in &self.pass2_results {
-            primitives_code.push_str(&format!(
-                "    val = max(val, xRangeCuboid(vec4i({}, {}, {}, {}, xyz)));\n",
-                res[0], res[1], res[2], res[3]
-            ));
+            buckets.entry(res[3]).or_default().push(*res);
         }
+
+        let mut primitives_code = String::new();
+        primitives_code.push_str("    switch (iz) {\n");
+        for (z, runs) in buckets {
+            primitives_code.push_str(&format!("        case {}: {{\n", z));
+            for res in runs {
+                primitives_code.push_str(&format!(
+                    "            if (xRangeCuboid(vec4i({}, {}, {}, {}), v)) {{ return vec4f(1.0, 0.0, 0.0, 0.0); }}\n",
+                    res[0], res[1], res[2], res[3]
+                ));
+            }
+            primitives_code.push_str("        }\n");
+        }
+        primitives_code.push_str("        default: {}\n    }\n");
         self.wrap_irmf(primitives_code, "Pass 2 (X-runs)")
     }
 
     pub fn generate_pass3_irmf(&self) -> String {
-        let mut primitives_code = String::new();
+        let mut buckets: BTreeMap<i32, Vec<[i32; 4]>> = BTreeMap::new();
         for (rect, z) in &self.pass3_results {
-            primitives_code.push_str(&format!(
-                "    val = max(val, xyRangeCuboid({}, {}, {}, {}, {}, xyz));\n",
-                rect[0], rect[1], rect[2], rect[3], z
-            ));
+            buckets.entry(*z).or_default().push(*rect);
         }
+
+        let mut primitives_code = String::new();
+        primitives_code.push_str("    switch (iz) {\n");
+        for (z, rects) in buckets {
+            primitives_code.push_str(&format!("        case {}: {{\n", z));
+            for r in rects {
+                primitives_code.push_str(&format!(
+                    "            if (xyRangeCuboid({}, {}, {}, {}, {}, v)) {{ return vec4f(1.0, 0.0, 0.0, 0.0); }}\n",
+                    r[0], r[1], r[2], r[3], z
+                ));
+            }
+            primitives_code.push_str("        }\n");
+        }
+        primitives_code.push_str("        default: {}\n    }\n");
         self.wrap_irmf(primitives_code, "Pass 3 (XY-planes)")
     }
 
     pub fn generate_final_irmf(&self) -> String {
-        let mut primitives_code = String::new();
+        let bucket_size = 32;
+        let mut buckets: BTreeMap<i32, Vec<&Cuboid>> = BTreeMap::new();
         for c in &self.cuboids {
-            primitives_code.push_str(&format!(
-                "    val = max(val, xyzRangeCuboid({}, {}, {}, {}, {}, {}, xyz));\n",
-                c.x1, c.x2, c.y1, c.y2, c.z1, c.z2
-            ));
+            let b1 = c.z1 / bucket_size;
+            let b2 = c.z2 / bucket_size;
+            for b in b1..=b2 {
+                buckets.entry(b).or_default().push(c);
+            }
         }
+
+        let mut primitives_code = String::new();
+        primitives_code.push_str(&format!("    let b = iz / {};\n", bucket_size));
+        primitives_code.push_str("    switch (b) {\n");
+        for (b, cuboids) in buckets {
+            primitives_code.push_str(&format!("        case {}: {{\n", b));
+            for c in cuboids {
+                primitives_code.push_str(&format!(
+                    "            if (iz >= {} && iz <= {}) {{ if (xyzRangeCuboid({}, {}, {}, {}, {}, {}, v)) {{ return vec4f(1.0, 0.0, 0.0, 0.0); }} }}\n",
+                    c.z1, c.z2, c.x1, c.x2, c.y1, c.y2, c.z1, c.z2
+                ));
+            }
+            primitives_code.push_str("        }\n");
+        }
+        primitives_code.push_str("        default: {}\n    }\n");
         self.wrap_irmf(primitives_code, "Final Lossless Cuboids")
     }
 
@@ -727,40 +766,32 @@ impl Optimizer {
   "units": "mm"
 }}*/
 
-const DIMS = vec3f({:.1}, {:.1}, {:.1});
 const MIN_BOUND = vec3f({:.4}, {:.4}, {:.4});
 const MAX_BOUND = vec3f({:.4}, {:.4}, {:.4});
+const DIMS = vec3f({:.1}, {:.1}, {:.1});
 const VOXEL_SIZE = (MAX_BOUND - MIN_BOUND) / DIMS;
 
-fn sd_box(p: vec3f, b: vec3f) -> f32 {{
-    let q = abs(p) - b;
-    return length(max(q, vec3f(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);
+fn cuboid(v: vec3f, b_min: vec3i, b_max: vec3i) -> bool {{
+    return all(v >= vec3f(b_min)) && all(v <= vec3f(b_max));
 }}
 
-fn cuboid(p: vec3f, b_min: vec3i, b_max: vec3i) -> f32 {{
-    let world_min = MIN_BOUND + vec3f(b_min) * VOXEL_SIZE;
-    let world_max = MIN_BOUND + vec3f(b_max) * VOXEL_SIZE;
-    // Exact inside/outside test: inside if p in [world_min, world_max]
-    let inside = all(p>=world_min) && all(p<=world_max);
-    return select(0.0, 1.0, inside);
+fn xRangeCuboid(val: vec4i, v: vec3f) -> bool {{
+    return cuboid(v, vec3i(val.x, val.z, val.w), vec3i(val.y + 1, val.z + 1, val.w + 1));
 }}
 
-fn xRangeCuboid(val: vec4i, p: vec3f) -> f32 {{
-    return cuboid(p, vec3i(val.x, val.z, val.w), vec3i(val.y + 1, val.z + 1, val.w + 1));
+fn xyRangeCuboid(x1: i32, x2: i32, y1: i32, y2: i32, z: i32, v: vec3f) -> bool {{
+    return cuboid(v, vec3i(x1, y1, z), vec3i(x2 + 1, y2 + 1, z + 1));
 }}
 
-fn xyRangeCuboid(x1: i32, x2: i32, y1: i32, y2: i32, z: i32, p: vec3f) -> f32 {{
-    return cuboid(p, vec3i(x1, y1, z), vec3i(x2 + 1, y2 + 1, z + 1));
-}}
-
-fn xyzRangeCuboid(x1: i32, x2: i32, y1: i32, y2: i32, z1: i32, z2: i32, p: vec3f) -> f32 {{
-    return cuboid(p, vec3i(x1, y1, z1), vec3i(x2 + 1, y2 + 1, z2 + 1));
+fn xyzRangeCuboid(x1: i32, x2: i32, y1: i32, y2: i32, z1: i32, z2: i32, v: vec3f) -> bool {{
+    return cuboid(v, vec3i(x1, y1, z1), vec3i(x2 + 1, y2 + 1, z2 + 1));
 }}
 
 fn mainModel4(xyz: vec3f) -> vec4f {{
-    var val = 0.0;
+    let v = (xyz - MIN_BOUND) / VOXEL_SIZE;
+    let iz = i32(floor(v.z));
 {}
-    return vec4f(val, 0.0, 0.0, 0.0);
+    return vec4f(0.0, 0.0, 0.0, 0.0);
 }}
 "###,
             max.x,
@@ -770,15 +801,15 @@ fn mainModel4(xyz: vec3f) -> vec4f {{
             min.y,
             min.z,
             notes,
-            dims[0] as f32,
-            dims[1] as f32,
-            dims[2] as f32,
             min.x,
             min.y,
             min.z,
             max.x,
             max.y,
             max.z,
+            dims[0] as f32,
+            dims[1] as f32,
+            dims[2] as f32,
             primitives_code
         )
     }

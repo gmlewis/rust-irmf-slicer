@@ -29,7 +29,7 @@ async fn test_optimizer_lossless_cube() {
     // However, depending on how it's implemented, it might produce more if merging is not perfectly greedy across all axes.
     // In our case, Pass 2 will merge X, Pass 3 will merge Y, Pass 4 will merge Z.
     // So for a single cube, it SHOULD produce exactly 1 cuboid.
-    let cuboid_count = irmf.split("val = max(val, xyzRangeCuboid").count() - 1;
+    let cuboid_count = irmf.split("if (xyzRangeCuboid(").count() - 1;
     println!("Produced {} cuboids.", cuboid_count);
     assert!(cuboid_count >= 1, "Should produce at least one cuboid");
     assert!(
@@ -53,6 +53,6 @@ async fn test_optimizer_empty_volume() {
 
     let irmf = optimizer.generate_irmf();
 
-    let cuboid_count = irmf.split("val = max(val, xyzRangeCuboid").count() - 1;
+    let cuboid_count = irmf.split("if (xyzRangeCuboid(").count() - 1;
     assert_eq!(cuboid_count, 0, "Empty volume should produce 0 cuboids");
 }

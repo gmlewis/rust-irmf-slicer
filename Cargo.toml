@@ -7,6 +7,7 @@ members = [
     "irmf-output-stl",
     "irmf-output-voxels",
     "irmf-linter",
+    "compress-irmf",
     "volume-to-irmf",
     "binvox-to-irmf",
     "dlp-to-irmf",

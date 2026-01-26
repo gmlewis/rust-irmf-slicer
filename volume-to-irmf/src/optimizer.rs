@@ -645,7 +645,7 @@ impl Optimizer {
         let mut primitives_code = String::new();
         for res in &self.pass2_results {
             primitives_code.push_str(&format!(
-                "    val = max(val, xRangeCuboid(vec4i({}, {}, {}, {})));\n",
+                "    val = max(val, xRangeCuboid(vec4i({}, {}, {}, {}, xyz)));\n",
                 res[0], res[1], res[2], res[3]
             ));
         }
@@ -656,7 +656,7 @@ impl Optimizer {
         let mut primitives_code = String::new();
         for (rect, z) in &self.pass3_results {
             primitives_code.push_str(&format!(
-                "    val = max(val, xyRangeCuboid({}, {}, {}, {}, {}));\n",
+                "    val = max(val, xyRangeCuboid({}, {}, {}, {}, {}, xyz));\n",
                 rect[0], rect[1], rect[2], rect[3], z
             ));
         }
@@ -667,7 +667,7 @@ impl Optimizer {
         let mut primitives_code = String::new();
         for c in &self.cuboids {
             primitives_code.push_str(&format!(
-                "    val = max(val, xyzRangeCuboid({}, {}, {}, {}, {}, {}));\n",
+                "    val = max(val, xyzRangeCuboid({}, {}, {}, {}, {}, {}, xyz));\n",
                 c.x1, c.x2, c.y1, c.y2, c.z1, c.z2
             ));
         }

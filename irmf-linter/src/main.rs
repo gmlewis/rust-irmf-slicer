@@ -26,6 +26,13 @@ async fn main() -> anyhow::Result<()> {
             }
         };
 
+        // Check spec compliance
+        if let Err(e) = IrmfModel::validate_spec_compliance(&data) {
+            eprintln!("Spec compliance error in {}: {}", file.display(), e);
+            exit_code = 1;
+            // We continue anyway to see if it parses
+        }
+
         let mut model = match IrmfModel::new(&data) {
             Ok(m) => m,
             Err(e) => {

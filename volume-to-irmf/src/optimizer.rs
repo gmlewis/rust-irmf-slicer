@@ -748,13 +748,13 @@ impl Optimizer {
         let mut primitives_code = String::new();
         let int_let = if language == "glsl" { "int" } else { "let" };
         let vec3i = if language == "glsl" { "ivec3" } else { "vec3i" };
-        primitives_code.push_str(&format!("    {} bz = iz / {};\n", int_let, bucket_size_z));
-        primitives_code.push_str(&format!("    {} by = iy / {};\n", int_let, bucket_size_y));
+        primitives_code.push_str(&format!("    {} bz = vi.z / {};\n", int_let, bucket_size_z));
+        primitives_code.push_str(&format!("    {} by = vi.y / {};\n", int_let, bucket_size_y));
         primitives_code.push_str("    switch (bz) {\n");
         for (bz, y_buckets) in buckets {
             if language == "glsl" {
                 primitives_code.push_str(&format!(
-                    "        case {}: {{ materials = bz{}SwitchCase(vi, by); }}\n",
+                    "        case {}: {{ materials = bz{}SwitchCase(vi, by); return; }}\n",
                     bz, bz
                 ));
                 bz_switch_cases
@@ -807,9 +807,10 @@ impl Optimizer {
             bz_switch_cases.push_str("}\n");
         }
         if language == "glsl" {
-            primitives_code.push_str("        default: { materials = vec4(0,0,0,0); }\n    }\n");
+            primitives_code
+                .push_str("        default: { materials = vec4(0,0,0,0); return; }\n    }");
         } else {
-            primitives_code.push_str("        default: {}\n    }\n");
+            primitives_code.push_str("        default: {}\n    }");
         }
         bz_by_switch_cases.push_str(&bz_switch_cases);
         if language == "glsl" {
@@ -865,8 +866,6 @@ bool cuboid(ivec3 v, ivec3 b_min, ivec3 b_max) {{
 void mainModel4(out vec4 materials, in vec3 xyz) {{
     vec3 v = (xyz - MIN_BOUND) / VOXEL_SIZE;
     ivec3 vi = ivec3(floor(v + vec3(0.5)));
-    int iy = int(floor(v.y));
-    int iz = int(floor(v.z));
 {}
 }}
 "###,

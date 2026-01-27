@@ -38,14 +38,37 @@ packages=(
     "zip-to-irmf"
 )
 
+# Function to check if a package version is already published
+is_published() {
+    local pkg=$1
+    local version
+
+    # Get the version from cargo pkgid
+    version=$(cd "${pkg}" && cargo pkgid | sed 's/.*#//')
+
+    # Check if this version exists on crates.io
+    if curl -s --max-time 10 "https://crates.io/api/v1/crates/${pkg}/versions" | jq -r '.versions[].num' 2>/dev/null | grep -q "^${version}$"; then
+        return 0  # published
+    else
+        return 1  # not published or error occurred
+    fi
+}
+
 # Function to publish a package
 publish_package() {
     local pkg=$1
     echo "----------------------------------------------------------------"
-    echo "Publishing ${pkg}..."
+    echo "Checking ${pkg}..."
     echo "----------------------------------------------------------------"
+
+    if is_published "${pkg}"; then
+        echo "${pkg} is already published, skipping."
+        return
+    fi
+
+    echo "Publishing ${pkg}..."
     (cd "${pkg}" && cargo publish)
-    
+
     # Wait a bit for crates.io to process the new version before the next package
     # that depends on it tries to publish.
     echo "Waiting 60 seconds for crates.io to update..."
@@ -53,10 +76,12 @@ publish_package() {
 }
 
 # Iterate through the packages and publish them
-for pkg in "${packages[@]}"; do
-    publish_package "${pkg}"
-done
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    for pkg in "${packages[@]}"; do
+        publish_package "${pkg}"
+    done
 
-echo "----------------------------------------------------------------"
-echo "All packages published successfully!"
-echo "----------------------------------------------------------------"
+    echo "----------------------------------------------------------------"
+    echo "All packages published successfully!"
+    echo "----------------------------------------------------------------"
+fi

@@ -277,7 +277,9 @@ impl VoxelVolume {
             max_storage_buffer_binding_size: adapter
                 .limits()
                 .max_storage_buffer_binding_size,
+            max_uniform_buffer_binding_size: adapter.limits().max_uniform_buffer_binding_size,
             max_texture_dimension_3d: adapter.limits().max_texture_dimension_3d,
+            max_storage_textures_per_shader_stage: adapter.limits().max_storage_textures_per_shader_stage,
             ..wgpu::Limits::default()
         };
         println!("Requested limits: {:?}", limits);

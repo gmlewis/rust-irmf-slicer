@@ -1,14 +1,29 @@
 use glam::Vec3;
 use wgpu::util::DeviceExt;
 
+/// A 3D volume represented as a grid of voxels.
+///
+/// Each voxel contains a floating-point value typically between 0.0 and 1.0,
+/// representing density or occupancy.
 pub struct VoxelVolume {
-    pub data: Vec<f32>, // 0.0 to 1.0
+    /// Voxel data as a flat vector, where each element is a density value (0.0 to 1.0).
+    pub data: Vec<f32>,
+    /// Dimensions of the volume in voxels [width, height, depth].
     pub dims: [u32; 3],
+    /// Minimum coordinates of the volume in world space.
     pub min: Vec3,
+    /// Maximum coordinates of the volume in world space.
     pub max: Vec3,
 }
 
 impl VoxelVolume {
+    /// Creates a new empty voxel volume with the given dimensions and bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `dims` - The dimensions [width, height, depth] in voxels.
+    /// * `min` - The minimum coordinates in world space.
+    /// * `max` - The maximum coordinates in world space.
     pub fn new(dims: [u32; 3], min: Vec3, max: Vec3) -> Self {
         let size = (dims[0] * dims[1] * dims[2]) as usize;
         Self {
@@ -19,6 +34,15 @@ impl VoxelVolume {
         }
     }
 
+    /// Gets the density value at the specified voxel coordinates.
+    ///
+    /// Returns 0.0 if the coordinates are out of bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - X coordinate (0-based).
+    /// * `y` - Y coordinate (0-based).
+    /// * `z` - Z coordinate (0-based).
     pub fn get(&self, x: u32, y: u32, z: u32) -> f32 {
         if x >= self.dims[0] || y >= self.dims[1] || z >= self.dims[2] {
             return 0.0;
@@ -27,6 +51,16 @@ impl VoxelVolume {
         self.data[idx]
     }
 
+    /// Sets the density value at the specified voxel coordinates.
+    ///
+    /// Does nothing if the coordinates are out of bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - X coordinate (0-based).
+    /// * `y` - Y coordinate (0-based).
+    /// * `z` - Z coordinate (0-based).
+    /// * `val` - The density value to set (typically 0.0 to 1.0).
     pub fn set(&mut self, x: u32, y: u32, z: u32, val: f32) {
         if x >= self.dims[0] || y >= self.dims[1] || z >= self.dims[2] {
             return;
@@ -35,6 +69,14 @@ impl VoxelVolume {
         self.data[idx] = val;
     }
 
+    /// Loads a voxel volume from a BinVox file format.
+    ///
+    /// BinVox is a simple 3D voxel data format. This method parses the file
+    /// and creates a `VoxelVolume` with the appropriate dimensions and data.
+    ///
+    /// # Arguments
+    ///
+    /// * `reader` - A reader that provides the BinVox file data.
     pub fn from_binvox(reader: impl std::io::Read) -> anyhow::Result<Self> {
         use std::io::{BufRead, Read};
         let mut reader = std::io::BufReader::new(reader);

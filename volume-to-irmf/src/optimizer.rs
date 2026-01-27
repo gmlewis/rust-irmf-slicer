@@ -4,33 +4,59 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
+/// Statistics from the optimization process.
 pub struct Stats {
+    /// Number of iterations performed.
     pub iterations: usize,
+    /// Total duration of the optimization.
     pub duration: std::time::Duration,
+    /// Final error value after optimization.
     pub final_error: f32,
 }
 
+/// Optimizer for converting voxel volumes to optimized IRMF shaders using constructive solid geometry.
 pub struct Optimizer {
+    /// The target voxel volume to approximate.
     pub target_volume: Arc<VoxelVolume>,
+    /// List of cuboids found during optimization.
     pub cuboids: Vec<Cuboid>,
+    /// Results from pass 2 (X-runs).
     pub pass2_results: Vec<[i32; 4]>,
+    /// Results from pass 3 (XY-planes).
     pub pass3_results: Vec<([i32; 4], i32)>,
+    /// Statistics from the optimization process.
     pub stats: Stats,
+    /// WGPU device for GPU computations.
     device: wgpu::Device,
+    /// WGPU queue for submitting commands.
     queue: wgpu::Queue,
 }
 
+/// A rectangular cuboid defined by its bounding coordinates.
 #[derive(Clone, Copy, Debug)]
 pub struct Cuboid {
+    /// Minimum X coordinate.
     pub x1: i32,
+    /// Maximum X coordinate.
     pub x2: i32,
+    /// Minimum Y coordinate.
     pub y1: i32,
+    /// Maximum Y coordinate.
     pub y2: i32,
+    /// Minimum Z coordinate.
     pub z1: i32,
+    /// Maximum Z coordinate.
     pub z2: i32,
 }
 
 impl Optimizer {
+    /// Creates a new optimizer for the given voxel volume.
+    ///
+    /// Initializes the WGPU device and prepares for optimization.
+    ///
+    /// # Arguments
+    ///
+    /// * `target_volume` - The voxel volume to optimize.
     pub async fn new(target_volume: VoxelVolume) -> Result<Self> {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let adapter = instance
@@ -74,6 +100,10 @@ impl Optimizer {
         })
     }
 
+    /// Runs the lossless cuboid merging algorithm to optimize the voxel volume.
+    ///
+    /// This performs multiple passes to identify and merge adjacent voxels into
+    /// larger cuboids for more efficient representation.
     pub async fn run_lossless(&mut self) -> Result<()> {
         let start_time = std::time::Instant::now();
 
@@ -678,6 +708,7 @@ impl Optimizer {
         self.generate_final_irmf(language)
     }
 
+    /// Generates IRMF shader code for the intermediate Pass 2 results (X-runs).
     pub fn generate_pass2_irmf(&self) -> String {
         let mut buckets: BTreeMap<i32, Vec<[i32; 4]>> = BTreeMap::new();
         for res in &self.pass2_results {
@@ -700,6 +731,7 @@ impl Optimizer {
         self.wrap_wgsl_irmf("".to_string(), primitives_code, "Pass 2 (X-runs)")
     }
 
+    /// Generates IRMF shader code for the intermediate Pass 3 results (XY-planes).
     pub fn generate_pass3_irmf(&self) -> String {
         let mut buckets: BTreeMap<i32, Vec<[i32; 4]>> = BTreeMap::new();
         for (rect, z) in &self.pass3_results {
@@ -722,6 +754,11 @@ impl Optimizer {
         self.wrap_wgsl_irmf("".to_string(), primitives_code, "Pass 3 (XY-planes)")
     }
 
+    /// Generates the final optimized IRMF shader code.
+    ///
+    /// # Arguments
+    ///
+    /// * `language` - The shader language ("glsl" or "wgsl").
     pub fn generate_final_irmf(&self, language: String) -> String {
         let bucket_size_z = (self.target_volume.dims[2] as f32 / 32.0).ceil() as i32;
         let bucket_size_y = (self.target_volume.dims[1] as f32 / 32.0).ceil() as i32;

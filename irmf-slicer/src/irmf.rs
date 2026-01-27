@@ -116,7 +116,7 @@ impl IrmfHeader {
     /// Serializes the header to a string with the following requirements:
     /// 1. remove all double-quotes around the keys
     /// 2. always put the "min" key before the "max" key
-    /// 3. always keep all the [x,y,z] values for both the "min" and the "max" lines on the same line
+    /// 3. always keep all the \[x,y,z\] values for both the "min" and the "max" lines on the same line
     /// 4. if the "date" key/value pair is missing or the value is empty, fill in today's date and add after author
     /// 5. keep the list of all materials on a single line
     /// 6. always add a trailing comma to the last key/value pair in the list

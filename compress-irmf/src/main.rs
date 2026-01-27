@@ -1,3 +1,8 @@
+//! Compresses IRMF shader payloads using gzip and optional base64 encoding.
+//!
+//! This tool reads an IRMF file, compresses the shader source code,
+//! and updates the header to reflect the compression encoding.
+
 use anyhow::{Context, Result};
 use base64::{Engine, engine::general_purpose::STANDARD_NO_PAD as BASE64};
 use clap::Parser;

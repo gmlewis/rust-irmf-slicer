@@ -1,3 +1,8 @@
+//! Converts BinVox voxel files to optimized IRMF shaders.
+//!
+//! This tool reads a BinVox file, applies lossless cuboid merging optimization,
+//! and generates an IRMF shader that efficiently represents the 3D model.
+
 use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;

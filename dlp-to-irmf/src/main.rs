@@ -1,3 +1,8 @@
+//! Converts DLP/Photon 3D printing files to optimized IRMF shaders.
+//!
+//! This tool reads a DLP file, voxelizes the layers, applies lossless cuboid merging,
+//! and generates an IRMF shader that efficiently represents the 3D model.
+
 use anyhow::Result;
 use clap::Parser;
 use glam::Vec3;

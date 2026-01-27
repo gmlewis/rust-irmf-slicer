@@ -1,3 +1,8 @@
+//! Converts STL mesh files to optimized IRMF shaders.
+//!
+//! This tool voxelizes an STL mesh, applies lossless cuboid merging optimization,
+//! and generates an IRMF shader that efficiently represents the 3D model.
+
 use anyhow::Result;
 use clap::Parser;
 use glam::Vec3;

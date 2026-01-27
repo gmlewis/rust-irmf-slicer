@@ -282,6 +282,7 @@ impl VoxelVolume {
                         max_storage_buffer_binding_size: adapter
                             .limits()
                             .max_storage_buffer_binding_size,
+                        max_texture_dimension_3d: adapter.limits().max_texture_dimension_3d,
                         ..wgpu::Limits::default()
                     },
                     memory_hints: Default::default(),
@@ -395,13 +396,21 @@ impl VoxelVolume {
                 encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
             compute_pass.set_pipeline(&pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
-            compute_pass.dispatch_workgroups(dims[0].div_ceil(16), dims[1].div_ceil(16), 1);
+            let wg_x = dims[0].div_ceil(16);
+            let wg_y = dims[1].div_ceil(16);
+            println!("Dispatching workgroups: {}x{}x1", wg_x, wg_y);
+            compute_pass.dispatch_workgroups(wg_x, wg_y, 1);
         }
+        queue.submit(Some(encoder.finish()));
+        device.poll(wgpu::Maintain::Wait);
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         let unaligned_bytes_per_row = dims[0] * 4;
         let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let padding = (align - unaligned_bytes_per_row % align) % align;
         let aligned_bytes_per_row = unaligned_bytes_per_row + padding;
+        println!("unaligned_bytes_per_row: {}, aligned_bytes_per_row: {}", unaligned_bytes_per_row, aligned_bytes_per_row);
 
         let output_buffer_size = (aligned_bytes_per_row * dims[1] * dims[2]) as u64;
         let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -450,15 +459,23 @@ impl VoxelVolume {
         if let Ok(Ok(())) = receiver.await {
             let data = buffer_slice.get_mapped_range();
             let mut result = Vec::with_capacity((dims[0] * dims[1] * dims[2]) as usize);
+            let mut non_zero_count = 0;
             for z in 0..dims[2] {
                 for y in 0..dims[1] {
                     let start =
                         (z * dims[1] * aligned_bytes_per_row + y * aligned_bytes_per_row) as usize;
                     let end = start + unaligned_bytes_per_row as usize;
-                    result.extend_from_slice(bytemuck::cast_slice(&data[start..end]));
+                    let row: &[f32] = bytemuck::cast_slice(&data[start..end]);
+                    for &val in row {
+                        if val > 0.0 {
+                            non_zero_count += 1;
+                        }
+                    }
+                    result.extend_from_slice(row);
                 }
             }
             drop(data);
+            println!("Read back {} non-zero voxels from GPU.", non_zero_count);
             Ok(Self {
                 data: result,
                 dims,

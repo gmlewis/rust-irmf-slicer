@@ -39,6 +39,7 @@ async fn main() -> Result<()> {
     let mut file = std::fs::File::open(&args.input)?;
     let mesh =
         stl_io::read_stl(&mut file).map_err(|e| anyhow::anyhow!("stl read error: {:?}", e))?;
+    println!("Mesh has {} vertices and {} faces.", mesh.vertices.len(), mesh.faces.len());
 
     let mut min = Vec3::splat(f32::MAX);
     let mut max = Vec3::splat(f32::MIN);

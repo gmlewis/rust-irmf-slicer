@@ -19,7 +19,7 @@ struct Args {
     language: Option<String>,
 
     /// Resolution for voxelization
-    #[arg(short, long, default_value_t = 128)]
+    #[arg(short, long, default_value_t = 64)]
     res: u32,
 
     /// Save intermediate Pass 2 (X-runs) debug IRMF

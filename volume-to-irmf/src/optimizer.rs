@@ -11,10 +11,10 @@ pub struct Stats {
 }
 
 pub struct Optimizer {
-    target_volume: Arc<VoxelVolume>,
-    cuboids: Vec<Cuboid>,
-    pass2_results: Vec<[i32; 4]>,
-    pass3_results: Vec<([i32; 4], i32)>,
+    pub target_volume: Arc<VoxelVolume>,
+    pub cuboids: Vec<Cuboid>,
+    pub pass2_results: Vec<[i32; 4]>,
+    pub pass3_results: Vec<([i32; 4], i32)>,
     pub stats: Stats,
     device: wgpu::Device,
     queue: wgpu::Queue,

@@ -29,6 +29,10 @@ struct Args {
     /// Save intermediate Pass 3 (XY-planes) debug IRMF
     #[arg(long)]
     pass3: Option<PathBuf>,
+
+    /// Dump debug information to stdout
+    #[arg(long)]
+    debug: bool,
 }
 
 #[tokio::main]
@@ -75,11 +79,52 @@ async fn main() -> Result<()> {
         volume.dims[0], volume.dims[1], volume.dims[2]
     );
 
+    if args.debug {
+        println!("\nVoxels after voxelizing model");
+        let mut i = 0;
+        for z in 0..volume.dims[2] {
+            for y in 0..volume.dims[1] {
+                for x in 0..volume.dims[0] {
+                    if volume.get(x, y, z) > 0.5 {
+                        println!("{}: ({},{},{})", i, x, y, z);
+                        i += 1;
+                    }
+                }
+            }
+        }
+    }
+
     println!("Initializing lossless optimizer...");
     let mut optimizer = Optimizer::new(volume).await?;
 
     println!("Running lossless cuboid merging algorithm...");
     optimizer.run_lossless().await?;
+
+    if args.debug {
+        println!("\nCuboids after pass 2");
+        for (i, res) in optimizer.pass2_results.iter().enumerate() {
+            println!(
+                "{}: ({},{},{})-({},{},{})",
+                i, res[0], res[2], res[3], res[1], res[2], res[3]
+            );
+        }
+
+        println!("\nCuboids after pass 3");
+        for (i, (rect, z)) in optimizer.pass3_results.iter().enumerate() {
+            println!(
+                "{}: ({},{},{})-({},{},{})",
+                i, rect[0], rect[2], z, rect[1], rect[3], z
+            );
+        }
+
+        println!("\nCuboids after pass 4");
+        for (i, c) in optimizer.cuboids.iter().enumerate() {
+            println!(
+                "{}: ({},{},{})-({},{},{})",
+                i, c.x1, c.y1, c.z1, c.x2, c.y2, c.z2
+            );
+        }
+    }
 
     if let Some(path) = args.pass2 {
         println!("Writing Pass 2 debug IRMF to {} ...", path.display());

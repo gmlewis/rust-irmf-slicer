@@ -71,6 +71,10 @@ impl WgpuRenderer {
             )
             .await?;
 
+        device.on_uncaptured_error(Box::new(|error| {
+            panic!("WgpuRenderer WGPU error: {}", error);
+        }));
+
         Ok(Self {
             device,
             queue,
@@ -195,12 +199,17 @@ fn vs_main(@location(0) vert: vec3<f32>) -> VertexOutput {{
                 model.shader, footer
             );
 
+            self.device.push_error_scope(wgpu::ErrorFilter::Validation);
             let shader = self
                 .device
                 .create_shader_module(wgpu::ShaderModuleDescriptor {
                     label: Some("Shader"),
                     source: wgpu::ShaderSource::Wgsl(Cow::Owned(shader_source)),
                 });
+
+            if let Some(error) = pollster::block_on(self.device.pop_error_scope()) {
+                return Err(IrmfError::ShaderError(error.to_string()));
+            }
 
             self.create_pipeline(&shader, "vs_main", &shader, "fs_main")
         } else {
@@ -226,6 +235,7 @@ void main() {
             let vs_wgsl = translate_glsl_to_wgsl(glsl_vs, naga::ShaderStage::Vertex)?;
             let fs_wgsl = translate_glsl_to_wgsl(&glsl_fs, naga::ShaderStage::Fragment)?;
 
+            self.device.push_error_scope(wgpu::ErrorFilter::Validation);
             let vs_module = self
                 .device
                 .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -239,11 +249,18 @@ void main() {
                     source: wgpu::ShaderSource::Wgsl(Cow::Owned(fs_wgsl)),
                 });
 
+            if let Some(error) = pollster::block_on(self.device.pop_error_scope()) {
+                return Err(IrmfError::ShaderError(error.to_string()));
+            }
+
             self.create_pipeline(&vs_module, "main", &fs_module, "main")
         }
     }
 
     fn render_start(&mut self, slice_depth: f32, material_num: usize) -> IrmfResult<()> {
+        self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+
         let pipeline = self
             .pipeline
             .as_ref()
@@ -350,15 +367,28 @@ void main() {
     }
 
     fn render_finish(&mut self) -> IrmfResult<DynamicImage> {
+        // Wait for the GPU to finish and the buffer to be mapped
+        self.device.poll(wgpu::Maintain::Wait);
+
+        if let Some(error) = pollster::block_on(self.device.pop_error_scope()) {
+            return Err(IrmfError::RendererError(format!(
+                "WGPU Out of Memory error: {}",
+                error
+            )));
+        }
+        if let Some(error) = pollster::block_on(self.device.pop_error_scope()) {
+            return Err(IrmfError::RendererError(format!(
+                "WGPU Validation error: {}",
+                error
+            )));
+        }
+
         let read_buffer =
             self.read_buffers[self.current_buffer]
                 .as_ref()
                 .ok_or(IrmfError::RendererError(
                     "Read buffer not initialized".into(),
                 ))?;
-
-        // Wait for the GPU to finish and the buffer to be mapped
-        self.device.poll(wgpu::Maintain::Wait);
 
         let bytes_per_row = (self.width * 4 + 255) & !255;
         let buffer_slice = read_buffer.slice(..);

@@ -1,2 +1,9 @@
 /target
 /go-reference-impl
+/*.irmf
+/GEMINI.md
+/examples/*/*.binvox
+/examples/*/*.cbddlp
+/examples/*/*.stl
+/examples/*/*.svx
+/examples/*/*.zip

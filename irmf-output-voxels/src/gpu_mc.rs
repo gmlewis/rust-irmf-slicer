@@ -67,6 +67,13 @@ impl GpuMarchingCubes {
         queue: &wgpu::Queue,
         binvox: &BinVox,
     ) -> IrmfResult<Mesh> {
+        device.on_uncaptured_error(Box::new(|error| {
+            panic!("GpuMarchingCubes WGPU error: {}", error);
+        }));
+
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+
         let nx = binvox.nx as u32;
         let ny = binvox.ny as u32;
         let nz = binvox.nz as u32;
@@ -189,6 +196,20 @@ impl GpuMarchingCubes {
         encoder.copy_buffer_to_buffer(&output_buffer, 0, &readback_buffer, 0, output_buffer_size);
 
         queue.submit(Some(encoder.finish()));
+        device.poll(wgpu::Maintain::Wait);
+
+        if let Some(error) = device.pop_error_scope().await {
+            return Err(IrmfError::RendererError(format!(
+                "GpuMarchingCubes WGPU Out of Memory error: {}",
+                error
+            )));
+        }
+        if let Some(error) = device.pop_error_scope().await {
+            return Err(IrmfError::RendererError(format!(
+                "GpuMarchingCubes WGPU Validation error: {}",
+                error
+            )));
+        }
 
         let buffer_slice = readback_buffer.slice(..);
         let (sender, receiver) = futures::channel::oneshot::channel();

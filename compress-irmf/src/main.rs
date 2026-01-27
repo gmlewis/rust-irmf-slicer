@@ -46,8 +46,7 @@ fn main() -> Result<()> {
     let mut new_header = model.header;
     new_header.encoding = Some(encoding.to_string());
 
-    let header_json =
-        serde_json::to_string_pretty(&new_header).context("Failed to serialize header to JSON")?;
+    let header_json = new_header.serialize_to_string();
 
     let output_path = cli.output.unwrap_or_else(|| {
         let mut path = cli.input.clone();

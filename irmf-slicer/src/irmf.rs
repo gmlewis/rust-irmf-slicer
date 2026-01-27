@@ -1,6 +1,7 @@
 //! IRMF model and parsing logic.
 
 use base64::Engine;
+use chrono::Local;
 use flate2::read::GzDecoder;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -109,6 +110,95 @@ pub struct IrmfHeader {
     /// Version of the model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+}
+
+impl IrmfHeader {
+    /// Serializes the header to a string with the following requirements:
+    /// 1. remove all double-quotes around the keys
+    /// 2. always put the "min" key before the "max" key
+    /// 3. always keep all the [x,y,z] values for both the "min" and the "max" lines on the same line
+    /// 4. if the "date" key/value pair is missing or the value is empty, fill in today's date and add after author
+    /// 5. keep the list of all materials on a single line
+    /// 6. always add a trailing comma to the last key/value pair in the list
+    pub fn serialize_to_string(&self) -> String {
+        let mut lines = Vec::new();
+        lines.push("{".to_string());
+
+        if let Some(ref author) = self.author {
+            lines.push(format!("  author: \"{}\",", author));
+        }
+
+        let date = if let Some(ref d) = self.date {
+            if d.is_empty() {
+                Local::now().format("%Y-%m-%d").to_string()
+            } else {
+                d.clone()
+            }
+        } else {
+            Local::now().format("%Y-%m-%d").to_string()
+        };
+        lines.push(format!("  date: \"{}\",", date));
+
+        if let Some(ref license) = self.license {
+            lines.push(format!("  license: \"{}\",", license));
+        }
+
+        if let Some(ref encoding) = self.encoding {
+            lines.push(format!("  encoding: \"{}\",", encoding));
+        }
+
+        lines.push(format!("  irmf: \"{}\",", self.irmf_version));
+
+        if let Some(ref glsl) = self.glsl_version {
+            lines.push(format!("  glslVersion: \"{}\",", glsl));
+        }
+
+        if let Some(ref lang) = self.language {
+            lines.push(format!("  language: \"{}\",", lang));
+        }
+
+        let mats = self
+            .materials
+            .iter()
+            .map(|m| format!("\"{}\"", m))
+            .collect::<Vec<_>>()
+            .join(",");
+        lines.push(format!("  materials: [{}],", mats));
+
+        lines.push(format!(
+            "  min: [{:.4},{:.4},{:.4}],",
+            self.min[0], self.min[1], self.min[2]
+        ));
+        lines.push(format!(
+            "  max: [{:.4},{:.4},{:.4}],",
+            self.max[0], self.max[1], self.max[2]
+        ));
+
+        if let Some(ref notes) = self.notes {
+            lines.push(format!("  notes: \"{}\",", notes));
+        }
+
+        if let Some(ref options) = self.options {
+            if !is_option_empty_map(&self.options) {
+                if let Ok(json) = serde_json::to_string(options) {
+                    lines.push(format!("  options: {},", json));
+                }
+            }
+        }
+
+        if let Some(ref title) = self.title {
+            lines.push(format!("  title: \"{}\",", title));
+        }
+
+        lines.push(format!("  units: \"{}\",", self.units));
+
+        if let Some(ref version) = self.version {
+            lines.push(format!("  version: \"{}\",", version));
+        }
+
+        lines.push("}".to_string());
+        lines.join("\n")
+    }
 }
 
 /// Helper function for serde to skip optional empty maps (mimicking Go's omitempty).
@@ -428,7 +518,7 @@ void main() {}";
         };
 
         header.encoding = Some(encoding.to_string());
-        let header_json = serde_json::to_string_pretty(header).unwrap();
+        let header_json = header.serialize_to_string();
 
         let mut full_data = Vec::new();
         full_data.extend_from_slice(b"/*");
@@ -511,12 +601,66 @@ void main() {}";
             version: None,
         };
 
-        let json = serde_json::to_string(&header).unwrap();
-        assert!(!json.contains("author"));
-        assert!(!json.contains("options"));
-        assert!(!json.contains("glslVersion"));
-        assert!(json.contains("\"irmf\":\"1.0\""));
-        assert!(json.contains("\"materials\":[\"M1\"]"));
+        let json = header.serialize_to_string();
+        assert!(!json.contains("author:"));
+        assert!(!json.contains("options:"));
+        assert!(!json.contains("glslVersion:"));
+        assert!(json.contains("irmf: \"1.0\","));
+        assert!(json.contains("materials: [\"M1\"],"));
+        let today = Local::now().format("%Y-%m-%d").to_string();
+        assert!(json.contains(&format!("date: \"{}\",", today))); // Default date
+    }
+
+    #[test]
+    fn test_header_serialization_formatting() {
+        let header = IrmfHeader {
+            author: Some("Glenn".into()),
+            license: None,
+            date: None,
+            encoding: None,
+            irmf_version: "1.0".into(),
+            glsl_version: None,
+            language: None,
+            materials: vec!["M1".into(), "M2".into()],
+            max: [10.0, 20.0, 30.0],
+            min: [0.0, 0.0, 0.0],
+            notes: None,
+            options: None,
+            title: None,
+            units: "mm".into(),
+            version: None,
+        };
+
+        let s = header.serialize_to_string();
+        let lines: Vec<&str> = s.lines().collect();
+
+        // 1. remove all double-quotes around the keys
+        assert!(s.contains("  author: \"Glenn\","));
+        assert!(!s.contains("\"author\":"));
+
+        // 2. always put the "min" key before the "max" key
+        let min_idx = lines.iter().position(|l| l.contains("min:")).unwrap();
+        let max_idx = lines.iter().position(|l| l.contains("max:")).unwrap();
+        assert!(min_idx < max_idx);
+
+        // 3. always keep all the [x,y,z] values for both the "min" and the "max" lines on the same line
+        assert!(lines[min_idx].contains("[0.0000,0.0000,0.0000]"));
+        assert!(lines[max_idx].contains("[10.0000,20.0000,30.0000]"));
+
+        // 4. if the "date" key/value pair is missing or the value is empty, fill in today's date
+        let author_idx = lines.iter().position(|l| l.contains("author:")).unwrap();
+        let date_idx = lines.iter().position(|l| l.contains("date:")).unwrap();
+        assert_eq!(date_idx, author_idx + 1);
+        let today = Local::now().format("%Y-%m-%d").to_string();
+        assert!(lines[date_idx].contains(&format!("\"{}\"", today)));
+
+        // 5. keep the list of all materials on a single line: materials: ["mat1","mat2"],
+        let mat_idx = lines.iter().position(|l| l.contains("materials:")).unwrap();
+        assert!(lines[mat_idx].contains("[\"M1\",\"M2\"]"));
+
+        // 6. always add a trailing comma to the last key/value pair in the list
+        let last_kv_idx = lines.len() - 2; // line before }
+        assert!(lines[last_kv_idx].ends_with(","));
     }
 
     #[test]

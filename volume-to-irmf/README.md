@@ -13,7 +13,7 @@ This crate provides tools to convert voxel-based 3D volumes into efficient IRMF 
 - **Lossless Optimization**: Converts voxel data to optimized cuboid representations
 - **GPU Acceleration**: Uses WGPU for high-performance computations
 - **IRMF Generation**: Produces optimized GLSL/WGSL shaders
-- **Multiple Formats**: Supports BinVox, STL, DLP/Photon, and other voxel formats
+- **Multiple Formats**: Supports BinVox, STL, OBJ, DLP/Photon, and other voxel formats
 
 ## Usage
 

@@ -13,6 +13,7 @@ packages=(
     "irmf-slicer-cli"
     "compress-irmf"
     "stl-to-irmf"
+    "obj-to-irmf"
     "zip-to-irmf"
     "irmf-linter"
 )

@@ -14,6 +14,7 @@ members = [
     "stl-to-irmf",
     "svx-to-irmf",
     "zip-to-irmf",
+    "obj-to-irmf",
 ]
 
 [workspace.package]

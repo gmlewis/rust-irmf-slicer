@@ -20,7 +20,8 @@ set -e
 # 10. binvox-to-irmf (depends on volume-to-irmf)
 # 11. svx-to-irmf (depends on volume-to-irmf)
 # 12. stl-to-irmf (depends on volume-to-irmf)
-# 13. zip-to-irmf (depends on volume-to-irmf)
+# 13. obj-to-irmf (depends on volume-to-irmf)
+# 14. zip-to-irmf (depends on volume-to-irmf)
 
 packages=(
     "irmf-slicer"
@@ -35,6 +36,7 @@ packages=(
     "binvox-to-irmf"
     "svx-to-irmf"
     "stl-to-irmf"
+    "obj-to-irmf"
     "zip-to-irmf"
 )
 

@@ -49,9 +49,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     
     // Ray origin below the bottom of the (X, Y) column.
     // Use a small offset in X and Y to avoid hitting edges exactly.
+    // Varied jitter helps avoid alignment with regular STL grids.
+    let jitter_x = 0.5123 + 0.0001 * f32(x % 13u);
+    let jitter_y = 0.4789 + 0.0001 * f32(y % 17u);
     let orig = vec3f(
-        config.min_bound.x + (f32(x) + 0.50013) * voxel_size.x,
-        config.min_bound.y + (f32(y) + 0.50013) * voxel_size.y,
+        config.min_bound.x + (f32(x) + jitter_x) * voxel_size.x,
+        config.min_bound.y + (f32(y) + jitter_y) * voxel_size.y,
         config.min_bound.z - 0.1 * world_size.z // Start 10% below the min bound
     );
     let ray_dir = vec3f(0.0, 0.0, 1.0);

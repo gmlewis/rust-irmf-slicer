@@ -243,21 +243,29 @@ fn parse_header(data: &[u8]) -> Result<(IrmfHeader, &[u8]), IrmfError> {
 
     let json_str = String::from_utf8_lossy(&data[2..end_index + 1]);
 
-    // Simple fix for trailing commas and unquoted keys
-    let mut cleaned_json = json_str.into_owned();
+    // Combined regex to match:
+    // 1. Double-quoted strings (to skip them)
+    // 2. Unquoted keys: preceded by { or , or whitespace, followed by :
+    // 3. Trailing commas: comma followed by whitespace and } or ]
+    let re =
+        Regex::new(r#"(?s)("([^"\\]|\\.)*")|([{,\s])([a-zA-Z_][a-zA-Z0-9_]*)\s*:|(,)\s*([\}\]])"#)
+            .unwrap();
 
-    // Remove trailing commas before closing brace or bracket
-    let re_comma = Regex::new(r",\s*([\}\]])").unwrap();
-    cleaned_json = re_comma.replace_all(&cleaned_json, "$1").into_owned();
-
-    // Look for unquoted keys: must be preceded by { or , or whitespace, followed by :
-    // and must not already be quoted.
-    // This regex looks for an identifier followed by a colon.
-    // It ensures it's not preceded by a quote (simple heuristic).
-    let re_key = Regex::new(r"([{,\s])([a-zA-Z_][a-zA-Z0-9_]*)\s*:").unwrap();
-    cleaned_json = re_key
-        .replace_all(&cleaned_json, |caps: &regex::Captures| {
-            format!("{}\"{}\":", &caps[1], &caps[2])
+    let cleaned_json = re
+        .replace_all(&json_str, |caps: &regex::Captures| {
+            if let Some(mat) = caps.get(1) {
+                // It's a string, return it as is
+                mat.as_str().to_string()
+            } else if let Some(sep) = caps.get(3) {
+                // It's an unquoted key, quote it
+                format!("{}\"{}\":", sep.as_str(), &caps[4])
+            } else if caps.get(5).is_some() {
+                // It's a trailing comma, remove the comma and keep the closing brace/bracket
+                caps[6].to_string()
+            } else {
+                // Should not happen, but return original as fallback
+                caps[0].to_string()
+            }
         })
         .into_owned();
 
@@ -509,5 +517,25 @@ void main() {}";
         assert!(!json.contains("glslVersion"));
         assert!(json.contains("\"irmf\":\"1.0\""));
         assert!(json.contains("\"materials\":[\"M1\"]"));
+    }
+
+    #[test]
+    fn test_parse_header_with_url_in_string() {
+        let data = b"/*{
+  \"irmf\": \"1.0\",
+  \"materials\": [\"Material\"],
+  \"max\": [1,1,1],
+  \"min\": [0,0,0],
+  \"units\": \"mm\",
+  \"title\": \"Rodin's The Thinker from https://people.csail.mit.edu/tmertens/textransfer/data/\",
+}*/
+void main() {}";
+        let model = IrmfModel::new(data).unwrap();
+        assert_eq!(
+            model.header.title.as_deref(),
+            Some(
+                "Rodin's The Thinker from https://people.csail.mit.edu/tmertens/textransfer/data/"
+            )
+        );
     }
 }

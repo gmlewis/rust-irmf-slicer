@@ -865,7 +865,7 @@ bool cuboid(ivec3 v, ivec3 b_min, ivec3 b_max) {{
 {}
 void mainModel4(out vec4 materials, in vec3 xyz) {{
     vec3 v = (xyz - MIN_BOUND) / VOXEL_SIZE;
-    ivec3 vi = ivec3(floor(v + vec3(0.5)));
+    ivec3 vi = ivec3(floor(v));
 {}
 }}
 "###,

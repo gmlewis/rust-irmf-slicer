@@ -35,7 +35,7 @@ struct Args {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    println!("Reading {}...", args.input.display());
+    println!("Reading {} ...", args.input.display());
     let mut file = std::fs::File::open(&args.input)?;
     let mesh =
         stl_io::read_stl(&mut file).map_err(|e| anyhow::anyhow!("stl read error: {:?}", e))?;
@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
         indices.push(tri.vertices[2] as u32);
     }
 
-    println!("Voxelizing mesh on GPU at resolution {}...", args.res);
+    println!("Voxelizing mesh on GPU at resolution {} ...", args.res);
     let volume =
         VoxelVolume::gpu_voxelize(vertices, indices, [args.res, args.res, args.res], min, max)
             .await?;
@@ -82,12 +82,12 @@ async fn main() -> Result<()> {
     optimizer.run_lossless().await?;
 
     if let Some(path) = args.pass2 {
-        println!("Writing Pass 2 debug IRMF to {}...", path.display());
+        println!("Writing Pass 2 debug IRMF to {} ...", path.display());
         std::fs::write(path, optimizer.generate_pass2_irmf())?;
     }
 
     if let Some(path) = args.pass3 {
-        println!("Writing Pass 3 debug IRMF to {}...", path.display());
+        println!("Writing Pass 3 debug IRMF to {} ...", path.display());
         std::fs::write(path, optimizer.generate_pass3_irmf())?;
     }
 
@@ -96,7 +96,7 @@ async fn main() -> Result<()> {
     let output_path = args
         .output
         .unwrap_or_else(|| args.input.with_extension("irmf"));
-    println!("Writing final IRMF to {}...", output_path.display());
+    println!("Writing final IRMF to {} ...", output_path.display());
     std::fs::write(output_path, irmf)?;
 
     let stats = &optimizer.stats;

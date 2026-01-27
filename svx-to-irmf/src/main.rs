@@ -32,7 +32,7 @@ struct Args {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    println!("Reading {}...", args.input.display());
+    println!("Reading {} ...", args.input.display());
     let file = std::fs::File::open(&args.input)?;
     let mut archive = zip::ZipArchive::new(file)?;
 
@@ -69,12 +69,12 @@ async fn main() -> Result<()> {
     optimizer.run_lossless().await?;
 
     if let Some(path) = args.pass2 {
-        println!("Writing Pass 2 debug IRMF to {}...", path.display());
+        println!("Writing Pass 2 debug IRMF to {} ...", path.display());
         std::fs::write(path, optimizer.generate_pass2_irmf())?;
     }
 
     if let Some(path) = args.pass3 {
-        println!("Writing Pass 3 debug IRMF to {}...", path.display());
+        println!("Writing Pass 3 debug IRMF to {} ...", path.display());
         std::fs::write(path, optimizer.generate_pass3_irmf())?;
     }
 
@@ -83,7 +83,7 @@ async fn main() -> Result<()> {
     let output_path = args
         .output
         .unwrap_or_else(|| args.input.with_extension("irmf"));
-    println!("Writing final IRMF to {}...", output_path.display());
+    println!("Writing final IRMF to {} ...", output_path.display());
     std::fs::write(output_path, irmf)?;
 
     let stats = &optimizer.stats;

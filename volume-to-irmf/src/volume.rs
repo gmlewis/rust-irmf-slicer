@@ -274,12 +274,12 @@ impl VoxelVolume {
             .ok_or_else(|| anyhow::anyhow!("No WGPU adapter"))?;
         let limits = wgpu::Limits {
             max_buffer_size: adapter.limits().max_buffer_size,
-            max_storage_buffer_binding_size: adapter
-                .limits()
-                .max_storage_buffer_binding_size,
+            max_storage_buffer_binding_size: adapter.limits().max_storage_buffer_binding_size,
             max_uniform_buffer_binding_size: adapter.limits().max_uniform_buffer_binding_size,
             max_texture_dimension_3d: adapter.limits().max_texture_dimension_3d,
-            max_storage_textures_per_shader_stage: adapter.limits().max_storage_textures_per_shader_stage,
+            max_storage_textures_per_shader_stage: adapter
+                .limits()
+                .max_storage_textures_per_shader_stage,
             ..wgpu::Limits::default()
         };
         println!("Requested limits: {:?}", limits);

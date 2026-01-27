@@ -47,9 +47,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let world_size = config.max_bound.xyz - config.min_bound.xyz;
     let voxel_size = world_size / vec3f(dims);
     
-    // Ray origin at the bottom of the (X, Y) column, slightly offset to avoid edge cases
-    let orig = config.min_bound.xyz + 
-               (vec3f(f32(x), f32(y), 0.0) + 0.50013) * voxel_size;
+    // Ray origin below the bottom of the (X, Y) column.
+    // Use a small offset in X and Y to avoid hitting edges exactly.
+    let orig = vec3f(
+        config.min_bound.x + (f32(x) + 0.50013) * voxel_size.x,
+        config.min_bound.y + (f32(y) + 0.50013) * voxel_size.y,
+        config.min_bound.z - 0.1 * world_size.z // Start 10% below the min bound
+    );
     let ray_dir = vec3f(0.0, 0.0, 1.0);
     
     for (var i = 0u; i < config.num_triangles; i++) {
@@ -59,10 +63,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         
         let t = intersect_ray_tri(orig, ray_dir, v0, v1, v2);
         if (t >= 0.0) {
-            let z_inter = t / voxel_size.z;
-            let z_idx = u32(round(z_inter));
-            if (z_idx < dims.z) {
-                bits[z_idx / 32u] ^= (1u << (z_idx % 32u));
+            let world_z = orig.z + t;
+            let z_world_rel = (world_z - config.min_bound.z) / voxel_size.z;
+            let z_idx = i32(round(z_world_rel));
+            if (z_idx >= 0 && u32(z_idx) < dims.z) {
+                bits[u32(z_idx) / 32u] ^= (1u << (u32(z_idx) % 32u));
             }
         }
     }

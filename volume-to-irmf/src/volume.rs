@@ -410,7 +410,10 @@ impl VoxelVolume {
         let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let padding = (align - unaligned_bytes_per_row % align) % align;
         let aligned_bytes_per_row = unaligned_bytes_per_row + padding;
-        println!("unaligned_bytes_per_row: {}, aligned_bytes_per_row: {}", unaligned_bytes_per_row, aligned_bytes_per_row);
+        println!(
+            "unaligned_bytes_per_row: {}, aligned_bytes_per_row: {}",
+            unaligned_bytes_per_row, aligned_bytes_per_row
+        );
 
         let output_buffer_size = (aligned_bytes_per_row * dims[1] * dims[2]) as u64;
         let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {

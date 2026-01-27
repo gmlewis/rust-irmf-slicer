@@ -10,7 +10,7 @@ rust-version.workspace = true
 description = "Convert zipped image slices to IRMF shaders"
 
 [dependencies]
-volume-to-irmf = { path = "../volume-to-irmf" }
+volume-to-irmf = { version = "0.2.0", path = "../volume-to-irmf" }
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 zip = "2.2"

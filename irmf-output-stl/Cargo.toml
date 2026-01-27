@@ -13,8 +13,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-irmf-output-voxels = { version = "0.1.0", path = "../irmf-output-voxels" }
-irmf-slicer = { version = "0.1.0", path = "../irmf-slicer" }
+irmf-output-voxels = { version = "0.2.0", path = "../irmf-output-voxels" }
+irmf-slicer = { version = "0.2.0", path = "../irmf-slicer" }
 anyhow = "1.0"
 image = "0.25"
 pollster = "0.4"

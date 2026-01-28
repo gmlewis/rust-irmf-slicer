@@ -177,30 +177,45 @@ float bezier1D(float p0, float p1, float p2, float p3, float t) {
     return u*u*u*p0 + 3.0*u*u*t*p1 + 3.0*u*t*t*p2 + t*t*t*p3;
 }
 
+float distToSegment(vec2 p, vec2 a, vec2 b, out float w) {
+    vec2 ba = b - a;
+    float l2 = dot(ba, ba);
+    if (l2 < 1e-6) { w = 0.0; return length(p - a); }
+    w = clamp(dot(p - a, ba) / l2, 0.0, 1.0);
+    return length(p - (a + w * ba));
+}
+
 bool testHump(vec3 p, vec2 q0[4], vec2 q3[4], float zc[4], float xyScale, float zScale) {
-    vec2 c[4];
-    for(int i=0; i<4; i++) c[i] = (q0[i] + q3[i]) * 0.5;
-    float v = projectToBezier(p.xy, c[0], c[1], c[2], c[3]);
-    
-    vec2 A = bezier(q0[0], q0[1], q0[2], q0[3], v);
-    vec2 B = bezier(q3[0], q3[1], q3[2], q3[3], v);
-    vec2 C = (A + B) * 0.5;
-    
-    A = C + (A - C) * xyScale;
-    B = C + (B - C) * xyScale;
-    
-    float Zv = bezier1D(zc[0], zc[1], zc[2], zc[3], v) * zScale;
-    
-    vec2 dir = B - A;
-    float len2 = dot(dir, dir);
-    if (len2 < 1e-6) return false;
-    float w = dot(p.xy - A, dir) / len2;
-    if (w < 0.0 || w > 1.0) return false;
-    
-    vec2 proj = A + w * dir;
-    if (length(p.xy - proj) > 0.1) return false;
-    
-    float u = 0.5 + sin(asin(clamp(2.0*w - 1.0, -1.0, 1.0)) / 3.0);
+    float bestV = 0.5; float minDist = 1e10; float bestW = 0.0;
+    for (int i = 0; i <= 24; i++) {
+        float v = float(i) / 24.0;
+        vec2 A = bezier(q0[0], q0[1], q0[2], q0[3], v);
+        vec2 B = bezier(q3[0], q3[1], q3[2], q3[3], v);
+        if (xyScale != 1.0) {
+            vec2 C = (A + B) * 0.5;
+            A = C + (A - C) * xyScale;
+            B = C + (B - C) * xyScale;
+        }
+        float w; float d = distToSegment(p.xy, A, B, w);
+        if (d < minDist) { minDist = d; bestV = v; bestW = w; }
+    }
+    float delta = 1.0 / 48.0;
+    for (int j = 0; j < 3; j++) {
+        float v1 = clamp(bestV - delta, 0.0, 1.0); float v2 = clamp(bestV + delta, 0.0, 1.0);
+        vec2 A1 = bezier(q0[0], q0[1], q0[2], q0[3], v1); vec2 B1 = bezier(q3[0], q3[1], q3[2], q3[3], v1);
+        vec2 A2 = bezier(q0[0], q0[1], q0[2], q0[3], v2); vec2 B2 = bezier(q3[0], q3[1], q3[2], q3[3], v2);
+        if (xyScale != 1.0) {
+            vec2 C1 = (A1 + B1) * 0.5; A1 = C1 + (A1 - C1) * xyScale; B1 = C1 + (B1 - C1) * xyScale;
+            vec2 C2 = (A2 + B2) * 0.5; A2 = C2 + (A2 - C2) * xyScale; B2 = C2 + (B2 - C2) * xyScale;
+        }
+        float w1, w2; float d1 = distToSegment(p.xy, A1, B1, w1); float d2 = distToSegment(p.xy, A2, B2, w2);
+        if (d1 < d2) { if (d1 < minDist) { minDist = d1; bestV = v1; bestW = w1; } }
+        else { if (d2 < minDist) { minDist = d2; bestV = v2; bestW = w2; } }
+        delta *= 0.5;
+    }
+    if (minDist > 0.03) return false;
+    float Zv = bezier1D(zc[0], zc[1], zc[2], zc[3], bestV) * zScale;
+    float u = 0.5 + sin(asin(clamp(2.0*bestW - 1.0, -1.0, 1.0)) / 3.0);
     return abs(p.z) < Zv * 3.0 * u * (1.0 - u);
 }
 

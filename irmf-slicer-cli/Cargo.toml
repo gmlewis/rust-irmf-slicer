@@ -14,12 +14,12 @@ categories.workspace = true
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
-irmf-slicer = { version = "0.2.0", path = "../irmf-slicer" }
-irmf-include-resolver = { version = "0.2.0", path = "../irmf-include-resolver", optional = true }
+irmf-slicer = { version = "0.3.0", path = "../irmf-slicer" }
+irmf-include-resolver = { version = "0.3.0", path = "../irmf-include-resolver", optional = true }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
-irmf-output-stl = { version = "0.2.0", path = "../irmf-output-stl", optional = true }
-irmf-output-voxels = { version = "0.2.0", path = "../irmf-output-voxels", optional = true }
+irmf-output-stl = { version = "0.3.0", path = "../irmf-output-stl", optional = true }
+irmf-output-voxels = { version = "0.3.0", path = "../irmf-output-voxels", optional = true }
 minifb = { version = "0.27", optional = true }
 image = "0.25"
 indicatif = "0.17"

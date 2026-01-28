@@ -780,88 +780,66 @@ impl Optimizer {
             }
         }
 
-        let mut bz_by_switch_cases = String::new();
-        let mut bz_switch_cases = String::new();
+        let mut bz_by_cases = String::new();
+        let mut bz_cases = String::new();
         let mut primitives_code = String::new();
         let int_let = if language == "glsl" { "int" } else { "let" };
         let vec3i = if language == "glsl" { "ivec3" } else { "vec3i" };
         primitives_code.push_str(&format!("    {} bz = vi.z / {};\n", int_let, bucket_size_z));
         primitives_code.push_str(&format!("    {} by = vi.y / {};\n", int_let, bucket_size_y));
-        primitives_code.push_str("    switch (bz) {\n");
         for (bz, y_buckets) in buckets {
             if language == "glsl" {
                 primitives_code.push_str(&format!(
-                    "        case {}: {{ materials = bz{}SwitchCase(vi, by); return; }}\n",
+                    "    if (bz == {}) {{ materials = bz{}Case(vi, by); return; }}\n",
                     bz, bz
                 ));
-                bz_switch_cases
-                    .push_str(&format!("\nvec4 bz{}SwitchCase(ivec3 vi, int by) {{\n", bz));
+                bz_cases.push_str(&format!("\nvec4 bz{}Case(ivec3 vi, int by) {{\n", bz));
             } else {
                 primitives_code.push_str(&format!(
-                    "        case {}: {{ return bz{}SwitchCase(vi, by); }}\n",
+                    "    if (bz == {}) {{ return bz{}Case(vi, by); }}\n",
                     bz, bz
                 ));
-                bz_switch_cases.push_str(&format!(
-                    "fn bz{}SwitchCase(vi: vec3i, by: i32) -> vec4f {{\n",
+                bz_cases.push_str(&format!(
+                    "fn bz{}Case(vi: vec3i, by: i32) -> vec4f {{\n",
                     bz
                 ));
             }
-            bz_switch_cases.push_str("    switch (by) {\n");
             for (by, cuboid_indices) in y_buckets {
-                bz_switch_cases.push_str(&format!(
-                    "        case {}: {{ return bz{}by{}SwitchCase(vi); }}\n",
+                bz_cases.push_str(&format!(
+                    "    if (by == {}) {{ return bz{}by{}Case(vi); }}\n",
                     by, bz, by
                 ));
                 if language == "glsl" {
-                    bz_by_switch_cases
-                        .push_str(&format!("vec4 bz{}by{}SwitchCase(ivec3 vi) {{\n", bz, by));
+                    bz_by_cases.push_str(&format!("vec4 bz{}by{}Case(ivec3 vi) {{\n", bz, by));
                 } else {
-                    bz_by_switch_cases.push_str(&format!(
-                        "fn bz{}by{}SwitchCase(vi: vec3i) -> vec4f {{\n",
-                        bz, by
-                    ));
+                    bz_by_cases
+                        .push_str(&format!("fn bz{}by{}Case(vi: vec3i) -> vec4f {{\n", bz, by));
                 }
                 for i in cuboid_indices {
                     let c = &self.cuboids[i];
-                    bz_by_switch_cases.push_str(&format!(
+                    bz_by_cases.push_str(&format!(
                         "    if (cuboid(vi, {}({}, {}, {}), {}({}, {}, {}))) {{ return solidMaterial; }}\n",
                         vec3i, c.x1, c.y1, c.z1, vec3i, c.x2, c.y2, c.z2,
                     ));
                 }
                 if language == "glsl" {
-                    bz_by_switch_cases.push_str("    return vec4(0,0,0,0);\n}\n\n");
+                    bz_by_cases.push_str("    return vec4(0,0,0,0);\n}\n\n");
                 } else {
-                    bz_by_switch_cases.push_str("    return vec4f(0,0,0,0);\n}\n\n");
+                    bz_by_cases.push_str("    return vec4f(0,0,0,0);\n}\n\n");
                 }
             }
-            bz_switch_cases.push_str("        default: {}\n");
-            bz_switch_cases.push_str("    }\n");
             if language == "glsl" {
-                bz_switch_cases.push_str("    return vec4(0,0,0,0);\n");
+                bz_cases.push_str("    return vec4(0,0,0,0);\n");
             } else {
-                bz_switch_cases.push_str("    return vec4f(0,0,0,0);\n");
+                bz_cases.push_str("    return vec4f(0,0,0,0);\n");
             }
-            bz_switch_cases.push_str("}\n");
+            bz_cases.push_str("}\n");
         }
+        bz_by_cases.push_str(&bz_cases);
         if language == "glsl" {
-            primitives_code
-                .push_str("        default: { materials = vec4(0,0,0,0); return; }\n    }");
-        } else {
-            primitives_code.push_str("        default: {}\n    }");
+            return self.wrap_glsl_irmf(bz_by_cases, primitives_code, "Final Lossless Cuboids");
         }
-        bz_by_switch_cases.push_str(&bz_switch_cases);
-        if language == "glsl" {
-            return self.wrap_glsl_irmf(
-                bz_by_switch_cases,
-                primitives_code,
-                "Final Lossless Cuboids",
-            );
-        }
-        self.wrap_wgsl_irmf(
-            bz_by_switch_cases,
-            primitives_code,
-            "Final Lossless Cuboids",
-        )
+        self.wrap_wgsl_irmf(bz_by_cases, primitives_code, "Final Lossless Cuboids")
     }
 
     pub fn cuboid_count(&self) -> usize {
@@ -904,6 +882,7 @@ void mainModel4(out vec4 materials, in vec3 xyz) {{
     vec3 v = (xyz - MIN_BOUND) / VOXEL_SIZE;
     ivec3 vi = ivec3(floor(v));
 {}
+    materials = vec4(0,0,0,0);
 }}
 "###,
             min.x,

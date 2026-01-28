@@ -1,0 +1,219 @@
+;
+set demand_eval true;			# Allow forCollect loops to work.
+commentOutCode
+    show( XAxis, YAxis );
+include "teapot-bezier.scl";
+
+################################################################
+# Re-sweep the teapot body and lid to make them rational and thus REALLY round.
+
+<<
+BodyCrvs: forCollect( I; 0; I<=2; I+1 ) 			### >
+		      getBoundary( BodySrfs[I][0], "top" );
+BodyCrv: profile( BodyCrvs );
+BodyOutside: srfOfRevolution( YAxis, BodyCrv, "bottom" )$;
+
+# Body inside has to be done separately due to trimming with spout and handle.
+BodyInCrv: curve( cubic, "ec_open", "kv_uniform",
+		  array( pt( 1.4, 2.25, 0 ),
+			 pt( 1.3, 2.25, 0 ),
+			 pt( 1.2, 2.25, 0 ),
+			 pt( 1.2, 2.15, 0 ),
+			 pt( 1.5, 2.12, 0 ),
+			 pt( 2.0, 0.6, 0 ),
+			 pt( 1.4, 0.2, 0 ),
+			 pt( 1.3, 0.15, 0 ),
+			 pt( 1.1, 0.15, 0 ) ) )$;
+BodyInside: srfOfRevolution( YAxis, reverseCrv( BodyInCrv ), "top" )$;
+
+# Add an inside curve for the lid and sweep them together.
+LidCrvs: forCollect( I; 0; I<=1; I+1 )  			### >
+
+		     getBoundary( LidSrfs[I][0], "top" );
+LidInCrv: curve( cubic, "ec_open", "kv_uniform",
+		 array( pt( 1.3, 2.25, 0 ),
+			pt( 1.2, 2.25, 0 ),
+			pt( 1.18, 2.25, 0 ),
+			pt( 1.15, 2.15, 0 ),
+			pt( 1.1, 2.2, 0 ),
+			pt( 1.0, 2.32, 0 ),
+			pt( 0.5, 2.35, 0 ),
+			pt( 0.07, 2.48, 0 ),
+			pt( 0.07, 2.66, 0 ),
+			pt( 0.26, 2.87, 0 ),
+			pt( 0.2, 2.91, 0 ),
+			pt( 0.05, 2.91, 0 ) ) )$;
+
+LidCrv: profile( append( LidCrvs, array( LidInCrv ) ) );
+Lid: srfOfRevolution( YAxis, LidCrv, true )$;
+>>
+commentOutCode
+    show( BodyOutside, BodyInside, Lid );
+
+
+################################################################
+# Join the body, spout and handle.
+
+<<
+# Merge the Bezier handle surfaces into a single NURBS surface.
+HandleTopSrf: srfMerge( HandleTopFront, HandleTopBack, "col", "exact" )$;
+HandleBottomSrf: srfMerge( HandleBottomFront, 
+			   HandleBottomBack, "col", "exact" )$;
+HandleSrf: srfMerge( HandleTopSrf, HandleBottomSrf, "Row", "exact" )$;
+# Offset the handle just a tiny bit so it intesects instead of coming tangent.
+Handle2Srf: objTransform( HandleSrf, tX( .001 ) )$;
+
+# Merge the Bezier spout surfaces into a single NURBS surface.
+SpoutTopSrf: srfMerge( SpoutTopFront, SpoutTopBack, "col", "exact" )$;
+SpoutBottomSrf: srfMerge( SpoutBottomFront, SpoutBottomBack, "col", "exact" )$;
+SpoutSrf: srfMerge( SpoutBottomSrf, SpoutTopSrf, "Row", "exact" )$;
+
+# Put the handle and spout surfaces into a shell with adjacencies.
+HandleAndSpout: shell( Handle2Srf, SpoutSrf )$;
+mkAdjacentFull( Handle2Srf, "TOP", Handle2Srf, "BOTTOM" )$;
+mkAdjacentFull( SpoutSrf, "TOP", SpoutSrf, "BOTTOM" )$;
+tstCrv: getBoundary( SpoutSrf, "TOP" );
+
+TeapotOutside: combineShells( BodyOutside, HandleAndSpout, "+" )$;
+>>
+commentOutCode
+    dumpA1File( array( TeapotOutside ), "teapot-outside.a1" );
+commentOutCode
+<<
+    unshow( BodyGroup, SpoutGroup );
+    unshow( BodyOutside, BodyInside, HandleAndSpout );
+    show( TeapotOutside );
+>>
+
+<<
+# Make an inside passage for the spout, matching the inside of the top lip of
+# the spout.  Since the inside of the spout lip is scaled down from the
+# outside, we follow the same approach to construct the passage from the body
+# of the spout.
+
+# Extract curves from the spout surfaces.
+procedure spoutCrv( Srf1, Srf2, N )
+    profile( crvFromSrf( Srf1, "col", N ),
+	     crvFromSrf( Srf2, "col", N ) );
+SpoutOutsideCrv: spoutCrv( SpoutBottomFront, SpoutBottomBack, 3 );
+SpoutInsideCrv: spoutCrv( SpoutTopFront, SpoutTopBack, 3 );
+
+# Extract the scale values from two edges of the lip of the spout.
+ZFactor: SpoutInsideCrv.ctlpoly[1].Z / SpoutOutsideCrv.ctlpoly[1].Z;
+XIn: distPtPt( SpoutInsideCrv.ctlpoly[0], SpoutInsideCrv.ctlpoly[3] );
+XOut: distPtPt( SpoutOutsideCrv.ctlpoly[0], SpoutOutsideCrv.ctlpoly[3] );
+XYFactor: Xin / XOut;
+
+commentOutCode
+    Crv: SpoutOutsideCrv;		# For testing scaleCrv.
+
+procedure scaleCrv( Crv, XYFactor, ZFactor )
+{
+    # Scale around the center of the curve.
+    CrvCtr: ptInterp( Crv.ctlpoly[0], Crv.ctlpoly[3], .5 );
+    ScaledCrv: objTransform( Crv, 
+			     sXYZ( XYFactor, XYFactor, ZFactor,
+				   zAnchorFromPt( CrvCtr ) ) );
+}
+
+# This curve should be IDENTICAL to SpoutInsideCrv if everything's right...
+SpoutScaledCrv1: scaleCrv( SpoutOutsideCrv, XYFactor, ZFactor );
+
+InsideSpoutCrvs: 
+    forCollect( I; 0; I<=3; I+1 )	 			### >
+		scaleCrv( 
+		    spoutCrv( SpoutBottomFront, SpoutBottomBack, I ),
+		    XYFactor, ZFactor );
+SpoutInsideSrf: srfFromCrvs( 4, "ec_open", "kv_bezier", InsideSpoutCrvs )$;
+
+# Make the spout passage into a shell with adjacencies and join with inside.
+SpoutInside: shell( SpoutInsideSrf );
+mkAdjacentFull( SpoutInsideSrf, "left", SpoutInsideSrf, "right" );
+TeapotInside: combineShells( BodyInside, SpoutInside, "*" )$;
+>>
+commentOutCode
+<<
+    show( TeapotOutside, Lid );
+    highlight( TeapotInside );
+>>
+
+<<
+# Finally, join the inside and outside together at the spout and lid edges.
+Teapot: mergeShell( TeapotOutside, TeapotInside )$;
+
+# Access the copies of the surfaces inside the merged shell for adjacencies.
+SpoutOutsideSrf: srfFromShell( Teapot, 1 )$;
+SpoutInsideSrf: srfFromShell( Teapot, 5 )$;
+BodyOutsideSrf: srfFromShell( Teapot, 3 )$;
+BodyInsideSrf: srfFromShell( Teapot, 6 )$;
+
+    commentOutCode
+    <<					# Verify adjacencies.
+	TestCrv: getBoundary( BodyOutsideSrf, "top" );
+	TestCrv: getBoundary( BodyInsideSrf, "bottom" );
+
+	TestCrv: getBoundary( SpoutOutsideSrf, "right" );
+	TestCrv: getBoundary( SpoutInsideSrf, "bottom" );
+    >>
+
+mkAdjacentFull( BodyOutsideSrf, "top", BodyInsideSrf, "bottom" ); 
+mkAdjacentFull( SpoutOutsideSrf, "right", SpoutInsideSrf, "bottom" );
+>>
+commentOutCode
+<<
+    unshow( TeapotOutside, TeapotInside );
+    show( Teapot );
+    show( Lid );
+>>
+
+pwd();
+commentOutCode
+<<
+dumpA1File( array( Teapot, Lid ), "teapot-solid.a1" );
+dumpA1File( array( Teapot ), "teapot-solid-body.a1" );
+dumpA1File( array( Lid ), "teapot-solid-lid.a1" );
+>>
+
+################################################################
+# Cut it in half to show the inside.
+<<
+bboxObj( Teapot );
+bboxObj( Lid );
+setColor( Teapot, "White" );			setSq( Teapot, "Porcelain" );
+setColor( Lid, "White" );			setSq( Lid, "Porcelain" );
+
+CutPlane1: flatSrfBounds( Linear, Linear, 2, 2, 
+			  pt( -3.25, -.3 ), pt( 3.7, 3.25 ) );
+setColor( CutPlane1, "Goldenrod" );
+CutPlane2: flatSrfBounds( Linear, Linear, 2, 2, 
+			  pt( -3.25, -.3 ), pt( 3.7, 3.25 ) );
+setColor( CutPlane2, "SlateBlue" );
+
+HalfLid: combineShells( Lid, CutPlane2, "*" )$;
+HalfLid2: combineShells( Lid, CutPlane2, "-" )$;
+
+HalfTeapot: combineShells( Teapot, CutPlane1, "*" )$;
+HalfTeapot2: combineShells( Teapot, CutPlane1, "-" )$;
+>>
+commentOutCode
+<<
+    unshow( Teapot, Lid );
+    show( HalfTeapot, HalfLid );
+>>
+commentOutCode
+<<
+    unshow( HalfTeapot, HalfLid );
+    show( HalfTeapot2, HalfLid2 );
+>>
+
+pwd();
+commentOutCode
+<<
+dumpA1File( array( HalfTeapot, HalfLid ), "teapot-solid-half.a1" );
+dumpA1File( array( HalfTeapot ), "teapot-solid-body-half.a1" );
+dumpA1File( array( HalfLid ), "teapot-solid-lid-half.a1" );
+
+dumpA1File( array( HalfTeapot2, HalfLid2 ), "teapot-solid-half2.a1" );
+dumpA1File( array( HalfTeapot2 ), "teapot-solid-body-half2.a1" );
+dumpA1File( array( HalfLid2 ), "teapot-solid-lid-half2.a1" );
+>>

@@ -1,0 +1,206 @@
+/*{
+  date: "2026-01-28",
+  irmf: "1.0",
+  language: "glsl",
+  materials: ["porcelain"],
+  min: [-3.3, 0.0, -2.1],
+  max: [3.6, 3.3, 2.1],
+  title: "Utah Teapot (Solid Bezier)",
+  units: "mm",
+  version: "1.0",
+}*/
+
+precision highp float;
+
+// Cubic Bezier evaluation
+vec2 bezier(vec2 p0, vec2 p1, vec2 p2, vec2 p3, float t) {
+    float u = 1.0 - t;
+    return u*u*u*p0 + 3.0*u*u*t*p1 + 3.0*u*t*t*p2 + t*t*t*p3;
+}
+
+// Ray-casting intersection for 2D profile
+int intersectBezier(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3) {
+    int count = 0;
+    vec2 prev = p0;
+    const int samples = 20;
+    for (int i = 1; i <= samples; i++) {
+        vec2 curr = bezier(p0, p1, p2, p3, float(i) / float(samples));
+        if (((prev.y <= p.y && p.y < curr.y) || (curr.y <= p.y && p.y < prev.y))) {
+            float x = prev.x + (curr.x - prev.x) * (p.y - prev.y) / (curr.y - prev.y);
+            if (x > p.x) count++;
+        }
+        prev = curr;
+    }
+    return count;
+}
+
+int intersectLine(vec2 p, vec2 p0, vec2 p1) {
+    if (((p0.y <= p.y && p.y < p1.y) || (p1.y <= p.y && p.y < p0.y))) {
+        float x = p0.x + (p1.x - p0.x) * (p.y - p0.y) / (p1.y - p0.y);
+        if (x > p.x) return 1;
+    }
+    return 0;
+}
+
+// B-Spline evaluation (clamped cubic)
+vec2 bspline(vec2 p[9], float t) {
+    float mt = t * 6.0;
+    int seg = int(floor(mt));
+    if (seg < 0) seg = 0; if (seg > 5) seg = 5;
+    float f = mt - float(seg);
+    if (seg == 0) return bezier(p[0], p[1], p[2], (p[2]+p[3])*0.5, f);
+    if (seg == 5) return bezier((p[5]+p[6])*0.5, p[6], p[7], p[8], f);
+    vec2 c0 = (p[seg]+p[seg+1])*0.5; vec2 c1 = p[seg+1]; vec2 c2 = p[seg+2]; vec2 c3 = (p[seg+2]+p[seg+3])*0.5;
+    return bezier(c0, c1, c2, c3, f);
+}
+
+int intersectBSpline(vec2 p, vec2 ctrl[9]) {
+    int count = 0;
+    vec2 prev = ctrl[0];
+    const int samples = 40;
+    for (int i = 1; i <= samples; i++) {
+        vec2 curr = bspline(ctrl, float(i) / float(samples));
+        if (((prev.y <= p.y && p.y < curr.y) || (curr.y <= p.y && p.y < prev.y))) {
+            float x = prev.x + (curr.x - prev.x) * (p.y - prev.y) / (curr.y - prev.y);
+            if (x > p.x) count++;
+        }
+        prev = curr;
+    }
+    return count;
+}
+
+vec2 bsplineLid(vec2 p[12], float t) {
+    float mt = t * 9.0;
+    int seg = int(floor(mt));
+    if (seg < 0) seg = 0; if (seg > 8) seg = 8;
+    float f = mt - float(seg);
+    if (seg == 0) return bezier(p[0], p[1], p[2], (p[2]+p[3])*0.5, f);
+    if (seg == 8) return bezier((p[8]+p[9])*0.5, p[9], p[10], p[11], f);
+    vec2 c0 = (p[seg]+p[seg+1])*0.5; vec2 c1 = p[seg+1]; vec2 c2 = p[seg+2]; vec2 c3 = (p[seg+2]+p[seg+3])*0.5;
+    return bezier(c0, c1, c2, c3, f);
+}
+
+int intersectBSplineLid(vec2 p, vec2 ctrl[12]) {
+    int count = 0;
+    vec2 prev = ctrl[0];
+    const int samples = 50;
+    for (int i = 1; i <= samples; i++) {
+        vec2 curr = bsplineLid(ctrl, float(i) / float(samples));
+        if (((prev.y <= p.y && p.y < curr.y) || (curr.y <= p.y && p.y < prev.y))) {
+            float x = prev.x + (curr.x - prev.x) * (p.y - prev.y) / (curr.y - prev.y);
+            if (x > p.x) count++;
+        }
+        prev = curr;
+    }
+    return count;
+}
+
+bool isInsideBody(vec3 xyz, bool outside) {
+    float r = length(xyz.xz);
+    vec2 p = vec2(r, xyz.y);
+    int count = 0;
+    if (outside) {
+        count += intersectBezier(p, vec2(1.4, 2.25), vec2(1.3375, 2.38125), vec2(1.4375, 2.38125), vec2(1.5, 2.25));
+        count += intersectBezier(p, vec2(1.5, 2.25), vec2(1.75, 1.725), vec2(2.0, 1.2), vec2(2.0, 0.75));
+        count += intersectBezier(p, vec2(2.0, 0.75), vec2(2.0, 0.3), vec2(1.5, 0.075), vec2(1.5, 0.0));
+        count += intersectLine(p, vec2(1.5, 0.0), vec2(0.0, 0.0));
+        count += intersectLine(p, vec2(0.0, 0.0), vec2(0.0, 2.25));
+        count += intersectLine(p, vec2(0.0, 2.25), vec2(1.4, 2.25));
+    } else {
+        vec2 ctrl[9];
+        ctrl[0] = vec2(1.4, 2.25); ctrl[1] = vec2(1.3, 2.25); ctrl[2] = vec2(1.2, 2.25);
+        ctrl[3] = vec2(1.2, 2.15); ctrl[4] = vec2(1.5, 2.12); ctrl[5] = vec2(2.0, 0.6);
+        ctrl[6] = vec2(1.4, 0.2); ctrl[7] = vec2(1.3, 0.15); ctrl[8] = vec2(1.1, 0.15);
+        count += intersectBSpline(p, ctrl);
+        count += intersectLine(p, vec2(1.1, 0.15), vec2(0.0, 0.15));
+        count += intersectLine(p, vec2(0.0, 0.15), vec2(0.0, 2.25));
+        count += intersectLine(p, vec2(0.0, 2.25), vec2(1.4, 2.25));
+    }
+    return (count % 2) != 0;
+}
+
+bool isInsideLid(vec3 xyz, bool outside) {
+    float r = length(xyz.xz);
+    vec2 p = vec2(r, xyz.y);
+    int count = 0;
+    if (outside) {
+        count += intersectBezier(p, vec2(0.01, 3.0), vec2(0.8, 3.0), vec2(0.0, 2.7), vec2(0.2, 2.55));
+        count += intersectBezier(p, vec2(0.2, 2.55), vec2(0.4, 2.4), vec2(1.3, 2.4), vec2(1.3, 2.25));
+        count += intersectLine(p, vec2(1.3, 2.25), vec2(0.0, 2.25));
+        count += intersectLine(p, vec2(0.0, 2.25), vec2(0.0, 3.0));
+        count += intersectLine(p, vec2(0.0, 3.0), vec2(0.01, 3.0));
+    } else {
+        vec2 ctrl[12];
+        ctrl[0] = vec2(1.3, 2.25); ctrl[1] = vec2(1.2, 2.25); ctrl[2] = vec2(1.18, 2.25);
+        ctrl[3] = vec2(1.15, 2.15); ctrl[4] = vec2(1.1, 2.2); ctrl[5] = vec2(1.0, 2.32);
+        ctrl[6] = vec2(0.5, 2.35); ctrl[7] = vec2(0.07, 2.48); ctrl[8] = vec2(0.07, 2.66);
+        ctrl[9] = vec2(0.26, 2.87); ctrl[10] = vec2(0.2, 2.91); ctrl[11] = vec2(0.05, 2.91);
+        count += intersectBSplineLid(p, ctrl);
+        count += intersectLine(p, vec2(0.05, 2.91), vec2(0.0, 2.91));
+        count += intersectLine(p, vec2(0.0, 2.91), vec2(0.0, 2.25));
+        count += intersectLine(p, vec2(0.0, 2.25), vec2(1.3, 2.25));
+    }
+    return (count % 2) != 0;
+}
+
+float projectToBezier(vec2 q, vec2 p0, vec2 p1, vec2 p2, vec2 p3) {
+    float bestT = 0.5; float minDist = 1e10;
+    for (int i = 0; i <= 10; i++) {
+        float t = float(i) / 10.0;
+        float d = length(q - bezier(p0, p1, p2, p3, t));
+        if (d < minDist) { minDist = d; bestT = t; }
+    }
+    float delta = 0.05;
+    for (int j = 0; j < 3; j++) {
+        float t1 = clamp(bestT - delta, 0.0, 1.0); float t2 = clamp(bestT + delta, 0.0, 1.0);
+        float d1 = length(q - bezier(p0, p1, p2, p3, t1)); float d2 = length(q - bezier(p0, p1, p2, p3, t2));
+        if (d1 < d2) { if (d1 < minDist) { minDist = d1; bestT = t1; } }
+        else { if (d2 < minDist) { minDist = d2; bestT = t2; } }
+        delta *= 0.5;
+    }
+    return bestT;
+}
+
+bool isInsideHandle(vec3 xyz) {
+    // Average path of Row 0 and Row 3 from Handle patches
+    vec2 p0 = vec2(-1.55, 1.9875); vec2 p1 = vec2(-2.4, 1.9875); vec2 p2 = vec2(-2.85, 1.9875); vec2 p3 = vec2(-2.85, 1.65);
+    vec2 p4 = vec2(-2.85, 1.3125); vec2 p5 = vec2(-2.575, 0.88125); vec2 p6 = vec2(-1.95, 0.6);
+    float t1 = projectToBezier(xyz.xy, p0, p1, p2, p3); float d1 = length(xyz.xy - bezier(p0, p1, p2, p3, t1));
+    float t2 = projectToBezier(xyz.xy, p3, p4, p5, p6); float d2 = length(xyz.xy - bezier(p3, p4, p5, p6, t2));
+    float d = min(d1, d2);
+    float r_xy = 0.15; float r_z = 0.225; // Based on control points
+    return (d*d)/(r_xy*r_xy) + (xyz.z*xyz.z)/(r_z*r_z) < 1.0;
+}
+
+bool isInsideSpout(vec3 xyz, bool outside) {
+    // SpoutBottom path (avg of Row 0 and Row 3)
+    vec2 p0 = vec2(1.7, 0.8625); vec2 p1 = vec2(2.85, 0.975); vec2 p2 = vec2(2.35, 1.9125); vec2 p3 = vec2(3.0, 2.25);
+    // SpoutTop (lip) path
+    vec2 p4 = vec2(3.0, 2.25); vec2 p5 = vec2(3.1625, 2.334375); vec2 p6 = vec2(3.175, 2.34375); vec2 p7 = vec2(3.0, 2.25);
+
+    float t1 = projectToBezier(xyz.xy, p0, p1, p2, p3); float d1 = length(xyz.xy - bezier(p0, p1, p2, p3, t1));
+    float t2 = projectToBezier(xyz.xy, p4, p5, p6, p7); float d2 = length(xyz.xy - bezier(p4, p5, p6, p7, t2));
+    
+    float d = d1; float t = t1;
+    if (d2 < d1 && xyz.x > 2.7) { d = d2; t = 1.0; } // Use d2 for the lip area
+
+    // Radii based on SCL curves
+    float r_xy_out = mix(0.4125, 0.3, t); float r_z_out = mix(0.495, 0.1875, t);
+    if (t == 1.0 && d == d2) { r_xy_out = 0.2; r_z_out = 0.1125; }
+
+    if (!outside) {
+        float r_xy_in = r_xy_out * 0.666; float r_z_in = r_z_out * 0.6;
+        return (d*d)/(r_xy_in*r_xy_in) + (xyz.z*xyz.z)/(r_z_in*r_z_in) < 1.0;
+    }
+    return (d*d)/(r_xy_out*r_xy_out) + (xyz.z*xyz.z)/(r_z_out*r_z_out) < 1.0;
+}
+
+void mainModel4(out vec4 materials, in vec3 xyz) {
+    bool spoutSolid = isInsideSpout(xyz, true) && !isInsideSpout(xyz, false);
+    bool bodySolid = isInsideBody(xyz, true) && !isInsideBody(xyz, false);
+    bool lidSolid = isInsideLid(xyz, true) && !isInsideLid(xyz, false);
+    bool handleSolid = isInsideHandle(xyz);
+    
+    materials = vec4(0.0);
+    if (bodySolid || spoutSolid || lidSolid || handleSolid) materials[0] = 1.0;
+}

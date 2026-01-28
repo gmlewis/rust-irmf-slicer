@@ -149,19 +149,54 @@ fn isInsideHandle(xyz: vec3<f32>) -> bool {
     return (d*d)/(r_xy*r_xy) + (xyz.z*xyz.z)/(r_z*r_z) < 1.0;
 }
 
+fn bezier1D(p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
+    let u = 1.0 - t;
+    return u*u*u*p0 + 3.0*u*u*t*p1 + 3.0*u*t*t*p2 + t*t*t*p3;
+}
+
+fn testHump(p: vec3<f32>, q0: array<vec2<f32>, 4>, q3: array<vec2<f32>, 4>, zc: array<f32, 4>, xyScale: f32, zScale: f32) -> bool {
+    var c: array<vec2<f32>, 4>;
+    for(var i: i32 = 0; i < 4; i = i + 1) { c[i] = (q0[i] + q3[i]) * 0.5; }
+    let v = projectToBezier(p.xy, c[0], c[1], c[2], c[3]);
+    
+    let A = bezier(q0[0], q0[1], q0[2], q0[3], v);
+    let B = bezier(q3[0], q3[1], q3[2], q3[3], v);
+    let C = (A + B) * 0.5;
+    
+    let As = C + (A - C) * xyScale;
+    let Bs = C + (B - C) * xyScale;
+    
+    let Zv = bezier1D(zc[0], zc[1], zc[2], zc[3], v) * zScale;
+    
+    let dir = Bs - As;
+    let len2 = dot(dir, dir);
+    if (len2 < 1e-6) { return false; }
+    let w = dot(p.xy - As, dir) / len2;
+    if (w < 0.0 || w > 1.0) { return false; }
+    
+    let proj = As + w * dir;
+    if (length(p.xy - proj) > 0.1) { return false; }
+    
+    let u = 0.5 + sin(asin(clamp(2.0*w - 1.0, -1.0, 1.0)) / 3.0);
+    return abs(p.z) < Zv * 3.0 * u * (1.0 - u);
+}
+
 fn isInsideSpout(xyz: vec3<f32>, outside: bool) -> bool {
-    let p0 = vec2<f32>(1.7, 0.8625); let p1 = vec2<f32>(2.85, 0.975); let p2 = vec2<f32>(2.35, 1.9125); let p3 = vec2<f32>(3.0, 2.25);
-    let p4 = vec2<f32>(3.0, 2.25); let p5 = vec2<f32>(3.1625, 2.334375); let p6 = vec2<f32>(3.175, 2.34375); let p7 = vec2<f32>(3.0, 2.25);
-    let t1 = projectToBezier(xyz.xy, p0, p1, p2, p3); let d1 = length(xyz.xy - bezier(p0, p1, p2, p3, t1));
-    let t2 = projectToBezier(xyz.xy, p4, p5, p6, p7); let d2 = length(xyz.xy - bezier(p4, p5, p6, p7, t2));
-    var d = d1; var t = t1; if (d2 < d1 && xyz.x > 2.7) { d = d2; t = 1.0; }
-    var r_xy_out = mix(0.4125, 0.3, t); var r_z_out = mix(0.495, 0.1875, t);
-    if (t == 1.0 && d == d2) { r_xy_out = 0.2; r_z_out = 0.1125; }
+    let b0 = array<vec2<f32>, 4>(vec2<f32>(1.7, 1.275), vec2<f32>(2.6, 1.275), vec2<f32>(2.3, 1.95), vec2<f32>(2.7, 2.25));
+    let b3 = array<vec2<f32>, 4>(vec2<f32>(1.7, 0.45), vec2<f32>(3.1, 0.675), vec2<f32>(2.4, 1.875), vec2<f32>(3.3, 2.25));
+    let bz = array<f32, 4>(0.66, 0.66, 0.25, 0.25);
+
     if (!outside) {
-        let r_xy_in = r_xy_out * 0.666; let r_z_in = r_z_out * 0.6;
-        return (d*d)/(r_xy_in*r_xy_in) + (xyz.z*xyz.z)/(r_z_in*r_z_in) < 1.0;
+        return testHump(xyz, b0, b3, bz, 0.666667, 0.6);
     }
-    return (d*d)/(r_xy_out*r_xy_out) + (xyz.z*xyz.z)/(r_z_out*r_z_out) < 1.0;
+
+    if (testHump(xyz, b0, b3, bz, 1.0, 1.0)) { return true; }
+
+    let t0 = array<vec2<f32>, 4>(vec2<f32>(2.7, 2.25), vec2<f32>(2.8, 2.325), vec2<f32>(2.9, 2.325), vec2<f32>(2.8, 2.25));
+    let t3 = array<vec2<f32>, 4>(vec2<f32>(3.3, 2.25), vec2<f32>(3.525, 2.34375), vec2<f32>(3.45, 2.3625), vec2<f32>(3.2, 2.25));
+    let tz = array<f32, 4>(0.25, 0.25, 0.15, 0.15);
+
+    return testHump(xyz, t0, t3, tz, 1.0, 1.0);
 }
 
 fn mainModel4(xyz: vec3<f32>) -> vec4<f32> {

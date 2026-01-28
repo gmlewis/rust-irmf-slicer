@@ -172,27 +172,54 @@ bool isInsideHandle(vec3 xyz) {
     return (d*d)/(r_xy*r_xy) + (xyz.z*xyz.z)/(r_z*r_z) < 1.0;
 }
 
-bool isInsideSpout(vec3 xyz, bool outside) {
-    // SpoutBottom path (avg of Row 0 and Row 3)
-    vec2 p0 = vec2(1.7, 0.8625); vec2 p1 = vec2(2.85, 0.975); vec2 p2 = vec2(2.35, 1.9125); vec2 p3 = vec2(3.0, 2.25);
-    // SpoutTop (lip) path
-    vec2 p4 = vec2(3.0, 2.25); vec2 p5 = vec2(3.1625, 2.334375); vec2 p6 = vec2(3.175, 2.34375); vec2 p7 = vec2(3.0, 2.25);
+float bezier1D(float p0, float p1, float p2, float p3, float t) {
+    float u = 1.0 - t;
+    return u*u*u*p0 + 3.0*u*u*t*p1 + 3.0*u*t*t*p2 + t*t*t*p3;
+}
 
-    float t1 = projectToBezier(xyz.xy, p0, p1, p2, p3); float d1 = length(xyz.xy - bezier(p0, p1, p2, p3, t1));
-    float t2 = projectToBezier(xyz.xy, p4, p5, p6, p7); float d2 = length(xyz.xy - bezier(p4, p5, p6, p7, t2));
+bool testHump(vec3 p, vec2 q0[4], vec2 q3[4], float zc[4], float xyScale, float zScale) {
+    vec2 c[4];
+    for(int i=0; i<4; i++) c[i] = (q0[i] + q3[i]) * 0.5;
+    float v = projectToBezier(p.xy, c[0], c[1], c[2], c[3]);
     
-    float d = d1; float t = t1;
-    if (d2 < d1 && xyz.x > 2.7) { d = d2; t = 1.0; } // Use d2 for the lip area
+    vec2 A = bezier(q0[0], q0[1], q0[2], q0[3], v);
+    vec2 B = bezier(q3[0], q3[1], q3[2], q3[3], v);
+    vec2 C = (A + B) * 0.5;
+    
+    A = C + (A - C) * xyScale;
+    B = C + (B - C) * xyScale;
+    
+    float Zv = bezier1D(zc[0], zc[1], zc[2], zc[3], v) * zScale;
+    
+    vec2 dir = B - A;
+    float len2 = dot(dir, dir);
+    if (len2 < 1e-6) return false;
+    float w = dot(p.xy - A, dir) / len2;
+    if (w < 0.0 || w > 1.0) return false;
+    
+    vec2 proj = A + w * dir;
+    if (length(p.xy - proj) > 0.1) return false;
+    
+    float u = 0.5 + sin(asin(clamp(2.0*w - 1.0, -1.0, 1.0)) / 3.0);
+    return abs(p.z) < Zv * 3.0 * u * (1.0 - u);
+}
 
-    // Radii based on SCL curves
-    float r_xy_out = mix(0.4125, 0.3, t); float r_z_out = mix(0.495, 0.1875, t);
-    if (t == 1.0 && d == d2) { r_xy_out = 0.2; r_z_out = 0.1125; }
+bool isInsideSpout(vec3 xyz, bool outside) {
+    vec2 b0[4]; b0[0]=vec2(1.7, 1.275); b0[1]=vec2(2.6, 1.275); b0[2]=vec2(2.3, 1.95); b0[3]=vec2(2.7, 2.25);
+    vec2 b3[4]; b3[0]=vec2(1.7, 0.45); b3[1]=vec2(3.1, 0.675); b3[2]=vec2(2.4, 1.875); b3[3]=vec2(3.3, 2.25);
+    float bz[4]; bz[0]=0.66; bz[1]=0.66; bz[2]=0.25; bz[3]=0.25;
 
     if (!outside) {
-        float r_xy_in = r_xy_out * 0.666; float r_z_in = r_z_out * 0.6;
-        return (d*d)/(r_xy_in*r_xy_in) + (xyz.z*xyz.z)/(r_z_in*r_z_in) < 1.0;
+        return testHump(xyz, b0, b3, bz, 0.666667, 0.6);
     }
-    return (d*d)/(r_xy_out*r_xy_out) + (xyz.z*xyz.z)/(r_z_out*r_z_out) < 1.0;
+
+    if (testHump(xyz, b0, b3, bz, 1.0, 1.0)) return true;
+
+    vec2 t0[4]; t0[0]=vec2(2.7, 2.25); t0[1]=vec2(2.8, 2.325); t0[2]=vec2(2.9, 2.325); t0[3]=vec2(2.8, 2.25);
+    vec2 t3[4]; t3[0]=vec2(3.3, 2.25); t3[1]=vec2(3.525, 2.34375); t3[2]=vec2(3.45, 2.3625); t3[3]=vec2(3.2, 2.25);
+    float tz[4]; tz[0]=0.25; tz[1]=0.25; tz[2]=0.15; tz[3]=0.15;
+
+    return testHump(xyz, t0, t3, tz, 1.0, 1.0);
 }
 
 void mainModel4(out vec4 materials, in vec3 xyz) {

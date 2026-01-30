@@ -254,36 +254,45 @@ impl Optimizer {
         };
 
         let mut reconstruction_logic = String::new();
+        let half_k = k / 2;
         if language == "glsl" {
             reconstruction_logic.push_str(&format!(r###"
     float d = 0.0;
     float TWO_PI = 6.28318530718;
-    for (int wz = 0; wz < {K}; wz++) {{
-        for (int wy = 0; wy < {K}; wy++) {{
-            for (int wx = 0; wx < {K}; wx++) {{
-                int idx = wz * {K} * {K} + wy * {K} + wx;
-                float angle = TWO_PI * (float(wx) * v.x / DIMS.x + float(wy) * v.y / DIMS.y + float(wz) * v.z / DIMS.z);
+    int half_k = {half_k};
+    for (int dz = 0; dz < {K}; dz++) {{
+        float fz = float(dz - half_k);
+        for (int dy = 0; dy < {K}; dy++) {{
+            float fy = float(dy - half_k);
+            for (int dx = 0; dx < {K}; dx++) {{
+                float fx = float(dx - half_k);
+                int idx = dz * {K} * {K} + dy * {K} + dx;
+                float angle = TWO_PI * (fx * v.x / DIMS.x + fy * v.y / DIMS.y + fz * v.z / DIMS.z);
                 d += coeffs_re[idx] * cos(angle) - coeffs_im[idx] * sin(angle);
             }}
         }}
     }}
     if (d < 0.0) {{ materials = solidMaterial; return; }}
-"###, K = k));
+"###, K = k, half_k = half_k));
         } else {
             reconstruction_logic.push_str(&format!(r###"
     var d: f32 = 0.0;
     const TWO_PI: f32 = 6.28318530718;
-    for (var wz: i32 = 0; wz < {K}; wz++) {{
-        for (var wy: i32 = 0; wy < {K}; wy++) {{
-            for (var wx: i32 = 0; wx < {K}; wx++) {{
-                let idx = wz * {K} * {K} + wy * {K} + wx;
-                let angle = TWO_PI * (f32(wx) * v.x / DIMS.x + f32(wy) * v.y / DIMS.y + f32(wz) * v.z / DIMS.z);
+    const half_k: i32 = {half_k};
+    for (var dz: i32 = 0; dz < {K}; dz++) {{
+        let fz = f32(dz - half_k);
+        for (var dy: i32 = 0; dy < {K}; dy++) {{
+            let fy = f32(dy - half_k);
+            for (var dx: i32 = 0; dx < {K}; dx++) {{
+                let fx = f32(dx - half_k);
+                let idx = dz * {K} * {K} + dy * {K} + dx;
+                let angle = TWO_PI * (fx * v.x / DIMS.x + fy * v.y / DIMS.y + fz * v.z / DIMS.z);
                 d += coeffs_re[idx] * cos(angle) - coeffs_im[idx] * sin(angle);
             }}
         }}
     }}
     if (d < 0.0) {{ return solidMaterial; }}
-"###, K = k));
+"###, K = k, half_k = half_k));
         }
 
         if language == "glsl" {

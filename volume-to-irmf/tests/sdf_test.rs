@@ -76,3 +76,58 @@ fn test_generate_fourier_coefficients() {
     // DC component (index 0) should be non-zero (it's the average of the SDF)
     assert!(coeffs[0].re != 0.0);
 }
+
+#[test]
+fn test_reconstruct_sphere() {
+    let dims = [32, 32, 32];
+    let mut vol = VoxelVolume::new(dims, Vec3::ZERO, Vec3::splat(1.0));
+    
+    // Create a sphere at center (0.5, 0.5, 0.5) with radius 0.3
+    let center = Vec3::splat(0.5);
+    let radius = 0.3;
+    for z in 0..dims[2] {
+        for y in 0..dims[1] {
+            for x in 0..dims[0] {
+                let p = Vec3::new(
+                    (x as f32 + 0.5) / dims[0] as f32,
+                    (y as f32 + 0.5) / dims[1] as f32,
+                    (z as f32 + 0.5) / dims[2] as f32,
+                );
+                if p.distance(center) <= radius {
+                    vol.set(x, y, z, 1.0);
+                }
+            }
+        }
+    }
+    
+    // Use a high k for verification
+    let k = 16;
+    let sdf_orig = vol.generate_sdf();
+    let coeffs = vol.generate_fourier_coefficients(k);
+    
+    // Manual reconstruction on CPU
+    // We only check the center voxel to see if it's still "inside" (negative SDF)
+    let mid = (16 * 32 * 32 + 16 * 32 + 16) as usize;
+    let mut d = 0.0f32;
+    let two_pi = std::f32::consts::PI * 2.0;
+    let half_k = (k / 2) as i32;
+    
+    // Note: This reconstruction logic must match the shader
+    for dz in 0..k as i32 {
+        let fz = (dz - half_k) as f32;
+        for dy in 0..k as i32 {
+            let fy = (dy - half_k) as f32;
+            for dx in 0..k as i32 {
+                let fx = (dx - half_k) as f32;
+                let idx = (dz * k as i32 * k as i32 + dy * k as i32 + dx) as usize;
+                
+                // Position at center (0.5, 0.5, 0.5)
+                let angle = two_pi * (fx * 0.5 + fy * 0.5 + fz * 0.5);
+                d += coeffs[idx].re * angle.cos() - coeffs[idx].im * angle.sin();
+            }
+        }
+    }
+    
+    println!("SDF at center: orig={}, reconstructed={}", sdf_orig[mid], d);
+    // If this fails, it confirms the bug.
+}

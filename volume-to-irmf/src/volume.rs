@@ -801,11 +801,16 @@ impl VoxelVolume {
             *val *= norm;
         }
 
-        // Extract low-frequency coefficients (k x k x k)
+        // Extract low-frequency coefficients (k x k x k) centered around zero
         let mut result = Vec::with_capacity(k * k * k);
-        for z in 0..k {
-            for y in 0..k {
-                for x in 0..k {
+        let half_k = (k / 2) as i32;
+
+        for dz in -half_k..k as i32 - half_k {
+            let z = if dz < 0 { nz as i32 + dz } else { dz } as usize;
+            for dy in -half_k..k as i32 - half_k {
+                let y = if dy < 0 { ny as i32 + dy } else { dy } as usize;
+                for dx in -half_k..k as i32 - half_k {
+                    let x = if dx < 0 { nx as i32 + dx } else { dx } as usize;
                     let idx = z * ny * nx + y * nx + x;
                     result.push(complex_data[idx]);
                 }

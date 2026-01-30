@@ -261,15 +261,39 @@ impl Optimizer {
     float d = 0.0;
     float TWO_PI = 6.28318530718;
     int half_k = {half_k};
+
+    // Precompute 1D basis functions
+    float cos_x[{K}], sin_x[{K}];
+    float cos_y[{K}], sin_y[{K}];
+    float cos_z[{K}], sin_z[{K}];
+
+    for (int i = 0; i < {K}; i++) {{
+        float f = float(i - half_k);
+        float ax = TWO_PI * f * v.x / DIMS.x;
+        float ay = TWO_PI * f * v.y / DIMS.y;
+        float az = TWO_PI * f * v.z / DIMS.z;
+        cos_x[i] = cos(ax); sin_x[i] = sin(ax);
+        cos_y[i] = cos(ay); sin_y[i] = sin(ay);
+        cos_z[i] = cos(az); sin_z[i] = sin(az);
+    }}
+
     for (int dz = 0; dz < {K}; dz++) {{
-        float fz = float(dz - half_k);
         for (int dy = 0; dy < {K}; dy++) {{
-            float fy = float(dy - half_k);
+            float cycz = cos_y[dy] * cos_z[dz];
+            float cysz = cos_y[dy] * sin_z[dz];
+            float sycz = sin_y[dy] * cos_z[dz];
+            float sysz = sin_y[dy] * sin_z[dz];
+
+            float cos_bc = cycz - sysz;
+            float sin_bc = sycz + cysz;
+
             for (int dx = 0; dx < {K}; dx++) {{
-                float fx = float(dx - half_k);
                 int idx = dz * {K} * {K} + dy * {K} + dx;
-                float angle = TWO_PI * (fx * v.x / DIMS.x + fy * v.y / DIMS.y + fz * v.z / DIMS.z);
-                d += coeffs_re[idx] * cos(angle) - coeffs_im[idx] * sin(angle);
+                
+                float cos_abc = cos_x[dx] * cos_bc - sin_x[dx] * sin_bc;
+                float sin_abc = sin_x[dx] * cos_bc + cos_x[dx] * sin_bc;
+
+                d += coeffs_re[idx] * cos_abc - coeffs_im[idx] * sin_abc;
             }}
         }}
     }}
@@ -284,15 +308,45 @@ impl Optimizer {
     var d: f32 = 0.0;
     const TWO_PI: f32 = 6.28318530718;
     const half_k: i32 = {half_k};
+
+    var cos_x: array<f32, {K}>; var sin_x: array<f32, {K}>;
+    var cos_y: array<f32, {K}>; var sin_y: array<f32, {K}>;
+    var cos_z: array<f32, {K}>; var sin_z: array<f32, {K}>;
+
+    for (var i: i32 = 0; i < {K}; i++) {{
+        let f = f32(i - half_k);
+        let ax = TWO_PI * f * v.x / DIMS.x;
+        let ay = TWO_PI * f * v.y / DIMS.y;
+        let az = TWO_PI * f * v.z / DIMS.z;
+        cos_x[i] = cos(ax); sin_x[i] = sin(ax);
+        cos_y[i] = cos(ay); sin_y[i] = sin(ay);
+        cos_z[i] = cos(az); sin_z[i] = sin(az);
+    }}
+
     for (var dz: i32 = 0; dz < {K}; dz++) {{
-        let fz = f32(dz - half_k);
         for (var dy: i32 = 0; dy < {K}; dy++) {{
-            let fy = f32(dy - half_k);
+            let cycz = cos_y[dy] * cos_z[dz];
+            let cysz = cos_y[dy] * sin_z[dz];
+            let sycz = sin_y[dy] * cos_z[dz];
+            let sysz = sin_y[dy] * sin_z[dz];
+
             for (var dx: i32 = 0; dx < {K}; dx++) {{
-                let fx = f32(dx - half_k);
                 let idx = dz * {K} * {K} + dy * {K} + dx;
-                let angle = TWO_PI * (fx * v.x / DIMS.x + fy * v.y / DIMS.y + fz * v.z / DIMS.z);
-                d += coeffs_re[idx] * cos(angle) - coeffs_im[idx] * sin(angle);
+                
+                // Use trigonometric identities to avoid cos/sin inside the inner loop
+                // cos(a+b+c) = cos(a)cos(b+c) - sin(a)sin(b+c)
+                // sin(a+b+c) = sin(a)cos(b+c) + cos(a)sin(b+c)
+                // where:
+                // cos(b+c) = cos(b)cos(c) - sin(b)sin(c)
+                // sin(b+c) = sin(b)cos(c) + cos(b)sin(c)
+                
+                let cos_bc = cycz - sysz;
+                let sin_bc = sycz + cysz;
+
+                let cos_abc = cos_x[dx] * cos_bc - sin_x[dx] * sin_bc;
+                let sin_abc = sin_x[dx] * cos_bc + cos_x[dx] * sin_bc;
+
+                d += coeffs_re[idx] * cos_abc - coeffs_im[idx] * sin_abc;
             }}
         }}
     }}

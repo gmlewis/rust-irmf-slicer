@@ -34,6 +34,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let start_time = std::time::Instant::now();
     let args = Args::parse();
 
     println!("Reading {} ...", args.input.display());
@@ -90,10 +91,9 @@ async fn main() -> Result<()> {
     println!("Writing final IRMF to {} ...", output_path.display());
     std::fs::write(output_path, irmf)?;
 
-    let stats = &optimizer.stats;
     println!(
         "Done in {:?}. Produced {} cuboids.",
-        stats.duration,
+        start_time.elapsed(),
         optimizer.cuboid_count()
     );
 

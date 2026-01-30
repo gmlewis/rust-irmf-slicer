@@ -626,6 +626,155 @@ impl VoxelVolume {
             anyhow::bail!("GPU readback failed")
         }
     }
+
+    /// Generates a Signed Distance Field (SDF) from the voxel volume.
+    ///
+    /// Inside voxels (density > 0.5) will have negative distance to the nearest boundary.
+    /// Outside voxels (density <= 0.5) will have positive distance to the nearest boundary.
+    pub fn generate_sdf(&self) -> Vec<f32> {
+        let size = (self.dims[0] * self.dims[1] * self.dims[2]) as usize;
+
+        // 1. Distance to outside (for points inside)
+        let mut dist_to_outside = vec![f32::MAX; size];
+        let mut any_outside = false;
+        for i in 0..size {
+            if self.data[i] <= 0.5 {
+                dist_to_outside[i] = 0.0;
+                any_outside = true;
+            }
+        }
+        if any_outside {
+            self.compute_edt_3d(&mut dist_to_outside);
+        }
+
+        // 2. Distance to inside (for points outside)
+        let mut dist_to_inside = vec![f32::MAX; size];
+        let mut any_inside = false;
+        for i in 0..size {
+            if self.data[i] > 0.5 {
+                dist_to_inside[i] = 0.0;
+                any_inside = true;
+            }
+        }
+        if any_inside {
+            self.compute_edt_3d(&mut dist_to_inside);
+        }
+
+        // 3. Combine into signed distance
+        let mut sdf = vec![0.0f32; size];
+        for i in 0..size {
+            if self.data[i] > 0.5 {
+                // Inside: negative distance to nearest outside
+                sdf[i] = -dist_to_outside[i].sqrt();
+            } else {
+                // Outside: positive distance to nearest inside
+                sdf[i] = dist_to_inside[i].sqrt();
+            }
+        }
+        sdf
+    }
+
+    fn compute_edt_3d(&self, data: &mut [f32]) {
+        let nx = self.dims[0] as usize;
+        let ny = self.dims[1] as usize;
+        let nz = self.dims[2] as usize;
+
+        // Pass 1: X (independent rows)
+        data.par_chunks_exact_mut(nx).for_each(|row| {
+            let mut out = vec![0.0; nx];
+            Self::dt1d(row, &mut out);
+            row.copy_from_slice(&out);
+        });
+
+        // Pass 2: Y (independent columns in each X-Z plane)
+        data.par_chunks_exact_mut(ny * nx).for_each(|plane| {
+            let mut col = vec![0.0; ny];
+            let mut out = vec![0.0; ny];
+            for x in 0..nx {
+                for y in 0..ny {
+                    col[y] = plane[y * nx + x];
+                }
+                Self::dt1d(&col, &mut out);
+                for y in 0..ny {
+                    plane[y * nx + x] = out[y];
+                }
+            }
+        });
+
+        // Pass 3: Z (independent columns in each X-Y plane)
+        let nx_ny = nx * ny;
+        let data_ptr = data.as_mut_ptr() as usize;
+        (0..nx_ny).into_par_iter().for_each(|idx| {
+            let x = idx % nx;
+            let y = idx / nx;
+            let mut col = vec![0.0; nz];
+            let mut out = vec![0.0; nz];
+            for z in 0..nz {
+                let offset = z * nx_ny + y * nx + x;
+                col[z] = unsafe { *(data_ptr as *const f32).add(offset) };
+            }
+            Self::dt1d(&col, &mut out);
+            for z in 0..nz {
+                let offset = z * nx_ny + y * nx + x;
+                unsafe { *(data_ptr as *mut f32).add(offset) = out[z] };
+            }
+        });
+    }
+
+    /// 1D Distance Transform using the Felzenszwalb-Huttenlocher algorithm.
+    /// f is the input array of squared distances, d is the output array.
+    fn dt1d(f: &[f32], d: &mut [f32]) {
+        let n = f.len();
+        if n == 0 {
+            return;
+        }
+
+        let mut v = vec![0usize; n];
+        let mut z = vec![0.0f32; n + 1];
+        let mut k = 0usize;
+        v[0] = 0;
+        z[0] = f32::NEG_INFINITY;
+        z[1] = f32::INFINITY;
+
+        for q in 1..n {
+            if f[q] == f32::MAX {
+                continue;
+            }
+            // If f[v[k]] is MAX, we just replace it with current q
+            if f[v[k]] == f32::MAX {
+                v[k] = q;
+                continue;
+            }
+
+            let mut s = ((f[q] + (q * q) as f32) - (f[v[k]] + (v[k] * v[k]) as f32))
+                / (2.0 * (q as f32 - v[k] as f32));
+            while s <= z[k] {
+                if k == 0 {
+                    break;
+                }
+                k -= 1;
+                s = ((f[q] + (q * q) as f32) - (f[v[k]] + (v[k] * v[k]) as f32))
+                    / (2.0 * (q as f32 - v[k] as f32));
+            }
+            k += 1;
+            v[k] = q;
+            z[k] = s;
+            z[k + 1] = f32::INFINITY;
+        }
+
+        k = 0;
+        for q in 0..n {
+            while z[k + 1] < q as f32 {
+                k += 1;
+            }
+            if f[v[k]] == f32::MAX {
+                d[q] = f32::MAX;
+            } else {
+                let dx = q as f32 - v[k] as f32;
+                d[q] = dx * dx + f[v[k]];
+            }
+        }
+    }
 }
 
 fn intersect_tri_xy(px: f32, py: f32, v: &[stl_io::Vector<f32>; 3]) -> Option<f32> {

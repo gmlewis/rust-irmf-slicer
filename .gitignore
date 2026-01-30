@@ -7,3 +7,7 @@
 /examples/*/*.stl
 /examples/*/*.svx
 /examples/*/*.zip
+
+# handy soft-links at top of repo
+/pull-and-push.sh
+/test-all.sh

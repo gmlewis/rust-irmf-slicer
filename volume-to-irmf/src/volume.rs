@@ -336,7 +336,7 @@ impl VoxelVolume {
                 let x = idx % dims[0];
                 let y = idx / dims[0];
 
-                let mut bits = vec![0u32; (dims[2] as usize + 31) / 32];
+                let mut bits = vec![0u32; (dims[2] as usize).div_ceil(32)];
 
                 let jitter_x = 0.5123 + 0.0001 * (x % 13) as f32;
                 let jitter_y = 0.4789 + 0.0001 * (y % 17) as f32;
@@ -639,9 +639,9 @@ impl VoxelVolume {
         // 1. Distance to outside (for points inside)
         let mut dist_to_outside = vec![f32::MAX; size];
         let mut any_outside = false;
-        for i in 0..size {
+        for (i, dist) in dist_to_outside.iter_mut().enumerate() {
             if self.data[i] <= 0.5 {
-                dist_to_outside[i] = 0.0;
+                *dist = 0.0;
                 any_outside = true;
             }
         }
@@ -652,9 +652,9 @@ impl VoxelVolume {
         // 2. Distance to inside (for points outside)
         let mut dist_to_inside = vec![f32::MAX; size];
         let mut any_inside = false;
-        for i in 0..size {
+        for (i, dist) in dist_to_inside.iter_mut().enumerate() {
             if self.data[i] > 0.5 {
-                dist_to_inside[i] = 0.0;
+                *dist = 0.0;
                 any_inside = true;
             }
         }
@@ -711,14 +711,14 @@ impl VoxelVolume {
             let y = idx / nx;
             let mut col = vec![0.0; nz];
             let mut out = vec![0.0; nz];
-            for z in 0..nz {
+            for (z, item) in col.iter_mut().enumerate().take(nz) {
                 let offset = z * nx_ny + y * nx + x;
-                col[z] = unsafe { *(data_ptr as *const f32).add(offset) };
+                *item = unsafe { *(data_ptr as *const f32).add(offset) };
             }
             Self::dt1d(&col, &mut out);
-            for z in 0..nz {
+            for (z, &item) in out.iter().enumerate().take(nz) {
                 let offset = z * nx_ny + y * nx + x;
-                unsafe { *(data_ptr as *mut f32).add(offset) = out[z] };
+                unsafe { *(data_ptr as *mut f32).add(offset) = item };
             }
         });
     }
@@ -765,15 +765,15 @@ impl VoxelVolume {
         }
 
         k = 0;
-        for q in 0..n {
+        for (q, item) in d.iter_mut().enumerate().take(n) {
             while z[k + 1] < q as f32 {
                 k += 1;
             }
             if f[v[k]] == f32::MAX {
-                d[q] = f32::MAX;
+                *item = f32::MAX;
             } else {
                 let dx = q as f32 - v[k] as f32;
-                d[q] = dx * dx + f[v[k]];
+                *item = dx * dx + f[v[k]];
             }
         }
     }
@@ -855,14 +855,14 @@ impl VoxelVolume {
             let x = idx % nx;
             let y = idx / nx;
             let mut col = vec![Complex::new(0.0, 0.0); nz];
-            for z in 0..nz {
+            for (z, item) in col.iter_mut().enumerate().take(nz) {
                 let offset = z * nx_ny + y * nx + x;
-                col[z] = unsafe { *(data_ptr as *const Complex<f32>).add(offset) };
+                *item = unsafe { *(data_ptr as *const Complex<f32>).add(offset) };
             }
             fft_z.process(&mut col);
-            for z in 0..nz {
+            for (z, &item) in col.iter().enumerate().take(nz) {
                 let offset = z * nx_ny + y * nx + x;
-                unsafe { *(data_ptr as *mut Complex<f32>).add(offset) = col[z] };
+                unsafe { *(data_ptr as *mut Complex<f32>).add(offset) = item };
             }
         });
     }
@@ -902,7 +902,7 @@ fn intersect_ray_tri(orig: Vec3, dir: Vec3, v0: Vec3, v1: Vec3, v2: Vec3) -> f32
     let f = 1.0 / a;
     let s = orig - v0;
     let u = f * s.dot(h);
-    if u < 0.0 || u > 1.0 {
+    if !(0.0..=1.0).contains(&u) {
         return -1.0;
     }
     let q = s.cross(edge1);
@@ -910,6 +910,5 @@ fn intersect_ray_tri(orig: Vec3, dir: Vec3, v0: Vec3, v1: Vec3, v2: Vec3) -> f32
     if v < 0.0 || u + v > 1.0 {
         return -1.0;
     }
-    let t = f * edge2.dot(q);
-    t
+    f * edge2.dot(q)
 }

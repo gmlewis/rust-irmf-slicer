@@ -256,7 +256,8 @@ impl Optimizer {
         let mut reconstruction_logic = String::new();
         let half_k = k / 2;
         if language == "glsl" {
-            reconstruction_logic.push_str(&format!(r###"
+            reconstruction_logic.push_str(&format!(
+                r###"
     float d = 0.0;
     float TWO_PI = 6.28318530718;
     int half_k = {half_k};
@@ -273,9 +274,13 @@ impl Optimizer {
         }}
     }}
     if (d < 0.0) {{ materials = solidMaterial; return; }}
-"###, K = k, half_k = half_k));
+"###,
+                K = k,
+                half_k = half_k
+            ));
         } else {
-            reconstruction_logic.push_str(&format!(r###"
+            reconstruction_logic.push_str(&format!(
+                r###"
     var d: f32 = 0.0;
     const TWO_PI: f32 = 6.28318530718;
     const half_k: i32 = {half_k};
@@ -292,7 +297,10 @@ impl Optimizer {
         }}
     }}
     if (d < 0.0) {{ return solidMaterial; }}
-"###, K = k, half_k = half_k));
+"###,
+                K = k,
+                half_k = half_k
+            ));
         }
 
         if language == "glsl" {

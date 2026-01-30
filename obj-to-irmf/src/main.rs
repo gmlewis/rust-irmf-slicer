@@ -38,6 +38,10 @@ struct Args {
     /// Dump debug information to stdout
     #[arg(long)]
     debug: bool,
+
+    /// Use GPU for voxelization and optimization
+    #[arg(long)]
+    gpu: bool,
 }
 
 #[tokio::main]
@@ -89,10 +93,14 @@ async fn main() -> Result<()> {
     min -= size * 0.05;
     max += size * 0.05;
 
-    println!("Voxelizing mesh on GPU at resolution {} ...", args.res);
-    let volume =
+    let volume = if args.gpu {
+        println!("Voxelizing mesh on GPU at resolution {} ...", args.res);
         VoxelVolume::gpu_voxelize(vertices, indices, [args.res, args.res, args.res], min, max)
-            .await?;
+            .await?
+    } else {
+        println!("Voxelizing mesh on CPU at resolution {} ...", args.res);
+        VoxelVolume::cpu_voxelize(vertices, indices, [args.res, args.res, args.res], min, max)?
+    };
 
     println!(
         "Dimensions: {}x{}x{}",
@@ -115,7 +123,7 @@ async fn main() -> Result<()> {
     }
 
     println!("Initializing lossless optimizer...");
-    let mut optimizer = Optimizer::new(volume).await?;
+    let mut optimizer = Optimizer::new(volume, args.gpu).await?;
 
     println!("Running lossless cuboid merging algorithm...");
     optimizer.run_lossless().await?;

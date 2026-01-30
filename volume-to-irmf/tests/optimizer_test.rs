@@ -15,7 +15,7 @@ async fn test_optimizer_lossless_cube() {
         }
     }
 
-    let mut optimizer = Optimizer::new(volume).await.unwrap();
+    let mut optimizer = Optimizer::new(volume, false).await.unwrap();
 
     println!("Running lossless optimizer...");
     optimizer
@@ -40,7 +40,7 @@ async fn test_optimizer_lossless_cube() {
 async fn test_optimizer_empty_volume() {
     let dims = [16, 16, 16];
     let volume = VoxelVolume::new(dims, Vec3::ZERO, Vec3::ONE);
-    let mut optimizer = Optimizer::new(volume).await.unwrap();
+    let mut optimizer = Optimizer::new(volume, false).await.unwrap();
     optimizer
         .run_lossless()
         .await

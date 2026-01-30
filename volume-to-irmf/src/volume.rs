@@ -1,4 +1,5 @@
 use glam::Vec3;
+use rayon::prelude::*;
 use wgpu::util::DeviceExt;
 
 /// A 3D volume represented as a grid of voxels.
@@ -235,47 +236,52 @@ impl VoxelVolume {
         min -= size * 0.05;
         max += size * 0.05;
 
-        let mut volume = Self::new(dims, min, max);
+        let mut data = vec![0.0f32; (dims[0] * dims[1] * dims[2]) as usize];
 
-        for x in 0..dims[0] {
-            for y in 0..dims[1] {
-                let px = min.x + (x as f32 + 0.5) / dims[0] as f32 * (max.x - min.x);
-                let py = min.y + (y as f32 + 0.5) / dims[1] as f32 * (max.y - min.y);
+        data.par_chunks_exact_mut((dims[1] * dims[0]) as usize)
+            .enumerate()
+            .for_each(|(vz, slice)| {
+                let z_val = min.z + (vz as f32 + 0.5) / dims[2] as f32 * (max.z - min.z);
+                for vx in 0..dims[0] {
+                    for vy in 0..dims[1] {
+                        let px = min.x + (vx as f32 + 0.5) / dims[0] as f32 * (max.x - min.x);
+                        let py = min.y + (vy as f32 + 0.5) / dims[1] as f32 * (max.y - min.y);
 
-                let mut intersections = Vec::new();
-                for tri in &mesh.faces {
-                    let v = [
-                        mesh.vertices[tri.vertices[0]],
-                        mesh.vertices[tri.vertices[1]],
-                        mesh.vertices[tri.vertices[2]],
-                    ];
-                    if let Some(z) = intersect_tri_xy(px, py, &v) {
-                        intersections.push(z);
-                    }
-                }
+                        let mut intersections = Vec::new();
+                        for tri in &mesh.faces {
+                            let v = [
+                                mesh.vertices[tri.vertices[0]],
+                                mesh.vertices[tri.vertices[1]],
+                                mesh.vertices[tri.vertices[2]],
+                            ];
+                            if let Some(z) = intersect_tri_xy(px, py, &v) {
+                                intersections.push(z);
+                            }
+                        }
 
-                intersections.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                        intersections.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-                for i in (0..intersections.len()).step_by(2) {
-                    if i + 1 < intersections.len() {
-                        let z_start = intersections[i];
-                        let z_end = intersections[i + 1];
+                        for i in (0..intersections.len()).step_by(2) {
+                            if i + 1 < intersections.len() {
+                                let z_start = intersections[i];
+                                let z_end = intersections[i + 1];
 
-                        let vz_start = (((z_start - min.z) / (max.z - min.z) * dims[2] as f32)
-                            as u32)
-                            .min(dims[2] - 1);
-                        let vz_end = (((z_end - min.z) / (max.z - min.z) * dims[2] as f32) as u32)
-                            .min(dims[2] - 1);
-
-                        for vz in vz_start..=vz_end {
-                            volume.set(x, y, vz, 1.0);
+                                if z_val >= z_start && z_val <= z_end {
+                                    slice[(vy * dims[0] + vx) as usize] = 1.0;
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
-            }
-        }
+            });
 
-        Ok(volume)
+        Ok(Self {
+            data,
+            dims,
+            min,
+            max,
+        })
     }
 
     pub fn from_slices(
@@ -300,6 +306,91 @@ impl VoxelVolume {
         }
 
         Ok(volume)
+    }
+
+    pub fn cpu_voxelize(
+        vertices: Vec<Vec3>,
+        indices: Vec<u32>,
+        dims: [u32; 3],
+        min: Vec3,
+        max: Vec3,
+    ) -> anyhow::Result<Self> {
+        let num_triangles = indices.len() / 3;
+        let world_size = max - min;
+        let voxel_size = world_size / Vec3::new(dims[0] as f32, dims[1] as f32, dims[2] as f32);
+
+        let mut data = vec![0.0f32; (dims[0] * dims[1] * dims[2]) as usize];
+
+        data.par_chunks_exact_mut((dims[1] * dims[0]) as usize)
+            .enumerate()
+            .for_each(|(_vz, _slice)| {
+                // Actually, the GPU version works by X and Y columns.
+            });
+
+        // Redoing to match GPU logic: parallelize over X and Y
+        let mut columns: Vec<Vec<f32>> = (0..dims[0] * dims[1])
+            .into_par_iter()
+            .map(|idx| {
+                let x = idx % dims[0];
+                let y = idx / dims[0];
+
+                let mut bits = vec![0u32; (dims[2] as usize + 31) / 32];
+
+                let jitter_x = 0.5123 + 0.0001 * (x % 13) as f32;
+                let jitter_y = 0.4789 + 0.0001 * (y % 17) as f32;
+                let orig = Vec3::new(
+                    min.x + (x as f32 + jitter_x) * voxel_size.x,
+                    min.y + (y as f32 + jitter_y) * voxel_size.y,
+                    min.z - 0.1 * world_size.z,
+                );
+                let ray_dir = Vec3::new(0.0, 0.0, 1.0);
+
+                for i in 0..num_triangles {
+                    let v0 = vertices[indices[i * 3] as usize];
+                    let v1 = vertices[indices[i * 3 + 1] as usize];
+                    let v2 = vertices[indices[i * 3 + 2] as usize];
+
+                    let t = intersect_ray_tri(orig, ray_dir, v0, v1, v2);
+                    if t >= 0.0 {
+                        let world_z = orig.z + t;
+                        let z_world_rel = (world_z - min.z) / voxel_size.z;
+                        let z_idx = z_world_rel.round() as i32;
+                        if z_idx >= 0 && (z_idx as u32) < dims[2] {
+                            let z_idx = z_idx as u32;
+                            bits[(z_idx / 32) as usize] ^= 1 << (z_idx % 32);
+                        }
+                    }
+                }
+
+                let mut col = vec![0.0f32; dims[2] as usize];
+                let mut inside = false;
+                for z in 0..dims[2] {
+                    if ((bits[(z / 32) as usize] >> (z % 32)) & 1) == 1 {
+                        inside = !inside;
+                    }
+                    col[z as usize] = if inside { 1.0 } else { 0.0 };
+                }
+                col
+            })
+            .collect();
+
+        // Reassemble columns into flat data
+        let mut final_data = vec![0.0f32; (dims[0] * dims[1] * dims[2]) as usize];
+        for (idx, col) in columns.drain(..).enumerate() {
+            let x = idx as u32 % dims[0];
+            let y = idx as u32 / dims[0];
+            for (z, val) in col.into_iter().enumerate() {
+                let flat_idx = (z as u32 * dims[1] * dims[0] + y * dims[0] + x) as usize;
+                final_data[flat_idx] = val;
+            }
+        }
+
+        Ok(Self {
+            data: final_data,
+            dims,
+            min,
+            max,
+        })
     }
 
     pub async fn gpu_voxelize(
@@ -557,4 +648,28 @@ fn intersect_tri_xy(px: f32, py: f32, v: &[stl_io::Vector<f32>; 3]) -> Option<f3
     } else {
         None
     }
+}
+
+// Basic ray-triangle intersection (Möller-Trumbore)
+fn intersect_ray_tri(orig: Vec3, dir: Vec3, v0: Vec3, v1: Vec3, v2: Vec3) -> f32 {
+    let edge1 = v1 - v0;
+    let edge2 = v2 - v0;
+    let h = dir.cross(edge2);
+    let a = edge1.dot(h);
+    if a > -0.000001 && a < 0.000001 {
+        return -1.0;
+    }
+    let f = 1.0 / a;
+    let s = orig - v0;
+    let u = f * s.dot(h);
+    if u < 0.0 || u > 1.0 {
+        return -1.0;
+    }
+    let q = s.cross(edge1);
+    let v = f * dir.dot(q);
+    if v < 0.0 || u + v > 1.0 {
+        return -1.0;
+    }
+    let t = f * edge2.dot(q);
+    t
 }

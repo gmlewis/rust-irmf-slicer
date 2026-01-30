@@ -29,6 +29,10 @@ struct Args {
     /// Save intermediate Pass 3 (XY-planes) debug IRMF
     #[arg(long)]
     pass3: Option<PathBuf>,
+
+    /// Use GPU for optimization
+    #[arg(long)]
+    gpu: bool,
 }
 
 #[tokio::main]
@@ -45,7 +49,7 @@ async fn main() -> Result<()> {
     );
 
     println!("Initializing lossless optimizer...");
-    let mut optimizer = Optimizer::new(volume).await?;
+    let mut optimizer = Optimizer::new(volume, args.gpu).await?;
 
     println!("Running lossless cuboid merging algorithm...");
     optimizer.run_lossless().await?;

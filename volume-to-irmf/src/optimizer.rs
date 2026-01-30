@@ -1,5 +1,6 @@
 use crate::volume::VoxelVolume;
 use anyhow::Result;
+use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
@@ -26,10 +27,12 @@ pub struct Optimizer {
     pub pass3_results: Vec<([i32; 4], i32)>,
     /// Statistics from the optimization process.
     pub stats: Stats,
+    /// Whether to use GPU for optimization.
+    pub use_gpu: bool,
     /// WGPU device for GPU computations.
-    device: wgpu::Device,
+    device: Option<wgpu::Device>,
     /// WGPU queue for submitting commands.
-    queue: wgpu::Queue,
+    queue: Option<wgpu::Queue>,
 }
 
 /// A rectangular cuboid defined by its bounding coordinates.
@@ -57,33 +60,39 @@ impl Optimizer {
     /// # Arguments
     ///
     /// * `target_volume` - The voxel volume to optimize.
-    pub async fn new(target_volume: VoxelVolume) -> Result<Self> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
-            .await
-            .ok_or_else(|| anyhow::anyhow!("No WGPU adapter"))?;
-        let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("Optimizer Device"),
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits {
-                        max_buffer_size: adapter.limits().max_buffer_size,
-                        max_storage_buffer_binding_size: adapter
-                            .limits()
-                            .max_storage_buffer_binding_size,
-                        ..wgpu::Limits::default()
+    /// * `use_gpu` - Whether to use GPU for optimization.
+    pub async fn new(target_volume: VoxelVolume, use_gpu: bool) -> Result<Self> {
+        let (device, queue) = if use_gpu {
+            let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+            let adapter = instance
+                .request_adapter(&wgpu::RequestAdapterOptions::default())
+                .await
+                .ok_or_else(|| anyhow::anyhow!("No WGPU adapter"))?;
+            let (device, queue) = adapter
+                .request_device(
+                    &wgpu::DeviceDescriptor {
+                        label: Some("Optimizer Device"),
+                        required_features: wgpu::Features::empty(),
+                        required_limits: wgpu::Limits {
+                            max_buffer_size: adapter.limits().max_buffer_size,
+                            max_storage_buffer_binding_size: adapter
+                                .limits()
+                                .max_storage_buffer_binding_size,
+                            ..wgpu::Limits::default()
+                        },
+                        memory_hints: Default::default(),
                     },
-                    memory_hints: Default::default(),
-                },
-                None,
-            )
-            .await?;
+                    None,
+                )
+                .await?;
 
-        device.on_uncaptured_error(Box::new(|error| {
-            panic!("WGPU error: {}", error);
-        }));
+            device.on_uncaptured_error(Box::new(|error| {
+                panic!("WGPU error: {}", error);
+            }));
+            (Some(device), Some(queue))
+        } else {
+            (None, None)
+        };
 
         Ok(Self {
             target_volume: Arc::new(target_volume),
@@ -95,6 +104,7 @@ impl Optimizer {
                 duration: std::time::Duration::from_secs(0),
                 final_error: 0.0,
             },
+            use_gpu,
             device,
             queue,
         })
@@ -125,15 +135,20 @@ impl Optimizer {
         }
 
         if yz_to_x.is_empty() {
-            println!("Volume is empty, skipping GPU passes.");
+            println!("Volume is empty, skipping further passes.");
             self.stats.duration = start_time.elapsed();
             self.stats.iterations = 1;
             return Ok(());
         }
 
-        // Pass 2: GPU - Merge X
-        println!("Pass 2: GPU Merge X...");
-        self.pass2_results = self.run_gpu_pass2(&yz_to_x).await?;
+        // Pass 2: Merge X
+        if self.use_gpu {
+            println!("Pass 2: GPU Merge X...");
+            self.pass2_results = self.run_gpu_pass2(&yz_to_x).await?;
+        } else {
+            println!("Pass 2: CPU Merge X...");
+            self.pass2_results = self.run_cpu_pass2(&yz_to_x);
+        }
         println!("Pass 2 produced {} X-runs.", self.pass2_results.len());
 
         // Preparation for Pass 3: Map Z -> Sorted List of vec4i
@@ -153,9 +168,14 @@ impl Optimizer {
             });
         }
 
-        // Pass 3: GPU - Merge Y
-        println!("Pass 3: GPU Merge Y...");
-        self.pass3_results = self.run_gpu_pass3(&z_to_runs).await?;
+        // Pass 3: Merge Y
+        if self.use_gpu {
+            println!("Pass 3: GPU Merge Y...");
+            self.pass3_results = self.run_gpu_pass3(&z_to_runs).await?;
+        } else {
+            println!("Pass 3: CPU Merge Y...");
+            self.pass3_results = self.run_cpu_pass3(&z_to_runs);
+        }
         println!("Pass 3 produced {} XY-planes.", self.pass3_results.len());
 
         // Pass 4: CPU - Merge Z
@@ -170,20 +190,47 @@ impl Optimizer {
         Ok(())
     }
 
+    fn run_cpu_pass2(&self, yz_to_x: &BTreeMap<(i32, i32), Vec<i32>>) -> Vec<[i32; 4]> {
+        yz_to_x
+            .par_iter()
+            .map(|(&(y, z), x_indices)| {
+                let mut results = Vec::new();
+                if x_indices.is_empty() {
+                    return results;
+                }
+
+                let mut x_start = x_indices[0];
+                let mut x_prev = x_start;
+
+                for &x_curr in &x_indices[1..] {
+                    if x_curr != x_prev + 1 {
+                        results.push([x_start, x_prev, y, z]);
+                        x_start = x_curr;
+                    }
+                    x_prev = x_curr;
+                }
+                results.push([x_start, x_prev, y, z]);
+                results
+            })
+            .flatten()
+            .collect()
+    }
+
     async fn run_gpu_pass2(
         &self,
         yz_to_x: &BTreeMap<(i32, i32), Vec<i32>>,
     ) -> Result<Vec<[i32; 4]>> {
-        self.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+        let device = self.device.as_ref().unwrap();
+        let queue = self.queue.as_ref().unwrap();
+
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
 
         let shader_src = include_str!("pass2.wgsl");
-        let shader = self
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("Pass 2 Shader"),
-                source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_src)),
-            });
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Pass 2 Shader"),
+            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_src)),
+        });
 
         let dims = self.target_volume.dims;
         let num_yz = dims[1] * dims[2];
@@ -203,40 +250,34 @@ impl Optimizer {
             }
         }
 
-        let x_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("X Indices Buffer"),
-                contents: bytemuck::cast_slice(&x_indices),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let x_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("X Indices Buffer"),
+            contents: bytemuck::cast_slice(&x_indices),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
 
-        let offset_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Offsets Buffer"),
-                contents: bytemuck::cast_slice(&yz_offsets),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let offset_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Offsets Buffer"),
+            contents: bytemuck::cast_slice(&yz_offsets),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
 
-        let count_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Counts Buffer"),
-                contents: bytemuck::cast_slice(&yz_counts),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let count_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Counts Buffer"),
+            contents: bytemuck::cast_slice(&yz_counts),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
 
         // Max possible results is one per voxel
         let max_results = self.target_volume.data.len();
-        let results_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+        let results_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Results Buffer"),
             size: (max_results * 16) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
-        let result_count_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+        let result_count_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Result Count Buffer"),
             size: 4,
             usage: wgpu::BufferUsages::STORAGE
@@ -244,8 +285,7 @@ impl Optimizer {
                 | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        self.queue
-            .write_buffer(&result_count_buffer, 0, bytemuck::cast_slice(&[0u32]));
+        queue.write_buffer(&result_count_buffer, 0, bytemuck::cast_slice(&[0u32]));
 
         #[repr(C)]
         #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -261,26 +301,22 @@ impl Optimizer {
             dims_z: dims[2],
             pad: 0,
         };
-        let config_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Config Buffer"),
-                contents: bytemuck::cast_slice(&[config]),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
+        let config_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Config Buffer"),
+            contents: bytemuck::cast_slice(&[config]),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
 
-        let pipeline = self
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Pass 2 Pipeline"),
-                layout: None,
-                module: &shader,
-                entry_point: Some("main"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
+        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Pass 2 Pipeline"),
+            layout: None,
+            module: &shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
 
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Pass 2 Bind Group"),
             layout: &pipeline.get_bind_group_layout(0),
             entries: &[
@@ -311,9 +347,7 @@ impl Optimizer {
             ],
         });
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
             let mut compute_pass =
                 encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
@@ -322,13 +356,13 @@ impl Optimizer {
             compute_pass.dispatch_workgroups(num_yz.div_ceil(64), 1, 1);
         }
 
-        let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+        let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Staging Buffer"),
             size: (max_results * 16) as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let count_staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+        let count_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Count Staging Buffer"),
             size: 4,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
@@ -344,13 +378,13 @@ impl Optimizer {
         );
         encoder.copy_buffer_to_buffer(&result_count_buffer, 0, &count_staging_buffer, 0, 4);
 
-        self.queue.submit(Some(encoder.finish()));
-        self.device.poll(wgpu::Maintain::Wait);
+        queue.submit(Some(encoder.finish()));
+        device.poll(wgpu::Maintain::Wait);
 
-        if let Some(error) = self.device.pop_error_scope().await {
+        if let Some(error) = device.pop_error_scope().await {
             anyhow::bail!("WGPU Out of Memory error in Pass 2: {}", error);
         }
-        if let Some(error) = self.device.pop_error_scope().await {
+        if let Some(error) = device.pop_error_scope().await {
             anyhow::bail!("WGPU Validation error in Pass 2: {}", error);
         }
 
@@ -361,7 +395,7 @@ impl Optimizer {
                 .map_async(wgpu::MapMode::Read, move |res| {
                     tx.send(res).unwrap();
                 });
-            self.device.poll(wgpu::Maintain::Wait);
+            device.poll(wgpu::Maintain::Wait);
             rx.await??;
             let data = count_staging_buffer.slice(..).get_mapped_range();
             let count = bytemuck::cast_slice::<u8, u32>(&data)[0];
@@ -378,7 +412,7 @@ impl Optimizer {
                     tx.send(res).unwrap();
                 },
             );
-            self.device.poll(wgpu::Maintain::Wait);
+            device.poll(wgpu::Maintain::Wait);
             rx.await??;
             let data = staging_buffer
                 .slice(..(count as u64 * 16))
@@ -392,20 +426,54 @@ impl Optimizer {
         Ok(results)
     }
 
+    fn run_cpu_pass3(&self, z_to_runs: &BTreeMap<i32, Vec<[i32; 4]>>) -> Vec<([i32; 4], i32)> {
+        z_to_runs
+            .par_iter()
+            .map(|(&z, runs)| {
+                let mut results = Vec::new();
+                if runs.is_empty() {
+                    return results;
+                }
+
+                let first = runs[0];
+                let mut x1 = first[0];
+                let mut x2 = first[1];
+                let mut y_start = first[2];
+                let mut y_prev = y_start;
+
+                for &curr in &runs[1..] {
+                    if curr[0] == x1 && curr[1] == x2 && curr[2] == y_prev + 1 {
+                        y_prev = curr[2];
+                    } else {
+                        results.push(([x1, x2, y_start, y_prev], z));
+                        x1 = curr[0];
+                        x2 = curr[1];
+                        y_start = curr[2];
+                        y_prev = y_start;
+                    }
+                }
+                results.push(([x1, x2, y_start, y_prev], z));
+                results
+            })
+            .flatten()
+            .collect()
+    }
+
     async fn run_gpu_pass3(
         &self,
         z_to_runs: &BTreeMap<i32, Vec<[i32; 4]>>,
     ) -> Result<Vec<([i32; 4], i32)>> {
-        self.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+        let device = self.device.as_ref().unwrap();
+        let queue = self.queue.as_ref().unwrap();
+
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
 
         let shader_src = include_str!("pass3.wgsl");
-        let shader = self
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("Pass 3 Shader"),
-                source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_src)),
-            });
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Pass 3 Shader"),
+            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_src)),
+        });
 
         let dims = self.target_volume.dims;
         let num_z = dims[2];
@@ -422,45 +490,39 @@ impl Optimizer {
             }
         }
 
-        let runs_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Runs Buffer"),
-                contents: bytemuck::cast_slice(&all_runs),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let runs_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Runs Buffer"),
+            contents: bytemuck::cast_slice(&all_runs),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
 
-        let offset_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Z Offsets Buffer"),
-                contents: bytemuck::cast_slice(&z_offsets),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let offset_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Z Offsets Buffer"),
+            contents: bytemuck::cast_slice(&z_offsets),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
 
-        let count_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Z Counts Buffer"),
-                contents: bytemuck::cast_slice(&z_counts),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+        let count_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Z Counts Buffer"),
+            contents: bytemuck::cast_slice(&z_counts),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
 
         let max_results = all_runs.len();
-        let results_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+        let results_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Results Buffer"),
             size: (max_results * 16) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
-        let results_extra_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+        let results_extra_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Results Extra Buffer"),
             size: (max_results * 4) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
-        let result_count_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+        let result_count_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Result Count Buffer"),
             size: 4,
             usage: wgpu::BufferUsages::STORAGE
@@ -468,8 +530,7 @@ impl Optimizer {
                 | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        self.queue
-            .write_buffer(&result_count_buffer, 0, bytemuck::cast_slice(&[0u32]));
+        queue.write_buffer(&result_count_buffer, 0, bytemuck::cast_slice(&[0u32]));
 
         #[repr(C)]
         #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -477,26 +538,22 @@ impl Optimizer {
             num_z: u32,
         }
         let config = Config { num_z };
-        let config_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Config Buffer"),
-                contents: bytemuck::cast_slice(&[config]),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
+        let config_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Config Buffer"),
+            contents: bytemuck::cast_slice(&[config]),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
 
-        let pipeline = self
-            .device
-            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Pass 3 Pipeline"),
-                layout: None,
-                module: &shader,
-                entry_point: Some("main"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
+        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Pass 3 Pipeline"),
+            layout: None,
+            module: &shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
 
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Pass 3 Bind Group"),
             layout: &pipeline.get_bind_group_layout(0),
             entries: &[
@@ -531,9 +588,7 @@ impl Optimizer {
             ],
         });
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
             let mut compute_pass =
                 encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
@@ -542,19 +597,19 @@ impl Optimizer {
             compute_pass.dispatch_workgroups(num_z.div_ceil(64), 1, 1);
         }
 
-        let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+        let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Staging Buffer"),
             size: (max_results * 16) as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let extra_staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+        let extra_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Extra Staging Buffer"),
             size: (max_results * 4) as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let count_staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+        let count_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Count Staging Buffer"),
             size: 4,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
@@ -577,13 +632,13 @@ impl Optimizer {
         );
         encoder.copy_buffer_to_buffer(&result_count_buffer, 0, &count_staging_buffer, 0, 4);
 
-        self.queue.submit(Some(encoder.finish()));
-        self.device.poll(wgpu::Maintain::Wait);
+        queue.submit(Some(encoder.finish()));
+        device.poll(wgpu::Maintain::Wait);
 
-        if let Some(error) = self.device.pop_error_scope().await {
+        if let Some(error) = device.pop_error_scope().await {
             anyhow::bail!("WGPU Out of Memory error in Pass 3: {}", error);
         }
-        if let Some(error) = self.device.pop_error_scope().await {
+        if let Some(error) = device.pop_error_scope().await {
             anyhow::bail!("WGPU Validation error in Pass 3: {}", error);
         }
 
@@ -594,7 +649,7 @@ impl Optimizer {
                 .map_async(wgpu::MapMode::Read, move |res| {
                     tx.send(res).unwrap();
                 });
-            self.device.poll(wgpu::Maintain::Wait);
+            device.poll(wgpu::Maintain::Wait);
             rx.await??;
             let data = count_staging_buffer.slice(..).get_mapped_range();
             let count = bytemuck::cast_slice::<u8, u32>(&data)[0];
@@ -611,7 +666,7 @@ impl Optimizer {
                     tx.send(res).unwrap();
                 },
             );
-            self.device.poll(wgpu::Maintain::Wait);
+            device.poll(wgpu::Maintain::Wait);
             rx.await??;
             let data = staging_buffer
                 .slice(..(count as u64 * 16))
@@ -630,7 +685,7 @@ impl Optimizer {
                     tx.send(res).unwrap();
                 },
             );
-            self.device.poll(wgpu::Maintain::Wait);
+            device.poll(wgpu::Maintain::Wait);
             rx.await??;
             let data = extra_staging_buffer
                 .slice(..(count as u64 * 4))

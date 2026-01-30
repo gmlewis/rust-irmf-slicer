@@ -1,5 +1,6 @@
 use crate::volume::VoxelVolume;
 use anyhow::Result;
+use num_complex::Complex;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -21,6 +22,8 @@ pub struct Optimizer {
     pub target_volume: Arc<VoxelVolume>,
     /// List of cuboids found during optimization.
     pub cuboids: Vec<Cuboid>,
+    /// Low-frequency Fourier coefficients.
+    pub fourier_coefficients: Vec<Complex<f32>>,
     /// Results from pass 2 (X-runs).
     pub pass2_results: Vec<[i32; 4]>,
     /// Results from pass 3 (XY-planes).
@@ -97,6 +100,7 @@ impl Optimizer {
         Ok(Self {
             target_volume: Arc::new(target_volume),
             cuboids: Vec::new(),
+            fourier_coefficients: Vec::new(),
             pass2_results: Vec::new(),
             pass3_results: Vec::new(),
             stats: Stats {
@@ -188,6 +192,93 @@ impl Optimizer {
         self.stats.final_error = 0.0;
 
         Ok(())
+    }
+
+    /// Runs the Fourier approximation algorithm to generate a continuous scalar field.
+    ///
+    /// # Arguments
+    ///
+    /// * `k` - The number of low-frequency coefficients to keep in each dimension.
+    pub async fn run_fourier(&mut self, k: usize) -> Result<()> {
+        let start_time = std::time::Instant::now();
+        println!("Running Fourier approximation (k={})...", k);
+
+        self.fourier_coefficients = self.target_volume.generate_fourier_coefficients(k);
+
+        self.stats.duration = start_time.elapsed();
+        self.stats.iterations = 1;
+        self.stats.final_error = 0.0; // TODO: compute error
+
+        Ok(())
+    }
+
+    /// Generates IRMF shader code using the Fourier approximation.
+    pub fn generate_fourier_irmf(&self, language: String) -> String {
+        let k = (self.fourier_coefficients.len() as f32).powf(1.0 / 3.0).round() as usize;
+        let mut coeffs_re = String::new();
+        let mut coeffs_im = String::new();
+
+        for (i, c) in self.fourier_coefficients.iter().enumerate() {
+            if i > 0 {
+                coeffs_re.push_str(", ");
+                coeffs_im.push_str(", ");
+                if i % 8 == 0 {
+                    coeffs_re.push('\n');
+                    coeffs_im.push('\n');
+                    coeffs_re.push_str("        ");
+                    coeffs_im.push_str("        ");
+                }
+            }
+            coeffs_re.push_str(&format!("{:.6}", c.re));
+            coeffs_im.push_str(&format!("{:.6}", c.im));
+        }
+
+        let array_decl = if language == "glsl" {
+            format!("const float coeffs_re[{}] = float[](\n        {}\n    );\n    const float coeffs_im[{}] = float[](\n        {}\n    );", 
+                self.fourier_coefficients.len(), coeffs_re, self.fourier_coefficients.len(), coeffs_im)
+        } else {
+            format!("const coeffs_re = array<f32, {}>(\n        {}\n    );\n    const coeffs_im = array<f32, {}>(\n        {}\n    );",
+                self.fourier_coefficients.len(), coeffs_re, self.fourier_coefficients.len(), coeffs_im)
+        };
+
+        let mut reconstruction_logic = String::new();
+        if language == "glsl" {
+            reconstruction_logic.push_str(&format!(r###"
+    float d = 0.0;
+    float TWO_PI = 6.28318530718;
+    for (int wz = 0; wz < {K}; wz++) {{
+        for (int wy = 0; wy < {K}; wy++) {{
+            for (int wx = 0; wx < {K}; wx++) {{
+                int idx = wz * {K} * {K} + wy * {K} + wx;
+                float angle = TWO_PI * (float(wx) * v.x / DIMS.x + float(wy) * v.y / DIMS.y + float(wz) * v.z / DIMS.z);
+                d += coeffs_re[idx] * cos(angle) - coeffs_im[idx] * sin(angle);
+            }}
+        }}
+    }}
+    if (d < 0.0) {{ return solidMaterial; }}
+"###, K = k));
+        } else {
+            reconstruction_logic.push_str(&format!(r###"
+    var d: f32 = 0.0;
+    const TWO_PI: f32 = 6.28318530718;
+    for (var wz: i32 = 0; wz < {K}; wz++) {{
+        for (var wy: i32 = 0; wy < {K}; wy++) {{
+            for (var wx: i32 = 0; wx < {K}; wx++) {{
+                let idx = wz * {K} * {K} + wy * {K} + wx;
+                let angle = TWO_PI * (f32(wx) * v.x / DIMS.x + f32(wy) * v.y / DIMS.y + f32(wz) * v.z / DIMS.z);
+                d += coeffs_re[idx] * cos(angle) - coeffs_im[idx] * sin(angle);
+            }}
+        }}
+    }}
+    if (d < 0.0) {{ return solidMaterial; }}
+"###, K = k));
+        }
+
+        if language == "glsl" {
+            self.wrap_glsl_irmf(array_decl, reconstruction_logic, "Fourier Approximation")
+        } else {
+            self.wrap_wgsl_irmf(array_decl, reconstruction_logic, "Fourier Approximation")
+        }
     }
 
     fn run_cpu_pass2(&self, yz_to_x: &BTreeMap<(i32, i32), Vec<i32>>) -> Vec<[i32; 4]> {

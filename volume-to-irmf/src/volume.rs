@@ -1,5 +1,7 @@
 use glam::Vec3;
+use num_complex::Complex;
 use rayon::prelude::*;
+use rustfft::FftPlanner;
 use wgpu::util::DeviceExt;
 
 /// A 3D volume represented as a grid of voxels.
@@ -774,6 +776,90 @@ impl VoxelVolume {
                 d[q] = dx * dx + f[v[k]];
             }
         }
+    }
+
+    /// Generates low-frequency Fourier coefficients for the volume's SDF.
+    ///
+    /// # Arguments
+    ///
+    /// * `k` - The number of coefficients to keep in each dimension (k x k x k).
+    pub fn generate_fourier_coefficients(&self, k: usize) -> Vec<Complex<f32>> {
+        let sdf = self.generate_sdf();
+        let mut complex_data: Vec<Complex<f32>> =
+            sdf.iter().map(|&d| Complex::new(d, 0.0)).collect();
+
+        let nx = self.dims[0] as usize;
+        let ny = self.dims[1] as usize;
+        let nz = self.dims[2] as usize;
+
+        // Perform 3D FFT
+        self.fft_3d(&mut complex_data);
+
+        // Normalize
+        let norm = 1.0 / (nx * ny * nz) as f32;
+        for val in &mut complex_data {
+            *val *= norm;
+        }
+
+        // Extract low-frequency coefficients (k x k x k)
+        let mut result = Vec::with_capacity(k * k * k);
+        for z in 0..k {
+            for y in 0..k {
+                for x in 0..k {
+                    let idx = z * ny * nx + y * nx + x;
+                    result.push(complex_data[idx]);
+                }
+            }
+        }
+        result
+    }
+
+    fn fft_3d(&self, data: &mut [Complex<f32>]) {
+        let nx = self.dims[0] as usize;
+        let ny = self.dims[1] as usize;
+        let nz = self.dims[2] as usize;
+
+        let mut planner = FftPlanner::new();
+
+        // Pass 1: X (independent rows)
+        let fft_x = planner.plan_fft_forward(nx);
+        data.par_chunks_exact_mut(nx).for_each(|row| {
+            fft_x.process(row);
+        });
+
+        // Pass 2: Y (independent columns in each X-Z plane)
+        let fft_y = planner.plan_fft_forward(ny);
+        data.par_chunks_exact_mut(ny * nx).for_each(|plane| {
+            let mut col = vec![Complex::new(0.0, 0.0); ny];
+            for x in 0..nx {
+                for y in 0..ny {
+                    col[y] = plane[y * nx + x];
+                }
+                fft_y.process(&mut col);
+                for y in 0..ny {
+                    plane[y * nx + x] = col[y];
+                }
+            }
+        });
+
+        // Pass 3: Z (independent columns in each X-Y plane)
+        let fft_z = planner.plan_fft_forward(nz);
+        let nx_ny = nx * ny;
+        let data_ptr = data.as_mut_ptr() as usize;
+        (0..nx_ny).into_par_iter().for_each(|idx| {
+            let x = idx % nx;
+            let y = idx / nx;
+            let mut col = vec![Complex::new(0.0, 0.0); nz];
+            for z in 0..nz {
+                let offset = z * nx_ny + y * nx + x;
+                col[z] = unsafe { *(data_ptr as *const Complex<f32>).add(offset) };
+            }
+            fft_z.process(&mut col);
+            for z in 0..nz {
+                let offset = z * nx_ny + y * nx + x;
+                unsafe { *(data_ptr as *mut Complex<f32>).add(offset) = col[z] };
+            }
+        });
     }
 }
 

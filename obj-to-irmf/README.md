@@ -33,6 +33,9 @@ obj-to-irmf --res 128 input.obj
 - `-o, --output`: Output .irmf file (optional, defaults to input name with .irmf extension)
 - `-l, --language`: IRMF shader language (glsl or wgsl, defaults to glsl)
 - `-r, --res`: Resolution for voxelization (defaults to 64)
+- `--gpu`: Use GPU for voxelization and optimization
+- `--fourier`: Use Fourier approximation instead of cuboid merging
+- `-k`: Number of Fourier coefficients in each dimension (defaults to 16)
 - `--debug`: Dump debug information to stdout
 
 ## License

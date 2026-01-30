@@ -177,23 +177,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Usage (Conversion)
 
-The `volume-to-irmf` tools allow you to convert existing 3D models into optimized IRMF shaders. This process uses a GPU-accelerated optimization loop to approximate the input volume with basic primitives (spheres and cubes).
+The `volume-to-irmf` tools allow you to convert existing 3D models into optimized IRMF shaders. This process can either perform a lossless cuboid-merging optimization (default) or a Fourier series approximation for extreme compression and infinite resolution.
 
 ### Examples
 
-Convert a BinVox file to IRMF:
+Convert a BinVox file to IRMF (lossless cuboids):
 ```sh
 cargo run -p binvox-to-irmf -- input.binvox
 ```
 
-Convert an STL file to IRMF (specifying voxelization resolution):
+Convert an STL file to IRMF using Fourier approximation (specifying resolution and coefficients):
 ```sh
-cargo run -p stl-to-irmf -- input.stl --res 128
+cargo run -p stl-to-irmf -- input.stl --res 128 --fourier -k 16
 ```
 
-Convert an OBJ file to IRMF:
+Convert an OBJ file to IRMF on GPU:
 ```sh
-cargo run -p obj-to-irmf -- input.obj --res 128
+cargo run -p obj-to-irmf -- input.obj --res 128 --gpu
 ```
 
 Convert a ZIP archive of image slices to IRMF:
@@ -201,7 +201,7 @@ Convert a ZIP archive of image slices to IRMF:
 cargo run -p zip-to-irmf -- input.zip
 ```
 
-These tools will output a `.irmf` file containing a WGSL shader that represents the optimized model.
+These tools will output a `.irmf` file containing an optimized shader that represents the model.
 
 ## License
 

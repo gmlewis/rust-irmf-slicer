@@ -10,8 +10,10 @@ This crate provides tools to convert voxel-based 3D volumes into efficient IRMF 
 
 ## Features
 
-- **Lossless Optimization**: Converts voxel data to optimized cuboid representations
-- **GPU Acceleration**: Uses WGPU for high-performance computations
+- **Lossless Optimization**: Converts voxel data to optimized cuboid representations (default)
+- **Fourier Approximation**: Approximates models using continuous 3D Fourier series for extreme compression and infinite resolution
+- **GPU Acceleration**: Uses WGPU for high-performance computations (voxelization and cuboid merging)
+- **Parallel Processing**: Uses Rayon for efficient multi-core CPU computations
 - **IRMF Generation**: Produces optimized GLSL/WGSL shaders
 - **Multiple Formats**: Supports BinVox, STL, OBJ, DLP/Photon, and other voxel formats
 
@@ -21,10 +23,10 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-volume-to-irmf = "0.2"
+volume-to-irmf = "0.3"
 ```
 
-### Basic Example
+### Lossless Optimization (Default)
 
 ```rust
 use volume_to_irmf::{Optimizer, VoxelVolume};
@@ -34,12 +36,32 @@ async fn main() -> anyhow::Result<()> {
     // Load a voxel volume
     let volume = VoxelVolume::from_binvox(std::fs::File::open("model.binvox")?)?;
 
-    // Create and run optimizer
-    let mut optimizer = Optimizer::new(volume).await?;
+    // Create and run optimizer (true = use GPU, false = use CPU)
+    let mut optimizer = Optimizer::new(volume, false).await?;
     optimizer.run_lossless().await?;
 
     // Generate IRMF shader
     let irmf_code = optimizer.generate_final_irmf("glsl".to_string());
+    println!("{}", irmf_code);
+
+    Ok(())
+}
+```
+
+### Fourier Approximation
+
+```rust
+use volume_to_irmf::{Optimizer, VoxelVolume};
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let volume = VoxelVolume::from_binvox(std::fs::File::open("model.binvox")?)?;
+    let mut optimizer = Optimizer::new(volume, false).await?;
+    
+    // Run Fourier approximation with 16 coefficients per dimension
+    optimizer.run_fourier(16).await?;
+
+    let irmf_code = optimizer.generate_fourier_irmf("glsl".to_string());
     println!("{}", irmf_code);
 
     Ok(())

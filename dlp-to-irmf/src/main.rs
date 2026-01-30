@@ -35,6 +35,14 @@ struct Args {
     /// Use GPU for optimization
     #[arg(long)]
     gpu: bool,
+
+    /// Use Fourier approximation
+    #[arg(long)]
+    fourier: bool,
+
+    /// Number of Fourier coefficients in each dimension (k x k x k)
+    #[arg(short, long, default_value_t = 16)]
+    k: usize,
 }
 
 #[tokio::main]
@@ -72,35 +80,61 @@ async fn main() -> Result<()> {
         volume.dims[0], volume.dims[1], volume.dims[2]
     );
 
-    println!("Initializing lossless optimizer...");
+    println!("Initializing optimizer...");
     let mut optimizer = Optimizer::new(volume, args.gpu).await?;
 
-    println!("Running lossless cuboid merging algorithm...");
-    optimizer.run_lossless().await?;
+    if args.fourier {
+        println!("Running Fourier approximation algorithm (k={})...", args.k);
+        optimizer.run_fourier(args.k).await?;
+    } else {
+        println!("Running lossless cuboid merging algorithm...");
+        optimizer.run_lossless().await?;
+    }
 
     if let Some(path) = args.pass2 {
-        println!("Writing Pass 2 debug IRMF to {} ...", path.display());
-        std::fs::write(path, optimizer.generate_pass2_irmf())?;
+        if args.fourier {
+            println!("Warning: --pass2 is not available in Fourier mode.");
+        } else {
+            println!("Writing Pass 2 debug IRMF to {} ...", path.display());
+            std::fs::write(path, optimizer.generate_pass2_irmf())?;
+        }
     }
 
     if let Some(path) = args.pass3 {
-        println!("Writing Pass 3 debug IRMF to {} ...", path.display());
-        std::fs::write(path, optimizer.generate_pass3_irmf())?;
+        if args.fourier {
+            println!("Warning: --pass3 is not available in Fourier mode.");
+        } else {
+            println!("Writing Pass 3 debug IRMF to {} ...", path.display());
+            std::fs::write(path, optimizer.generate_pass3_irmf())?;
+        }
     }
 
     let language = args.language.unwrap_or_else(|| "glsl".to_string());
-    let irmf = optimizer.generate_irmf(language);
+    let irmf = if args.fourier {
+        optimizer.generate_fourier_irmf(language)
+    } else {
+        optimizer.generate_irmf(language)
+    };
+
     let output_path = args
         .output
         .unwrap_or_else(|| args.input.with_extension("irmf"));
     println!("Writing final IRMF to {} ...", output_path.display());
     std::fs::write(output_path, irmf)?;
 
-    println!(
-        "Done in {:?}. Produced {} cuboids.",
-        start_time.elapsed(),
-        optimizer.cuboid_count()
-    );
+    if args.fourier {
+        println!(
+            "Done in {:?}. Produced Fourier approximation with {}^3 coefficients.",
+            start_time.elapsed(),
+            args.k
+        );
+    } else {
+        println!(
+            "Done in {:?}. Produced {} cuboids.",
+            start_time.elapsed(),
+            optimizer.cuboid_count()
+        );
+    }
 
     Ok(())
 }

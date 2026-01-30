@@ -54,3 +54,25 @@ fn test_generate_sdf_full() {
     // All should be negative or -f32::MAX.
     assert!(sdf[0] < -1000.0);
 }
+
+#[test]
+fn test_generate_fourier_coefficients() {
+    let dims = [16, 16, 16];
+    let mut vol = VoxelVolume::new(dims, Vec3::ZERO, Vec3::splat(16.0));
+    
+    // Create a cube in the middle
+    for z in 6..10 {
+        for y in 6..10 {
+            for x in 6..10 {
+                vol.set(x, y, z, 1.0);
+            }
+        }
+    }
+    
+    let k = 4;
+    let coeffs = vol.generate_fourier_coefficients(k);
+    assert_eq!(coeffs.len(), k * k * k);
+    
+    // DC component (index 0) should be non-zero (it's the average of the SDF)
+    assert!(coeffs[0].re != 0.0);
+}

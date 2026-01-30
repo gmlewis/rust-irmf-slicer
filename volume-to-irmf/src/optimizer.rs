@@ -214,7 +214,9 @@ impl Optimizer {
 
     /// Generates IRMF shader code using the Fourier approximation.
     pub fn generate_fourier_irmf(&self, language: String) -> String {
-        let k = (self.fourier_coefficients.len() as f32).powf(1.0 / 3.0).round() as usize;
+        let k = (self.fourier_coefficients.len() as f32)
+            .powf(1.0 / 3.0)
+            .round() as usize;
         let mut coeffs_re = String::new();
         let mut coeffs_im = String::new();
 
@@ -234,11 +236,21 @@ impl Optimizer {
         }
 
         let array_decl = if language == "glsl" {
-            format!("const float coeffs_re[{}] = float[](\n        {}\n    );\n    const float coeffs_im[{}] = float[](\n        {}\n    );", 
-                self.fourier_coefficients.len(), coeffs_re, self.fourier_coefficients.len(), coeffs_im)
+            format!(
+                "const float coeffs_re[{}] = float[](\n        {}\n    );\n    const float coeffs_im[{}] = float[](\n        {}\n    );",
+                self.fourier_coefficients.len(),
+                coeffs_re,
+                self.fourier_coefficients.len(),
+                coeffs_im
+            )
         } else {
-            format!("const coeffs_re = array<f32, {}>(\n        {}\n    );\n    const coeffs_im = array<f32, {}>(\n        {}\n    );",
-                self.fourier_coefficients.len(), coeffs_re, self.fourier_coefficients.len(), coeffs_im)
+            format!(
+                "const coeffs_re = array<f32, {}>(\n        {}\n    );\n    const coeffs_im = array<f32, {}>(\n        {}\n    );",
+                self.fourier_coefficients.len(),
+                coeffs_re,
+                self.fourier_coefficients.len(),
+                coeffs_im
+            )
         };
 
         let mut reconstruction_logic = String::new();
@@ -255,7 +267,7 @@ impl Optimizer {
             }}
         }}
     }}
-    if (d < 0.0) {{ return solidMaterial; }}
+    if (d < 0.0) {{ materials = solidMaterial; return; }}
 "###, K = k));
         } else {
             reconstruction_logic.push_str(&format!(r###"

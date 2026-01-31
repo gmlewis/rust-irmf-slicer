@@ -38,6 +38,9 @@ packages=(
     "stl-to-irmf"
     "obj-to-irmf"
     "zip-to-irmf"
+    "cal-optimize"
+    "cal-hardware"
+    "irmf-cal-cli"
 )
 
 # Function to check if a package version is already published

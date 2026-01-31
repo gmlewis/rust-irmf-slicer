@@ -16,6 +16,7 @@ packages=(
     "obj-to-irmf"
     "zip-to-irmf"
     "irmf-linter"
+    "irmf-cal-cli"
 )
 
 echo "Installing all CLI tools..."

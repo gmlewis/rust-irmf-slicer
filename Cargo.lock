@@ -292,7 +292,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "binvox-to-irmf"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -441,7 +441,7 @@ dependencies = [
 
 [[package]]
 name = "cal-hardware"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -457,7 +457,7 @@ dependencies = [
 
 [[package]]
 name = "cal-optimize"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "bytemuck",
  "image",
@@ -654,7 +654,7 @@ dependencies = [
 
 [[package]]
 name = "compress-irmf"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -932,7 +932,7 @@ dependencies = [
 
 [[package]]
 name = "dlp-to-irmf"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1835,7 +1835,7 @@ dependencies = [
 
 [[package]]
 name = "irmf-cal-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "cal-hardware",
@@ -1851,7 +1851,7 @@ dependencies = [
 
 [[package]]
 name = "irmf-include-resolver"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "regex",
  "reqwest",
@@ -1861,7 +1861,7 @@ dependencies = [
 
 [[package]]
 name = "irmf-linter"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1874,7 +1874,7 @@ dependencies = [
 
 [[package]]
 name = "irmf-output-stl"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "image",
@@ -1885,7 +1885,7 @@ dependencies = [
 
 [[package]]
 name = "irmf-output-voxels"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -1901,7 +1901,7 @@ dependencies = [
 
 [[package]]
 name = "irmf-slicer"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64",
  "bytemuck",
@@ -1923,7 +1923,7 @@ dependencies = [
 
 [[package]]
 name = "irmf-slicer-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2548,7 +2548,7 @@ checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
 
 [[package]]
 name = "obj-to-irmf"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3813,7 +3813,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stl-to-irmf"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3881,7 +3881,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "svx-to-irmf"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -4376,7 +4376,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "volume-to-irmf"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -5468,7 +5468,7 @@ dependencies = [
 
 [[package]]
 name = "zip-to-irmf"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",

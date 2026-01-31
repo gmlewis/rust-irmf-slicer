@@ -70,50 +70,78 @@ for the amazing tool [glslViewer](https://github.com/patriciogonzalezvivo/glslVi
 
 ## Architecture
 
-This project is organized as a Rust workspace to provide a lean core library suitable for embedding in firmware, while also offering a full-featured CLI tool.
+This project is organized as a Rust workspace to provide a lean core
+library suitable for embedding in firmware, while also offering a
+full-featured CLI tool.
 
-- **`irmf-slicer`**: The core rendering and slicing library. It is designed to be lean, performing no file I/O or networking. It uses `wgpu` for hardware-accelerated offscreen rendering.
-- **`irmf-slicer-cli`**: A standalone command-line tool for slicing IRMF models.
-- **`irmf-include-resolver`**: A utility for resolving `#include` directives (e.g., from [lygia.xyz](https://lygia.xyz) or GitHub).
+- **`irmf-slicer`**: The core rendering and slicing library. It is
+  designed to be lean, performing no file I/O or networking. It uses
+  `wgpu` for hardware-accelerated offscreen rendering.
+- **`irmf-slicer-cli`**: A standalone command-line tool for slicing
+  IRMF models.
+- **`irmf-include-resolver`**: A utility for resolving `#include`
+  directives (e.g., from [lygia.xyz](https://lygia.xyz) or GitHub).
 - **`irmf-output-stl`**: STL generation logic (using Marching Cubes).
-- **`irmf-output-voxels`**: Shared voxel processing and support for Binvox, ZIP (PNG slices), Anycubic Photon (.cbddlp), and SVX formats.
-- **`volume-to-irmf`**: A core library for converting 3D volumes to optimized IRMF shaders.
-- **`binvox-to-irmf`**, **`stl-to-irmf`**, **`obj-to-irmf`**, **`svx-to-irmf`**, **`zip-to-irmf`**: CLI tools for converting various 3D formats into IRMF models.
+- **`irmf-output-voxels`**: Shared voxel processing and support for
+  Binvox, ZIP (PNG slices), Anycubic Photon (.cbddlp), and SVX
+  formats.
+- **`volume-to-irmf`**: A core library for converting 3D volumes to
+  optimized IRMF shaders.
+- **`binvox-to-irmf`**, **`stl-to-irmf`**, **`obj-to-irmf`**,
+  **`svx-to-irmf`**, **`zip-to-irmf`**: CLI tools for converting
+  various 3D formats into IRMF models.
 
 ## Computed Axial Lithography (CAL)
 
-This project now includes a complete Rust port of the Computed Axial Lithography (CAL) software, originally developed by the Hayden Taylor Lab at UC Berkeley.
+This project now includes a complete Rust port of the Computed Axial
+Lithography (CAL) software, originally developed by the
+Prof. Hayden Taylor Lab at UC Berkeley.
 
-CAL is a high-speed 3D printing method that uses a rotating volume of photosensitive resin. By projecting a sequence of optimized 2D images through the rotating volume, the cumulative light dose solidifies the entire 3D object at once.
+CAL is a high-speed 3D printing method that uses a rotating volume of
+photosensitive resin. By projecting a sequence of optimized 2D images
+through the rotating volume, the cumulative light dose solidifies the
+entire 3D object at once.
 
-- **`cal-optimize`**: The core optimization library. It uses iterative gradient descent (Radon and Inverse Radon transforms) to find the optimal set of projections for a given IRMF model. It supports both GPU (`wgpu`) and CPU backends.
-- **`cal-hardware`**: Hardware abstraction for rotation stages (e.g., Thorlabs APT) and real-time projection synchronization.
-- **`irmf-cal-cli`**: A standalone tool for performing IRMF-based CAL optimization and printing.
+- **`cal-optimize`**: The core optimization library. It uses iterative
+  gradient descent (Radon and Inverse Radon transforms) to find the
+  optimal set of projections for a given IRMF model. It supports both
+  GPU (`wgpu`) and CPU backends.
+- **`cal-hardware`**: Hardware abstraction for rotation stages (e.g.,
+  Thorlabs APT) and real-time projection synchronization.
+- **`irmf-cal-cli`**: A standalone tool for performing IRMF-based CAL
+  optimization and printing.
 
 ### CAL Usage
 
 Optimize an IRMF model using the GPU:
 ```sh
-cargo run -p irmf-cal-cli -- --input examples/001-sphere/sphere-1.irmf --iterations 20
+cargo run -p irmf-cal-cli -- --input examples/001-sphere/sphere-cal.irmf --iterations 20
 ```
 
 Force CPU optimization for validation:
 ```sh
-cargo run -p irmf-cal-cli -- --input examples/001-sphere/sphere-1.irmf --cpu
+cargo run -p irmf-cal-cli -- --input examples/001-sphere/sphere-cal.irmf --cpu
 ```
 
 ### Production Workflow
 
 **1. Mock Print (No Hardware):**
-Use this mode to test the visualization and synchronization on your local machine. A window will pop up showing the projections as the virtual motor rotates.
+
+Use this mode to test the visualization and synchronization on your
+local machine. A window will pop up showing the projections as the
+virtual motor rotates.
+
 ```sh
-cargo run -p irmf-cal-cli -- --input examples/001-sphere/sphere-1.irmf --mock --iterations 20
+cargo run -p irmf-cal-cli -- --input examples/001-sphere/sphere-cal.irmf --mock --iterations 20
 ```
 
 **2. Physical Print (DLP Projector + Thorlabs Stage):**
-Use this mode in the lab to drive the actual 3D printer. The projections will be displayed borderless on the selected monitor.
+
+Use this mode in the lab to drive the actual 3D printer. The
+projections will be displayed borderless on the selected monitor.
+
 ```sh
-cargo run -p irmf-cal-cli -- --input examples/001-sphere/sphere-1.irmf --port /dev/ttyUSB0 --monitor 1 --iterations 50
+cargo run -p irmf-cal-cli -- --input examples/001-sphere/sphere-cal.irmf --port /dev/ttyUSB0 --monitor 1 --iterations 50
 ```
 
 ## Features
@@ -170,12 +198,12 @@ To slice one or more `.irmf` files, just list them on the command line.
 
 Slice a model into STL files:
 ```sh
-irmf-slicer-cli --stl examples/001-sphere/sphere-1.irmf
+irmf-slicer-cli --stl examples/001-sphere/sphere-cal.irmf
 ```
 
 Slice a model for a resin printer (DLP):
 ```sh
-irmf-slicer-cli --dlp examples/001-sphere/sphere-1.irmf
+irmf-slicer-cli --dlp examples/001-sphere/sphere-cal.irmf
 ```
 
 View the slicing process in real-time:

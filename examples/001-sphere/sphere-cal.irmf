@@ -1,0 +1,18 @@
+/*{
+  irmf: "1.0",
+  language: "glsl",
+  materials: ["Resin"],
+  min: [-40, -40, -40],
+  max: [40, 40, 40],
+  units: "mm",
+  title: "Production Calibration Sphere"
+}*/
+
+void mainModel4(out vec4 materials, in vec3 xyz) {
+  // 80mm diameter sphere (40mm radius)
+  if (length(xyz) < 40.0) {
+    materials[0] = 1.0;
+  } else {
+    materials[0] = 0.0;
+  }
+}

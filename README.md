@@ -80,6 +80,42 @@ This project is organized as a Rust workspace to provide a lean core library sui
 - **`volume-to-irmf`**: A core library for converting 3D volumes to optimized IRMF shaders.
 - **`binvox-to-irmf`**, **`stl-to-irmf`**, **`obj-to-irmf`**, **`svx-to-irmf`**, **`zip-to-irmf`**: CLI tools for converting various 3D formats into IRMF models.
 
+## Computed Axial Lithography (CAL)
+
+This project now includes a complete Rust port of the Computed Axial Lithography (CAL) software, originally developed by the Hayden Taylor Lab at UC Berkeley.
+
+CAL is a high-speed 3D printing method that uses a rotating volume of photosensitive resin. By projecting a sequence of optimized 2D images through the rotating volume, the cumulative light dose solidifies the entire 3D object at once.
+
+- **`cal-optimize`**: The core optimization library. It uses iterative gradient descent (Radon and Inverse Radon transforms) to find the optimal set of projections for a given IRMF model. It supports both GPU (`wgpu`) and CPU backends.
+- **`cal-hardware`**: Hardware abstraction for rotation stages (e.g., Thorlabs APT) and real-time projection synchronization.
+- **`irmf-cal-cli`**: A standalone tool for performing IRMF-based CAL optimization and printing.
+
+### CAL Usage
+
+Optimize an IRMF model using the GPU:
+```sh
+cargo run -p irmf-cal-cli -- --input examples/001-sphere/sphere-1.irmf --iterations 20
+```
+
+Force CPU optimization for validation:
+```sh
+cargo run -p irmf-cal-cli -- --input examples/001-sphere/sphere-1.irmf --cpu
+```
+
+### Production Workflow
+
+**1. Mock Print (No Hardware):**
+Use this mode to test the visualization and synchronization on your local machine. A window will pop up showing the projections as the virtual motor rotates.
+```sh
+cargo run -p irmf-cal-cli -- --input examples/001-sphere/sphere-1.irmf --mock --iterations 20
+```
+
+**2. Physical Print (DLP Projector + Thorlabs Stage):**
+Use this mode in the lab to drive the actual 3D printer. The projections will be displayed borderless on the selected monitor.
+```sh
+cargo run -p irmf-cal-cli -- --input examples/001-sphere/sphere-1.irmf --port /dev/ttyUSB0 --monitor 1 --iterations 50
+```
+
 ## Features
 
 - **Multi-Language Support**: Full support for both GLSL and WGSL shaders.

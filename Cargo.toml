@@ -15,6 +15,9 @@ members = [
     "svx-to-irmf",
     "zip-to-irmf",
     "obj-to-irmf",
+    "cal-optimize",
+    "cal-hardware",
+    "irmf-cal-cli",
 ]
 
 [workspace.package]

@@ -1,0 +1,23 @@
+[package]
+name = "cal-optimize"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+exclude.workspace = true
+
+[dependencies]
+ndarray = "0.16"
+irmf-slicer = { version = "0.3.0", path = "../irmf-slicer" }
+image = "0.25"
+wgpu = "24.0"
+pollster = "0.4"
+bytemuck = { version = "1", features = ["derive"] }
+rustfft = "6.2"

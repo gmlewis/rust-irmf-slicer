@@ -1,0 +1,26 @@
+[package]
+name = "cal-hardware"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+exclude.workspace = true
+
+[dependencies]
+serialport = "4.3"
+cal-optimize = { version = "0.3.0", path = "../cal-optimize" }
+wgpu = "24.0"
+winit = { version = "0.30", features = ["rwh_06"] }
+anyhow = "1.0"
+log = "0.4"
+tokio = { version = "1.43", features = ["full"] }
+bytemuck = { version = "1", features = ["derive"] }
+image = "0.25"
+ndarray = "0.16"

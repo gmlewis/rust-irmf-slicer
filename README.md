@@ -95,7 +95,8 @@ full-featured CLI tool.
 
 This project now includes a complete Rust port of the Computed Axial
 Lithography (CAL) software, originally developed by the
-Prof. Hayden Taylor Lab at UC Berkeley.
+[Prof. Hayden Taylor Lab](https://www.ocf.berkeley.edu/~hayden/)
+at UC Berkeley.
 
 CAL is a high-speed 3D printing method that uses a rotating volume of
 photosensitive resin. By projecting a sequence of optimized 2D images

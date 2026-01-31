@@ -227,8 +227,8 @@ impl Optimizer {
                 if i % 8 == 0 {
                     coeffs_re.push('\n');
                     coeffs_im.push('\n');
-                    coeffs_re.push_str("        ");
-                    coeffs_im.push_str("        ");
+                    coeffs_re.push_str("    ");
+                    coeffs_im.push_str("    ");
                 }
             }
             coeffs_re.push_str(&format!("{:.6}", c.re));
@@ -237,7 +237,7 @@ impl Optimizer {
 
         let array_decl = if language == "glsl" {
             format!(
-                "const float coeffs_re[{}] = float[](\n        {}\n    );\n    const float coeffs_im[{}] = float[](\n        {}\n    );",
+                "const float coeffs_re[{}] = float[](\n    {}\n);\n\nconst float coeffs_im[{}] = float[](\n    {}\n);\n",
                 self.fourier_coefficients.len(),
                 coeffs_re,
                 self.fourier_coefficients.len(),
@@ -245,7 +245,7 @@ impl Optimizer {
             )
         } else {
             format!(
-                "const coeffs_re = array<f32, {}>(\n        {}\n    );\n    const coeffs_im = array<f32, {}>(\n        {}\n    );",
+                "const coeffs_re = array<f32, {}>(\n    {}\n);\n\nconst coeffs_im = array<f32, {}>(\n    {}\n);\n",
                 self.fourier_coefficients.len(),
                 coeffs_re,
                 self.fourier_coefficients.len(),
@@ -289,7 +289,7 @@ impl Optimizer {
 
             for (int dx = 0; dx < {K}; dx++) {{
                 int idx = dz * {K} * {K} + dy * {K} + dx;
-                
+
                 float cos_abc = cos_x[dx] * cos_bc - sin_x[dx] * sin_bc;
                 float sin_abc = sin_x[dx] * cos_bc + cos_x[dx] * sin_bc;
 
@@ -332,14 +332,14 @@ impl Optimizer {
 
             for (var dx: i32 = 0; dx < {K}; dx++) {{
                 let idx = dz * {K} * {K} + dy * {K} + dx;
-                
+
                 // Use trigonometric identities to avoid cos/sin inside the inner loop
                 // cos(a+b+c) = cos(a)cos(b+c) - sin(a)sin(b+c)
                 // sin(a+b+c) = sin(a)cos(b+c) + cos(a)sin(b+c)
                 // where:
                 // cos(b+c) = cos(b)cos(c) - sin(b)sin(c)
                 // sin(b+c) = sin(b)cos(c) + cos(b)sin(c)
-                
+
                 let cos_bc = cycz - sysz;
                 let sin_bc = sycz + cysz;
 

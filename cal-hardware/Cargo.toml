@@ -15,7 +15,7 @@ exclude.workspace = true
 
 [dependencies]
 serialport = "4.3"
-cal-optimize = { version = "0.3.0", path = "../cal-optimize" }
+cal-optimize = { version = "0.4.0", path = "../cal-optimize" }
 wgpu = "24.0"
 winit = { version = "0.30", features = ["rwh_06"] }
 anyhow = "1.0"

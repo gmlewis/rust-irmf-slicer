@@ -14,9 +14,9 @@ categories.workspace = true
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
-irmf-slicer = { version = "0.3.0", path = "../irmf-slicer" }
+irmf-slicer = { version = "0.4.0", path = "../irmf-slicer" }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
 wgpu = "24.0"
 glam = "0.29"
-irmf-include-resolver = { version = "0.3.0", path = "../irmf-include-resolver" }
+irmf-include-resolver = { version = "0.4.0", path = "../irmf-include-resolver" }

@@ -15,7 +15,7 @@ exclude.workspace = true
 
 [dependencies]
 ndarray = "0.16"
-irmf-slicer = { version = "0.3.0", path = "../irmf-slicer" }
+irmf-slicer = { version = "0.4.0", path = "../irmf-slicer" }
 image = "0.25"
 wgpu = "24.0"
 pollster = "0.4"

@@ -47,7 +47,7 @@ struct Args {
     #[arg(long)]
     fourier: bool,
 
-    /// Number of Fourier coefficients in each dimension (k x k x k)
+    /// Number of Fourier coefficients in each dimension (side of the frequency cube)
     #[arg(short, long, default_value_t = 16)]
     k: usize,
 }
@@ -186,8 +186,9 @@ async fn main() -> Result<()> {
 
     if args.fourier {
         println!(
-            "Done in {:?}. Produced Fourier approximation with {}^3 coefficients.",
+            "Done in {:?}. Produced Fourier approximation with {} coefficients (sphere-masked from {}^3).",
             start_time.elapsed(),
+            optimizer.fourier_coefficients.len(),
             args.k
         );
     } else {

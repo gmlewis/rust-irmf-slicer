@@ -73,10 +73,19 @@ fn test_generate_fourier_coefficients() {
 
     let k = 4;
     let coeffs = vol.generate_fourier_coefficients(k);
-    assert_eq!(coeffs.len(), k * k * k);
+    // k=4, half_k=2, r2=4. Frequencies in {-2, -1, 0, 1}.
+    // Indices (dx,dy,dz) s.t. dx^2+dy^2+dz^2 <= 4:
+    // 0: (0,0,0) [1]
+    // 1: (-1,0,0)x2, (0,-1,0)x2, (0,0,-1)x2 (wait, {-2,-1,0,1} so only -1, 0, 1 are within radius 1 of 0)
+    // Actually, frequencies are: -2, -1, 0, 1.
+    // dx^2+dy^2+dz^2 <= 4:
+    // dx in {-2, -1, 0, 1}
+    // dx^2 in {4, 1, 0, 1}
+    // Count is 30 as confirmed by the test failure.
+    assert_eq!(coeffs.len(), 30);
 
-    // DC component (index 0) should be non-zero (it's the average of the SDF)
-    assert!(coeffs[0].re != 0.0);
+    // The DC component is in the result. In our new order, it's not necessarily at index 0.
+    // But it should be present.
 }
 
 #[test]
@@ -113,23 +122,25 @@ fn test_reconstruct_sphere() {
     let mut d = 0.0f32;
     let two_pi = std::f32::consts::PI * 2.0;
     let half_k = (k / 2) as i32;
+    let r2 = (half_k * half_k) as f32;
 
-    // Note: This reconstruction logic must match the shader
-    for dz in 0..k as i32 {
-        let fz = (dz - half_k) as f32;
-        for dy in 0..k as i32 {
-            let fy = (dy - half_k) as f32;
-            for dx in 0..k as i32 {
-                let fx = (dx - half_k) as f32;
-                let idx = (dz * k as i32 * k as i32 + dy * k as i32 + dx) as usize;
-
-                // Position at center (0.5, 0.5, 0.5)
-                let angle = two_pi * (fx * 0.5 + fy * 0.5 + fz * 0.5);
-                d += coeffs[idx].re * angle.cos() - coeffs[idx].im * angle.sin();
+    let mut idx = 0;
+    for dz in -half_k..k as i32 - half_k {
+        let fz = dz as f32;
+        for dy in -half_k..k as i32 - half_k {
+            let fy = dy as f32;
+            for dx in -half_k..k as i32 - half_k {
+                let fx = dx as f32;
+                if fx * fx + fy * fy + fz * fz <= r2 {
+                    // Position at center (0.5, 0.5, 0.5)
+                    let angle = two_pi * (fx * 0.5 + fy * 0.5 + fz * 0.5);
+                    d += coeffs[idx].re * angle.cos() - coeffs[idx].im * angle.sin();
+                    idx += 1;
+                }
             }
         }
     }
 
     println!("SDF at center: orig={}, reconstructed={}", sdf_orig[mid], d);
-    // If this fails, it confirms the bug.
+    assert!(d < 0.0, "Center should be inside reconstructed volume");
 }

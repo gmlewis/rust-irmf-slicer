@@ -124,8 +124,9 @@ async fn main() -> Result<()> {
 
     if args.fourier {
         println!(
-            "Done in {:?}. Produced Fourier approximation with {}^3 coefficients.",
+            "Done in {:?}. Produced Fourier approximation with {} coefficients (sphere-masked from {}^3).",
             start_time.elapsed(),
+            optimizer.fourier_coefficients.len(),
             args.k
         );
     } else {

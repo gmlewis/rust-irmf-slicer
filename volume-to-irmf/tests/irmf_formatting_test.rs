@@ -166,7 +166,7 @@ fn mainModel4(xyz: vec3f) -> vec4f {
 #[tokio::test]
 async fn test_formatting_fourier_glsl() {
     let mut opt = create_test_optimizer().await;
-    // k=2 results in 8 coefficients
+    // k=2 results in 4 coefficients with sphere masking
     opt.run_fourier(2).await.unwrap();
     let irmf = opt.generate_fourier_irmf("glsl".to_string());
 
@@ -190,12 +190,12 @@ bool cuboid(ivec3 v, ivec3 b_min, ivec3 b_max) {
     return all(greaterThanEqual(v, b_min)) && all(lessThanEqual(v, b_max));
 }
 
-const float coeffs_re[8] = float[](
-    -0.046544, 0.000000, 0.000000, 0.196642, 0.000000, 0.196642, 0.196642, 0.996836
+const float coeffs_re[4] = float[](
+    0.196642, 0.196642, 0.196642, 0.996836
 );
 
-const float coeffs_im[8] = float[](
-    -0.046544, 0.105135, 0.105135, -0.196642, 0.105135, -0.196642, -0.196642, 0.000000
+const float coeffs_im[4] = float[](
+    -0.196642, -0.196642, -0.196642, 0.000000
 );
 
 void mainModel4(out vec4 materials, in vec3 xyz) {
@@ -205,6 +205,7 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
     float d = 0.0;
     float TWO_PI = 6.28318530718;
     int half_k = 1;
+    float r2 = 1.0;
 
     // Precompute 1D basis functions
     float cos_x[2], sin_x[2];
@@ -221,8 +222,13 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
         cos_z[i] = cos(az); sin_z[i] = sin(az);
     }
 
+    int idx = 0;
     for (int dz = 0; dz < 2; dz++) {
+        float fz = float(dz - half_k);
+        float fz2 = fz * fz;
         for (int dy = 0; dy < 2; dy++) {
+            float fy = float(dy - half_k);
+            float fy2 = fy * fy;
             float cycz = cos_y[dy] * cos_z[dz];
             float cysz = cos_y[dy] * sin_z[dz];
             float sycz = sin_y[dy] * cos_z[dz];
@@ -232,12 +238,14 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
             float sin_bc = sycz + cysz;
 
             for (int dx = 0; dx < 2; dx++) {
-                int idx = dz * 2 * 2 + dy * 2 + dx;
+                float fx = float(dx - half_k);
+                if (fx*fx + fy2 + fz2 <= r2) {
+                    float cos_abc = cos_x[dx] * cos_bc - sin_x[dx] * sin_bc;
+                    float sin_abc = sin_x[dx] * cos_bc + cos_x[dx] * sin_bc;
 
-                float cos_abc = cos_x[dx] * cos_bc - sin_x[dx] * sin_bc;
-                float sin_abc = sin_x[dx] * cos_bc + cos_x[dx] * sin_bc;
-
-                d += coeffs_re[idx] * cos_abc - coeffs_im[idx] * sin_abc;
+                    d += coeffs_re[idx] * cos_abc - coeffs_im[idx] * sin_abc;
+                    idx++;
+                }
             }
         }
     }
@@ -276,12 +284,12 @@ fn cuboid(v: vec3i, b_min: vec3i, b_max: vec3i) -> bool {
     return all(v >= b_min) && all(v <= b_max);
 }
 
-const coeffs_re = array<f32, 8>(
-    -0.046544, 0.000000, 0.000000, 0.196642, 0.000000, 0.196642, 0.196642, 0.996836
+const coeffs_re = array<f32, 4>(
+    0.196642, 0.196642, 0.196642, 0.996836
 );
 
-const coeffs_im = array<f32, 8>(
-    -0.046544, 0.105135, 0.105135, -0.196642, 0.105135, -0.196642, -0.196642, 0.000000
+const coeffs_im = array<f32, 4>(
+    -0.196642, -0.196642, -0.196642, 0.000000
 );
 
 fn mainModel4(xyz: vec3f) -> vec4f {
@@ -293,6 +301,7 @@ fn mainModel4(xyz: vec3f) -> vec4f {
     var d: f32 = 0.0;
     const TWO_PI: f32 = 6.28318530718;
     const half_k: i32 = 1;
+    const r2: f32 = 1.0;
 
     var cos_x: array<f32, 2>; var sin_x: array<f32, 2>;
     var cos_y: array<f32, 2>; var sin_y: array<f32, 2>;
@@ -308,30 +317,37 @@ fn mainModel4(xyz: vec3f) -> vec4f {
         cos_z[i] = cos(az); sin_z[i] = sin(az);
     }
 
+    var idx: i32 = 0;
     for (var dz: i32 = 0; dz < 2; dz++) {
+        let fz = f32(dz - half_k);
+        let fz2 = fz * fz;
         for (var dy: i32 = 0; dy < 2; dy++) {
+            let fy = f32(dy - half_k);
+            let fy2 = fy * fy;
             let cycz = cos_y[dy] * cos_z[dz];
             let cysz = cos_y[dy] * sin_z[dz];
             let sycz = sin_y[dy] * cos_z[dz];
             let sysz = sin_y[dy] * sin_z[dz];
 
             for (var dx: i32 = 0; dx < 2; dx++) {
-                let idx = dz * 2 * 2 + dy * 2 + dx;
+                let fx = f32(dx - half_k);
+                if (fx*fx + fy2 + fz2 <= r2) {
+                    // Use trigonometric identities to avoid cos/sin inside the inner loop
+                    // cos(a+b+c) = cos(a)cos(b+c) - sin(a)sin(b+c)
+                    // sin(a+b+c) = sin(a)cos(b+c) + cos(a)sin(b+c)
+                    // where:
+                    // cos(b+c) = cos(b)cos(c) - sin(b)sin(c)
+                    // sin(b+c) = sin(b)cos(c) + cos(b)sin(c)
 
-                // Use trigonometric identities to avoid cos/sin inside the inner loop
-                // cos(a+b+c) = cos(a)cos(b+c) - sin(a)sin(b+c)
-                // sin(a+b+c) = sin(a)cos(b+c) + cos(a)sin(b+c)
-                // where:
-                // cos(b+c) = cos(b)cos(c) - sin(b)sin(c)
-                // sin(b+c) = sin(b)cos(c) + cos(b)sin(c)
+                    let cos_bc = cycz - sysz;
+                    let sin_bc = sycz + cysz;
 
-                let cos_bc = cycz - sysz;
-                let sin_bc = sycz + cysz;
+                    let cos_abc = cos_x[dx] * cos_bc - sin_x[dx] * sin_bc;
+                    let sin_abc = sin_x[dx] * cos_bc + cos_x[dx] * sin_bc;
 
-                let cos_abc = cos_x[dx] * cos_bc - sin_x[dx] * sin_bc;
-                let sin_abc = sin_x[dx] * cos_bc + cos_x[dx] * sin_bc;
-
-                d += coeffs_re[idx] * cos_abc - coeffs_im[idx] * sin_abc;
+                    d += coeffs_re[idx] * cos_abc - coeffs_im[idx] * sin_abc;
+                    idx++;
+                }
             }
         }
     }

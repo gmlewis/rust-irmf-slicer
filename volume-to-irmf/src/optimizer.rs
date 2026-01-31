@@ -24,6 +24,8 @@ pub struct Optimizer {
     pub cuboids: Vec<Cuboid>,
     /// Low-frequency Fourier coefficients.
     pub fourier_coefficients: Vec<Complex<f32>>,
+    /// Fourier K parameter (side length of the frequency cube).
+    pub fourier_k: usize,
     /// Results from pass 2 (X-runs).
     pub pass2_results: Vec<[i32; 4]>,
     /// Results from pass 3 (XY-planes).
@@ -101,6 +103,7 @@ impl Optimizer {
             target_volume: Arc::new(target_volume),
             cuboids: Vec::new(),
             fourier_coefficients: Vec::new(),
+            fourier_k: 0,
             pass2_results: Vec::new(),
             pass3_results: Vec::new(),
             stats: Stats {
@@ -198,11 +201,12 @@ impl Optimizer {
     ///
     /// # Arguments
     ///
-    /// * `k` - The number of low-frequency coefficients to keep in each dimension.
+    /// * `k` - The side length of the frequency cube to use for approximation.
     pub async fn run_fourier(&mut self, k: usize) -> Result<()> {
         let start_time = std::time::Instant::now();
         println!("Running Fourier approximation (k={})...", k);
 
+        self.fourier_k = k;
         self.fourier_coefficients = self.target_volume.generate_fourier_coefficients(k);
 
         self.stats.duration = start_time.elapsed();
@@ -214,9 +218,7 @@ impl Optimizer {
 
     /// Generates IRMF shader code using the Fourier approximation.
     pub fn generate_fourier_irmf(&self, language: String) -> String {
-        let k = (self.fourier_coefficients.len() as f32)
-            .powf(1.0 / 3.0)
-            .round() as usize;
+        let k = self.fourier_k;
         let mut coeffs_re = String::new();
         let mut coeffs_im = String::new();
 
@@ -255,12 +257,14 @@ impl Optimizer {
 
         let mut reconstruction_logic = String::new();
         let half_k = k / 2;
+        let r2 = (half_k * half_k) as f32;
         if language == "glsl" {
             reconstruction_logic.push_str(&format!(
                 r###"
     float d = 0.0;
     float TWO_PI = 6.28318530718;
     int half_k = {half_k};
+    float r2 = {r2:.1};
 
     // Precompute 1D basis functions
     float cos_x[{K}], sin_x[{K}];
@@ -277,8 +281,13 @@ impl Optimizer {
         cos_z[i] = cos(az); sin_z[i] = sin(az);
     }}
 
+    int idx = 0;
     for (int dz = 0; dz < {K}; dz++) {{
+        float fz = float(dz - half_k);
+        float fz2 = fz * fz;
         for (int dy = 0; dy < {K}; dy++) {{
+            float fy = float(dy - half_k);
+            float fy2 = fy * fy;
             float cycz = cos_y[dy] * cos_z[dz];
             float cysz = cos_y[dy] * sin_z[dz];
             float sycz = sin_y[dy] * cos_z[dz];
@@ -288,19 +297,22 @@ impl Optimizer {
             float sin_bc = sycz + cysz;
 
             for (int dx = 0; dx < {K}; dx++) {{
-                int idx = dz * {K} * {K} + dy * {K} + dx;
+                float fx = float(dx - half_k);
+                if (fx*fx + fy2 + fz2 <= r2) {{
+                    float cos_abc = cos_x[dx] * cos_bc - sin_x[dx] * sin_bc;
+                    float sin_abc = sin_x[dx] * cos_bc + cos_x[dx] * sin_bc;
 
-                float cos_abc = cos_x[dx] * cos_bc - sin_x[dx] * sin_bc;
-                float sin_abc = sin_x[dx] * cos_bc + cos_x[dx] * sin_bc;
-
-                d += coeffs_re[idx] * cos_abc - coeffs_im[idx] * sin_abc;
+                    d += coeffs_re[idx] * cos_abc - coeffs_im[idx] * sin_abc;
+                    idx++;
+                }}
             }}
         }}
     }}
     if (d < 0.0) {{ materials = solidMaterial; return; }}
 "###,
                 K = k,
-                half_k = half_k
+                half_k = half_k,
+                r2 = r2
             ));
         } else {
             reconstruction_logic.push_str(&format!(
@@ -308,6 +320,7 @@ impl Optimizer {
     var d: f32 = 0.0;
     const TWO_PI: f32 = 6.28318530718;
     const half_k: i32 = {half_k};
+    const r2: f32 = {r2:.1};
 
     var cos_x: array<f32, {K}>; var sin_x: array<f32, {K}>;
     var cos_y: array<f32, {K}>; var sin_y: array<f32, {K}>;
@@ -323,37 +336,45 @@ impl Optimizer {
         cos_z[i] = cos(az); sin_z[i] = sin(az);
     }}
 
+    var idx: i32 = 0;
     for (var dz: i32 = 0; dz < {K}; dz++) {{
+        let fz = f32(dz - half_k);
+        let fz2 = fz * fz;
         for (var dy: i32 = 0; dy < {K}; dy++) {{
+            let fy = f32(dy - half_k);
+            let fy2 = fy * fy;
             let cycz = cos_y[dy] * cos_z[dz];
             let cysz = cos_y[dy] * sin_z[dz];
             let sycz = sin_y[dy] * cos_z[dz];
             let sysz = sin_y[dy] * sin_z[dz];
 
             for (var dx: i32 = 0; dx < {K}; dx++) {{
-                let idx = dz * {K} * {K} + dy * {K} + dx;
+                let fx = f32(dx - half_k);
+                if (fx*fx + fy2 + fz2 <= r2) {{
+                    // Use trigonometric identities to avoid cos/sin inside the inner loop
+                    // cos(a+b+c) = cos(a)cos(b+c) - sin(a)sin(b+c)
+                    // sin(a+b+c) = sin(a)cos(b+c) + cos(a)sin(b+c)
+                    // where:
+                    // cos(b+c) = cos(b)cos(c) - sin(b)sin(c)
+                    // sin(b+c) = sin(b)cos(c) + cos(b)sin(c)
 
-                // Use trigonometric identities to avoid cos/sin inside the inner loop
-                // cos(a+b+c) = cos(a)cos(b+c) - sin(a)sin(b+c)
-                // sin(a+b+c) = sin(a)cos(b+c) + cos(a)sin(b+c)
-                // where:
-                // cos(b+c) = cos(b)cos(c) - sin(b)sin(c)
-                // sin(b+c) = sin(b)cos(c) + cos(b)sin(c)
+                    let cos_bc = cycz - sysz;
+                    let sin_bc = sycz + cysz;
 
-                let cos_bc = cycz - sysz;
-                let sin_bc = sycz + cysz;
+                    let cos_abc = cos_x[dx] * cos_bc - sin_x[dx] * sin_bc;
+                    let sin_abc = sin_x[dx] * cos_bc + cos_x[dx] * sin_bc;
 
-                let cos_abc = cos_x[dx] * cos_bc - sin_x[dx] * sin_bc;
-                let sin_abc = sin_x[dx] * cos_bc + cos_x[dx] * sin_bc;
-
-                d += coeffs_re[idx] * cos_abc - coeffs_im[idx] * sin_abc;
+                    d += coeffs_re[idx] * cos_abc - coeffs_im[idx] * sin_abc;
+                    idx++;
+                }}
             }}
         }}
     }}
     if (d < 0.0) {{ return solidMaterial; }}
 "###,
                 K = k,
-                half_k = half_k
+                half_k = half_k,
+                r2 = r2
             ));
         }
 

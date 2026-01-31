@@ -780,9 +780,13 @@ impl VoxelVolume {
 
     /// Generates low-frequency Fourier coefficients for the volume's SDF.
     ///
+    /// This uses sphere masking (Low-Frequency Culling) to only include coefficients
+    /// within a sphere of radius k/2. This reduces the number of coefficients by
+    /// approximately 50% compared to a full k x k x k cube.
+    ///
     /// # Arguments
     ///
-    /// * `k` - The number of coefficients to keep in each dimension (k x k x k).
+    /// * `k` - The side length of the frequency cube from which coefficients are extracted.
     pub fn generate_fourier_coefficients(&self, k: usize) -> Vec<Complex<f32>> {
         let sdf = self.generate_sdf();
         let mut complex_data: Vec<Complex<f32>> =
@@ -802,17 +806,24 @@ impl VoxelVolume {
         }
 
         // Extract low-frequency coefficients (k x k x k) centered around zero
-        let mut result = Vec::with_capacity(k * k * k);
+        // with sphere masking (Low-Frequency Culling).
+        let mut result = Vec::new();
         let half_k = (k / 2) as i32;
+        let r2 = (half_k * half_k) as f32;
 
         for dz in -half_k..k as i32 - half_k {
             let z = if dz < 0 { nz as i32 + dz } else { dz } as usize;
+            let fz2 = (dz * dz) as f32;
             for dy in -half_k..k as i32 - half_k {
                 let y = if dy < 0 { ny as i32 + dy } else { dy } as usize;
+                let fy2 = (dy * dy) as f32;
                 for dx in -half_k..k as i32 - half_k {
-                    let x = if dx < 0 { nx as i32 + dx } else { dx } as usize;
-                    let idx = z * ny * nx + y * nx + x;
-                    result.push(complex_data[idx]);
+                    let fx2 = (dx * dx) as f32;
+                    if fx2 + fy2 + fz2 <= r2 {
+                        let x = if dx < 0 { nx as i32 + dx } else { dx } as usize;
+                        let idx = z * ny * nx + y * nx + x;
+                        result.push(complex_data[idx]);
+                    }
                 }
             }
         }

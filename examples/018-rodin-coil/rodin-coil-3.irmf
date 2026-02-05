@@ -5,8 +5,8 @@
   "irmf": "1.0",
   "language": "wgsl",
   "materials": ["copper"],
-  "max": [170,150,50],
   "min": [-150,-150,-50],
+  "max": [170,150,50],
   "title": "Fractal Rodin Coil of degree 2",
   "notes": "This version replaces each original wire in the 1st-order Rodin Coil with N=9 spiraling wires in its place, still representing a single very long wire.",
   "units": "mm",
@@ -84,9 +84,9 @@ fn rodinCoil(majorRadius: f32, minorRadius: f32, bundleRadius: f32, numBundles: 
   let p_local = vec2f(d_radial, d_tangent * cos_alpha);
   if (length(p_local) > bundleRadius) { return 0.0; }
 
-  // 2nd-order Rodin Coil logic: Replace each solid wire with a bundle of 9 spiraling wires.
-  let numBundles2 = 9.0;
-  let twistsPerRevolution2 = 3.0;
+  // 2nd-order Rodin Coil logic: Replace each solid wire with a sub-bundle of spiraling wires.
+  let numBundles2 = numBundles;
+  let twistsPerRevolution2 = f32(10 * twistsPerRevolution);
   // To ensure the entire fractal structure is a single continuous wire, we use a 1/(N1*N2) offset.
   let k2_prime = twistsPerRevolution2 + 1.0 / (numBundles * numBundles2);
   let angle2 = k2_prime * angle;

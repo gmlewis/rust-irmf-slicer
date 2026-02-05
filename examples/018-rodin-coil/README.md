@@ -120,6 +120,10 @@ void mainModel4(out vec4 materials,in vec3 xyz){
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 
+* Try loading [rodin-coil-2.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/rust-irmf-slicer/blob/master/examples/018-rodin-coil/rodin-coil-2.irmf) now in the experimental IRMF editor!
+
+* Try loading [rodin-coil-3.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/rust-irmf-slicer/blob/master/examples/018-rodin-coil/rodin-coil-3.irmf) now in the experimental IRMF editor!
+
 ----------------------------------------------------------------------
 
 # License

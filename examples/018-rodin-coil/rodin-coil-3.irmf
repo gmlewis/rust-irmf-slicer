@@ -1,0 +1,201 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-06-30",
+  "irmf": "1.0",
+  "language": "wgsl",
+  "materials": ["copper"],
+  "max": [170,150,50],
+  "min": [-150,-150,-50],
+  "title": "Fractal Rodin Coil of degree 2",
+  "notes": "This version replaces each original wire in the 1st-order Rodin Coil with N=9 spiraling wires in its place, still representing a single very long wire.",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const M_PI = 3.1415926535897932384626433832795;
+
+fn rotAxis(axis: vec3f, a: f32) -> mat3x3f {
+  let s = sin(a);
+  let c = cos(a);
+  let oc = 1.0 - c;
+  let as_ = axis * s;
+  let p = mat3x3f(axis.x * axis, axis.y * axis, axis.z * axis);
+  let q = mat3x3f(c, as_.z, -as_.y, -as_.z, c, as_.x, as_.y, -as_.x, c);
+  return p * oc + q;
+}
+
+fn mat3ToMat4(m: mat3x3f) -> mat4x4f {
+  return mat4x4f(
+    vec4f(m[0], 0.0),
+    vec4f(m[1], 0.0),
+    vec4f(m[2], 0.0),
+    vec4f(0.0, 0.0, 0.0, 1.0)
+  );
+}
+
+fn rotX(angle: f32) -> mat4x4f {
+  return mat3ToMat4(rotAxis(vec3f(1.0,0.0,0.0), angle));
+}
+
+fn rotY(angle: f32) -> mat4x4f {
+  return mat3ToMat4(rotAxis(vec3f(0.0,1.0,0.0), angle));
+}
+
+fn rotZ(angle: f32) -> mat4x4f {
+  return mat3ToMat4(rotAxis(vec3f(0.0,0.0,1.0), angle));
+}
+
+fn cube(xfm: mat4x4f, size: f32, xyz: vec3f) -> f32 {
+  let xyz_xfm = (xfm * vec4f(xyz, 1.0)).xyz;
+  if (any(abs(xyz_xfm) > vec3f(size))) { return 0.0; }
+  return 1.0;
+}
+
+fn rodinCoil(majorRadius: f32, minorRadius: f32, bundleRadius: f32, numBundles: f32, twistsPerRevolution: i32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  if (r > majorRadius + minorRadius || r < majorRadius - minorRadius) { return 0.0; }
+
+  var angle = atan2(xyz.y, xyz.x);
+  if (angle < 0.0) { angle += 2.0 * M_PI; }
+  let torusSliceXYZ = (rotZ(-angle) * vec4f(xyz, 1.0)).xyz - vec3f(majorRadius, 0.0, 0.0);
+  let twistedSliceXYZ = (rotY((f32(twistsPerRevolution) + (1.0/numBundles)) * angle) * vec4f(torusSliceXYZ, 1.0)).xyz;
+
+  var subAngle = atan2(twistedSliceXYZ.z, twistedSliceXYZ.x);
+  if (subAngle < 0.0) { subAngle += 2.0 * M_PI; }
+  let bundleNum = floor(subAngle * numBundles / (2.0 * M_PI) + 0.5 * numBundles / (2.0 * M_PI));
+  let bundleAngle = 2.0 * M_PI * bundleNum / numBundles;
+  let offsetRadius = minorRadius - bundleRadius;
+  let bundleCenter = vec3f(offsetRadius * cos(bundleAngle), 0.0, offsetRadius * sin(bundleAngle));
+  let subBundleXYZ = twistedSliceXYZ - bundleCenter;
+
+  let k_prime = f32(twistsPerRevolution) + 1.0/numBundles;
+  let r_eff = majorRadius + bundleCenter.x;
+  let v_cross = offsetRadius * k_prime;
+  let cos_alpha = r_eff / sqrt(r_eff * r_eff + v_cross * v_cross);
+
+  let unit_radial = vec2f(cos(bundleAngle), sin(bundleAngle));
+  let unit_tangent = vec2f(-sin(bundleAngle), cos(bundleAngle));
+
+  let d_radial = dot(subBundleXYZ.xz, unit_radial);
+  let d_tangent = dot(subBundleXYZ.xz, unit_tangent);
+
+  // Cross-section point in 1st-order wire (the "cable")
+  let p_local = vec2f(d_radial, d_tangent * cos_alpha);
+  if (length(p_local) > bundleRadius) { return 0.0; }
+
+  // 2nd-order Rodin Coil logic: Replace each solid wire with a bundle of 9 spiraling wires.
+  let numBundles2 = 9.0;
+  let twistsPerRevolution2 = 3.0;
+  // To ensure the entire fractal structure is a single continuous wire, we use a 1/(N1*N2) offset.
+  let k2_prime = twistsPerRevolution2 + 1.0 / (numBundles * numBundles2);
+  let angle2 = k2_prime * angle;
+  let s2 = sin(angle2);
+  let c2 = cos(angle2);
+  let p_twisted = vec2f(p_local.x * c2 - p_local.y * s2, p_local.x * s2 + p_local.y * c2);
+
+  var subSubAngle = atan2(p_twisted.y, p_twisted.x);
+  if (subSubAngle < 0.0) { subSubAngle += 2.0 * M_PI; }
+  let subBundleNum = floor(subSubAngle * numBundles2 / (2.0 * M_PI) + 0.5 * numBundles2 / (2.0 * M_PI));
+  let subSubBundleAngle = 2.0 * M_PI * subBundleNum / numBundles2;
+
+  let subSubBundleRadius = 0.25 * bundleRadius; // Packed safely with a central hole
+  let subOffsetRadius = bundleRadius - subSubBundleRadius;
+  let subBundleCenter = vec2f(subOffsetRadius * cos(subSubBundleAngle), subOffsetRadius * sin(subSubBundleAngle));
+  let p_relative = p_twisted - subBundleCenter;
+
+  // 2nd-order cylindrical correction:
+  // v1 is the speed along the 1st-order wire centerline per radian of torus angle.
+  let v1 = sqrt(r_eff * r_eff + v_cross * v_cross);
+  let v2_cross = subOffsetRadius * k2_prime;
+  let cos_alpha2 = v1 / sqrt(v1 * v1 + v2_cross * v2_cross);
+
+  let unit_radial2 = vec2f(cos(subSubBundleAngle), sin(subSubBundleAngle));
+  let unit_tangent2 = vec2f(-sin(subSubBundleAngle), cos(subSubBundleAngle));
+  let d_radial2 = dot(p_relative, unit_radial2);
+  let d_tangent2 = dot(p_relative, unit_tangent2);
+
+  if (d_radial2 * d_radial2 + d_tangent2 * d_tangent2 * cos_alpha2 * cos_alpha2 > subSubBundleRadius * subSubBundleRadius) { return 0.0; }
+
+  return 1.0;
+}
+
+fn wire(xfm: mat4x4f, start: vec3f, end: vec3f, size: f32, xyz: vec3f) -> f32 {
+  let xyz_xfm = (xfm * vec4f(xyz, 1.0)).xyz;
+  if (xyz_xfm.x < start.x - size || xyz_xfm.x > end.x + size) { return 0.0; }
+  let v = xyz_xfm - start;
+  let r = length(v.yz);
+  if (r > 0.75 * size) { return 0.0; }
+  return 1.0;
+}
+
+fn sphere(c: vec3f, r: f32, p: vec3f) -> f32 {
+  if (length(p - c) < r) { return 1.0; }
+  return 0.0;
+}
+
+fn capsule(p1: vec3f, p2: vec3f, r: f32, p: vec3f) -> f32 {
+  let v = p2 - p1;
+  let w = p - p1;
+  let c1 = dot(w, v);
+  if (c1 <= 0.0) { return sphere(p1, r, p); }
+  let c2 = dot(v, v);
+  if (c2 <= c1) { return sphere(p2, r, p); }
+  let b = c1 / c2;
+  let pb = p1 + b * v;
+  if (length(p - pb) < r) { return 1.0; }
+  return 0.0;
+}
+
+fn get_tiny_pos(a: f32, majorR: f32, offsetR: f32, subOffsetR: f32, k1: f32, k2: f32) -> vec3f {
+  let torus_slice_center = vec3f(majorR, 0.0, 0.0);
+  // Position in the 1st-order slice (the "cable" center)
+  let p_cable_slice = vec3f(offsetR, 0.0, 0.0);
+  // Position of the tiny wire relative to the cable center in the twisted 1st-order slice
+  let p_tiny_twisted = vec3f(subOffsetR, 0.0, 0.0);
+  // Untwist the tiny wire from the 2nd-order twist
+  let p_tiny_slice = (rotY(-k2 * a) * vec4f(p_tiny_twisted, 1.0)).xyz;
+  // Untwist the cable from the 1st-order twist
+  let p_full_slice = (rotY(-k1 * a) * vec4f(p_cable_slice + p_tiny_slice, 1.0)).xyz;
+  // Place in torus and rotate to final angle
+  return (rotZ(a) * vec4f(torus_slice_center + p_full_slice, 1.0)).xyz;
+}
+
+fn wiredRodinCoil(majorRadius: f32, minorRadius: f32, bundleRadius: f32, numBundles: i32, twistsPerRevolution: i32, xyz: vec3f) -> f32 {
+  var coil = rodinCoil(majorRadius, minorRadius, bundleRadius, f32(numBundles), twistsPerRevolution, xyz);
+
+  let numBundles2 = 9.0;
+  let twistsPerRevolution2 = 3.0;
+  let subSubBundleRadius = 0.25 * bundleRadius;
+  let subOffsetRadius = bundleRadius - subSubBundleRadius;
+  let k1_prime = f32(twistsPerRevolution) + 1.0/f32(numBundles);
+  let k2_prime = twistsPerRevolution2 + 1.0 / (f32(numBundles) * numBundles2);
+  let offsetRadius = minorRadius - bundleRadius;
+  let delta_angle = 0.08;
+
+  let p1 = get_tiny_pos(delta_angle, majorRadius, offsetRadius, subOffsetRadius, k1_prime, k2_prime);
+  let p2 = get_tiny_pos(-delta_angle, majorRadius, offsetRadius, subOffsetRadius, k1_prime, k2_prime);
+
+  // Clean perpendicular cut: subtract the tiny wire segment between p1 and p2.
+  // Using a slightly extended range for the subtraction ensures no slivers remain.
+  let p1_cut = get_tiny_pos(0.9 * delta_angle, majorRadius, offsetRadius, subOffsetRadius, k1_prime, k2_prime);
+  let p2_cut = get_tiny_pos(-0.9 * delta_angle, majorRadius, offsetRadius, subOffsetRadius, k1_prime, k2_prime);
+  if (capsule(p1_cut, p2_cut, 1.2 * subSubBundleRadius, xyz) > 0.5) {
+    coil = 0.0;
+  }
+
+  let term_len = 30.0;
+  let p1_end = p1 + vec3f(term_len, 0.0, 0.0);
+  let p2_end = p2 + vec3f(term_len, 0.0, 0.0);
+
+  coil = max(coil, capsule(p1, p1_end, subSubBundleRadius, xyz));
+  coil = max(coil, capsule(p2, p2_end, subSubBundleRadius, xyz));
+
+  return coil;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = wiredRodinCoil(100.0, 50.0, 5.0, 9, 3, xyz);
+  return materials;
+}

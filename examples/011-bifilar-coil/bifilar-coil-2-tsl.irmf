@@ -1,0 +1,62 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-02-13",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["copper","copper","dielectric"],
+  "max": [22,22,0.425],
+  "min": [-22,-22,-0.425],
+  "notes": "Simple IRMF shader - bifilar-coil.",
+  "options": {},
+  "title": "bifilar-coil with dielectric",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+
+const spiralSquareFace = (startRadius, size, gap, nTurns, p) => {
+  const zOK = p.z.greaterThanEqual(-0.5 * size).and(p.z.lessThanEqual(0.5 * size));
+  const r = length(p.xy);
+  const rOK = r.greaterThanEqual(startRadius - 0.5 * size).and(
+    r.lessThanEqual(startRadius + 0.5 * size + (size + gap) * nTurns)
+  );
+  let angle = atan(p.y, p.x).div(2.0 * Math.PI);
+  angle = select(angle.lessThan(0.0), angle.add(1.0), angle);
+  const dr = mod(r.sub(startRadius), size + gap);
+  const base = angle.mul(size + gap);
+  const wrapped = base.greaterThan(dr);
+  const lastSpiralR = select(wrapped, base.sub(size + gap), base);
+  const coilNum0 = select(wrapped, float(-1.0), float(0.0));
+  const nextSpiralR = lastSpiralR.add(size + gap);
+  const inGap = dr.greaterThan(lastSpiralR.add(0.5 * size)).and(
+    dr.lessThan(nextSpiralR.sub(0.5 * size))
+  );
+  const coilNum = coilNum0.add(
+    floor(r.sub(startRadius).add(0.5 * size).sub(lastSpiralR).div(size + gap))
+  );
+  const coilOK = coilNum.greaterThanEqual(0.0).and(coilNum.lessThan(nTurns));
+  return select(zOK.and(rOK).and(inGap.not()).and(coilOK), float(1.0), float(0.0));
+};
+
+const cylinder = (radius, height, p) => {
+  const zOK = p.z.greaterThanEqual(0.0).and(p.z.lessThanEqual(height));
+  return select(zOK.and(length(p.xy).lessThanEqual(radius)), float(1.0), float(0.0));
+};
+
+const bifilarCoilWithDielectric = (startRadius, size, gap, nTurns, p) => {
+  const g = size + 2.0 * gap;
+  const c1 = spiralSquareFace(startRadius, size, g, nTurns, p);
+  const p180 = vec3(p.x.negate(), p.y.negate(), p.z);
+  const c2 = spiralSquareFace(startRadius, size, g, nTurns, p180);
+  let dielectric = cylinder(
+    startRadius + size + 2.0 * (size + gap) * nTurns,
+    size,
+    p.add(vec3(0, 0, 0.5 * size))
+  );
+  dielectric = dielectric.sub(c1).sub(c2); // Don't put dielectric where the metal is.
+  return [c1, c2, dielectric];
+};
+
+const mainModel4 = (xyz) => bifilarCoilWithDielectric(3.0, 0.85, 0.15, 9.0, xyz);

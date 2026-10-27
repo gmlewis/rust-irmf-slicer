@@ -1,0 +1,144 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-11-12",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["copper"],
+  "max": [22,15,15],
+  "min": [-17,-15,-15],
+  "notes": "The IRMF shader that started it all... the bifilar electromagnet.",
+  "options": {},
+  "title": "axial+radial bifilar electromagnet - full model - smaller diameter and quarter length",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+
+const rotZ = (p, a) => {
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  return vec3(p.x.mul(c).sub(p.y.mul(s)), p.x.mul(s).add(p.y.mul(c)), p.z);
+};
+
+const box = (sx, sy, sz, ex, ey, ez, size, p) => {
+  const h = 0.5 * size;
+  const llx = Math.min(sx, ex) - h, lly = Math.min(sy, ey) - h, llz = Math.min(sz, ez) - h;
+  const urx = Math.max(sx, ex) + h, ury = Math.max(sy, ey) + h, urz = Math.max(sz, ez) + h;
+  const outside = p.x.lessThan(llx).or(p.x.greaterThan(urx))
+    .or(p.y.lessThan(lly)).or(p.y.greaterThan(ury))
+    .or(p.z.lessThan(llz)).or(p.z.greaterThan(urz));
+  return select(outside, float(0.0), float(1.0));
+};
+
+const cylinder = (radius, height, p) => {
+  const zOK = p.z.greaterThanEqual(0.0).and(p.z.lessThanEqual(height));
+  return select(zOK.and(length(p.xy).lessThanEqual(radius)), float(1.0), float(0.0));
+};
+
+const coilSquareFace = (radius, size, gap, nTurns, trimStartAngle, trimEndAngle, p) => {
+  const zOK = p.z.greaterThanEqual(-0.5 * size).and(
+    p.z.lessThanEqual(nTurns * (size + gap) + 0.5 * size)
+  );
+  const rxy = length(p.xy);
+  const rOK = rxy.greaterThanEqual(radius - 0.5 * size).and(
+    rxy.lessThanEqual(radius + 0.5 * size)
+  );
+  let angle = atan(p.y, p.x).div(2.0 * Math.PI);
+  angle = select(angle.lessThan(0.0), angle.add(1.0), angle);
+  const dz = mod(p.z, size + gap);
+  const base = angle.mul(size + gap);
+  const wrapped = base.greaterThan(dz);
+  const lastHelixZ = select(wrapped, base.sub(size + gap), base);
+  const coilNum0 = select(wrapped, float(-1.0), float(0.0));
+  const nextHelixZ = lastHelixZ.add(size + gap);
+  const inGap = dz.greaterThan(lastHelixZ.add(0.5 * size)).and(
+    dz.lessThan(nextHelixZ.sub(0.5 * size))
+  );
+  const coilNum = coilNum0.add(floor(p.z.add(0.5 * size).sub(lastHelixZ).div(size + gap)));
+  const coilOK = coilNum.greaterThanEqual(0.0).and(coilNum.lessThan(nTurns));
+  const angleRad = angle.mul(2.0 * Math.PI);
+  const startTrim = select(angleRad.greaterThanEqual(trimStartAngle), float(1.0), float(0.0));
+  let trim = select(coilNum.lessThan(1.0), startTrim, float(1.0));
+  if (trimEndAngle > 0.0) {
+    const endTrim = select(angleRad.lessThanEqual(trimEndAngle), float(1.0), float(0.0));
+    trim = select(coilNum.lessThan(1.0), startTrim,
+      select(coilNum.greaterThanEqual(nTurns - 1.0), endTrim, float(1.0)));
+  }
+  return select(zOK.and(rOK).and(inGap.not()).and(coilOK), trim, float(0.0));
+};
+
+const coilPlusConnectorWires = (wireNum, coilNum, numCoils, inc, innerRadius, connectorRadius, size, singleGap, nTurns, p0) => {
+  const gap = size + 2.0 * singleGap;
+  const radiusOffset = coilNum - 1;
+  const spacingAngle = (numCoils - 4) * inc * Math.atan((2.0 * radiusOffset) / (numCoils - 1));
+  const p = rotZ(p0, spacingAngle);
+  const coilRadius = radiusOffset + innerRadius;
+  const trimStartAngle = 0.05;
+  let coil = coilSquareFace(coilRadius, size, gap, nTurns, trimStartAngle, 0.0, p);
+  const tz = nTurns * (size + gap);
+  const zexit = (nTurns + 10.0) * (size + gap);
+  const add = (v) => { coil = coil.add(v); };
+
+  if (coilNum === numCoils) {
+    if (wireNum === 1) {
+      const ps = rotZ(p, 0.45);
+      add(box(coilRadius, 0, tz, coilRadius, 0, zexit, size, ps));
+    } else {
+      add(box(coilRadius, 0, tz, connectorRadius, 0, tz, size, p));
+      add(box(connectorRadius, 0, -size, connectorRadius, 0, tz, size, p));
+      add(box(connectorRadius, 0, -size, innerRadius, 0, -size, size, p));
+      add(box(innerRadius, 0, -size, innerRadius, 0, 0, size, p));
+      add(box(-innerRadius, 0, -size, -innerRadius, 0, 0, size, p));
+      add(box(-connectorRadius, 0, -size, -innerRadius, 0, -size, size, p));
+      add(box(-connectorRadius, 0, -size, -connectorRadius, 0, zexit, size, p));
+    }
+  } else {
+    add(box(coilRadius, 0, tz, coilRadius, 0, tz + size, size, p));
+    add(box(coilRadius, 0, tz + size, connectorRadius, 0, tz + size, size, p));
+    add(box(connectorRadius, 0, -size, connectorRadius, 0, tz + size, size, p));
+    const coilRadius2 = coilRadius + size + singleGap;
+    add(box(coilRadius2, 0, -size, connectorRadius, 0, -size, size, p));
+    add(box(coilRadius2, 0, -size, coilRadius2, 0, 0, size, p));
+  }
+  return clamp(coil, 0.0, 1.0);
+};
+
+const arBifilarElectromagnet = (numPairs, innerRadius, size, gap, numTurns, p) => {
+  const nTurns = numTurns;
+  const inc = Math.PI / numPairs;
+  const connectorRadius = innerRadius + numPairs * (size + gap);
+  let metal1 = float(0.0);
+  let metal2 = float(0.0);
+  const p180 = rotZ(p, Math.PI);
+  for (let i = 1; i <= numPairs; i++) {
+    metal1 = metal1.add(
+      coilPlusConnectorWires(1, i, numPairs, inc, innerRadius, connectorRadius, size, gap, numTurns, p)
+    );
+    metal2 = metal2.add(
+      coilPlusConnectorWires(2, i, numPairs, inc, innerRadius, connectorRadius, size, gap, numTurns, p180)
+    );
+  }
+  metal1 = clamp(metal1, 0.0, 1.0);
+  metal2 = clamp(metal2.sub(metal1), 0.0, 1.0);
+  const dielectricRadius = numPairs * (size + gap) + innerRadius + gap;
+  const dielectricHeight = 2.0 * (nTurns + 2.0) * (size + gap);
+  let dielectric = cylinder(dielectricRadius, dielectricHeight, p.add(vec3(0, 0, 2)));
+  const spindleRadius = (numPairs + 1) * (size + gap) + innerRadius;
+  dielectric = dielectric.add(cylinder(spindleRadius, 2.0 * (size + gap), p.add(vec3(0, 0, 2))));
+  dielectric = dielectric.add(
+    cylinder(spindleRadius, 2.0 * (size + gap), p.sub(vec3(0, 0, dielectricHeight - 4.0)))
+  );
+  dielectric = dielectric.sub(
+    cylinder(innerRadius - 0.5 * size - gap, dielectricHeight, p.add(vec3(0, 0, 2))).mul(2.0)
+  );
+  dielectric = clamp(dielectric.sub(metal1).sub(metal2), 0.0, 1.0);
+  return [metal1.add(metal2), dielectric, float(0.0)];
+};
+
+const mainModel4 = (xyz) => {
+  const shifted = xyz.add(vec3(15, 0, 0));
+  const r = arBifilarElectromagnet(11, 3.0, 0.85, 0.15, 15, shifted.zyx);
+  return [r[0]];
+};

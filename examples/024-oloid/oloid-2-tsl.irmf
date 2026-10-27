@@ -1,0 +1,51 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-04-12",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["Red","Green"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "https://en.wikipedia.org/wiki/Oloid",
+  "options": {
+    "resolution": 2048,
+    "color1": [255,0,0,1],
+    "color2": [0,255,0,1]
+  },
+  "title": "Oloid",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const oloid2 = (slices, p) => {
+  const right = p.x.greaterThanEqual(0.0);
+  const hConst = float(Math.sin((120.0 * Math.PI) / 180.0));
+
+  const z = p.z.abs();
+  const y = p.y.abs();
+
+  const rR = length(p.xy.sub(vec2(0.5, 0)));
+  const hR = hConst.mul(float(1.0).sub(p.x.div(1.5)));
+  const syR = sqrt(float(1.0).sub(p.x.sub(0.5).mul(p.x.sub(0.5))));
+  const szR = mix(hR, float(0.0), y.div(syR));
+  const okR = rR.lessThanEqual(1.0).and(z.lessThanEqual(szR));
+  const pickR = mod(z.mul(slices), 1.0).lessThanEqual(0.5);
+
+  const rL = length(p.xz.add(vec2(0.5, 0)));
+  const hL = hConst.mul(float(1.0).add(p.x.div(1.5)));
+  const szL = sqrt(float(1.0).sub(p.x.add(0.5).mul(p.x.add(0.5))));
+  const syL = mix(hL, float(0.0), z.div(szL));
+  const okL = rL.lessThanEqual(1.0).and(y.lessThanEqual(syL));
+  const pickL = mod(y.mul(slices).negate(), 1.0).lessThanEqual(0.5);
+
+  return [
+    select(right, select(okR, select(pickR, float(1.0), float(0.0)), float(0.0)),
+      select(okL, select(pickL, float(1.0), float(0.0)), float(0.0))),
+    select(right, select(okR, select(pickR, float(0.0), float(1.0)), float(0.0)),
+      select(okL, select(pickL, float(0.0), float(1.0)), float(0.0))),
+  ];
+};
+
+const mainModel4 = (xyz) => oloid2(5.79, xyz.div(5.0 / 1.5));

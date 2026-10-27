@@ -11,11 +11,14 @@ Here is that same function 40 years later, as an IRMF shader.
 
 ## cos125.irmf
 
-![cos125.png](/examples/assets/017-nostalgia/cos125.png)
+![cos125.png](cos125.png)
+
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["PLA"],
   max: [5,5,5],
   min: [-5,-5,-5],
@@ -33,7 +36,60 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 }
 ```
 
-* Try loading [cos125.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/017-nostalgia/cos125.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["PLA"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+fn cos125(thickness: f32, xyz: vec3f) -> f32 {
+  let theta = length(xyz.xy);
+  let z = cos(theta) + cos(2.0 * theta) + cos(5.0 * theta);
+  return select(0.0, 1.0, xyz.z <= z && xyz.z >= z-thickness);
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = cos125(0.4, xyz);
+  return materials;
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["PLA"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+const cos125 = (thickness, xyz) => {
+  const theta = length(xyz.xy);
+  const z = cos(theta).add(cos(theta.mul(2.0))).add(cos(theta.mul(5.0)));
+  return select(
+    xyz.z.lessThanEqual(z).and(xyz.z.greaterThanEqual(z.sub(thickness))),
+    float(1.0),
+    float(0.0)
+  );
+};
+
+const mainModel4 = (xyz) => [cos125(0.4, xyz)];
+```
+
+* Try loading [cos125.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/017-nostalgia/cos125.irmf) now in the IRMF editor!
+* Try loading [cos125-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/017-nostalgia/cos125-wgsl.irmf) now in the IRMF editor!
+* Try loading [cos125-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/017-nostalgia/cos125-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 

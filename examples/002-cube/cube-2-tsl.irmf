@@ -1,0 +1,24 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-06-30",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Simple IRMF shader - cube function",
+  "options": {},
+  "title": "10mm diameter Cube",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const cube = (size, xyz) => {
+  const p = xyz.div(size); // Scale local coordinate system.
+  const outside = any(p.abs().greaterThan(float(0.5)));
+  return select(outside, float(0.0), float(1.0));
+};
+
+const mainModel4 = (xyz) => [cube(10.0, xyz)];

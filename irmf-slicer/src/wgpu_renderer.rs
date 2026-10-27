@@ -165,7 +165,14 @@ impl Renderer for WgpuRenderer {
         let lang = model.header.language.as_deref().unwrap_or("glsl");
         let num_materials = model.header.materials.len();
 
-        if lang == "wgsl" {
+        if lang == "wgsl" || lang == "tsl" {
+            // TSL is JavaScript; compile it to a standalone WGSL function and
+            // then reuse the WGSL path unchanged.
+            let shader_body = if lang == "tsl" {
+                crate::tsl_compiler::compile_tsl(&model.shader, num_materials)?
+            } else {
+                model.shader.clone()
+            };
             let footer = gen_wgsl_footer(num_materials, vec3_str);
             let shader_source = format!(
                 r#"
@@ -196,7 +203,7 @@ fn vs_main(@location(0) vert: vec3<f32>) -> VertexOutput {{
 
 {}
 "#,
-                model.shader, footer
+                shader_body, footer
             );
 
             self.device.push_error_scope(wgpu::ErrorFilter::Validation);

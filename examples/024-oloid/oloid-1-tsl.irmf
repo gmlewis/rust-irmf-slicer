@@ -1,0 +1,42 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-04-12",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "https://en.wikipedia.org/wiki/Oloid",
+  "options": {},
+  "title": "Oloid",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const oloid = (p) => {
+  const right = p.x.greaterThanEqual(0.0);
+
+  const hConst = float(Math.sin((120.0 * Math.PI) / 180.0));
+
+  // Right half.
+  const rR = length(p.xy.sub(vec2(0.5, 0)));
+  const y = p.y.abs();
+  const hR = hConst.mul(float(1.0).sub(p.x.div(1.5)));
+  const syR = sqrt(float(1.0).sub(p.x.sub(0.5).mul(p.x.sub(0.5))));
+  const szR = mix(hR, float(0.0), y.div(syR));
+  const z = p.z.abs();
+  const okR = rR.lessThanEqual(1.0).and(z.lessThanEqual(szR));
+
+  // Left half.
+  const rL = length(p.xz.add(vec2(0.5, 0)));
+  const hL = hConst.mul(float(1.0).add(p.x.div(1.5)));
+  const szL = sqrt(float(1.0).sub(p.x.add(0.5).mul(p.x.add(0.5))));
+  const syL = mix(hL, float(0.0), z.div(szL));
+  const okL = rL.lessThanEqual(1.0).and(p.y.abs().lessThanEqual(syL));
+
+  return select(right, select(okR, float(1.0), float(0.0)), select(okL, float(1.0), float(0.0)));
+};
+
+const mainModel4 = (xyz) => [oloid(xyz.div(5.0 / 1.5))];

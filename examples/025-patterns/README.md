@@ -20,11 +20,14 @@ Below are some simple examples.
 Here is the [IRMF logo](https://github.com/gmlewis/irmf/tree/master/examples/002-cube#irmf-logo-model-1irmf)
 with the cubed pattern applied:
 
-![cubed-1.png](/examples/assets/025-patterns/cubed-1.png)
+![cubed-1.png](cubed-1.png)
+
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["Red","Green"],
   max: [5,5,5],
   min: [-5,-5,-5],
@@ -55,7 +58,86 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 }
 ```
 
-* Try loading [cubed-1.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/025-patterns/cubed-1.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["Red","Green"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+fn sphere(radius: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  return select(0.0, 1.0, r <= radius);
+}
+
+fn cyl(radius: f32, uv: vec2f) -> f32 {
+  let r = length(uv);
+  return select(0.0, 1.0, r <= radius);
+}
+
+fn cubed(value: f32, xyz: vec3f) -> vec2f {
+  let v = step(vec3f(0.5), xyz - floor(xyz));
+  let count = i32(v.x + v.y + v.z);
+  return select(vec2f(0.0, value), vec2f(value, 0.0), count == 0 || count == 2);
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let radius = 5.6;
+  let r2 = 3.3;
+  let value = 1.0 - sphere(radius, xyz) - cyl(r2, xyz.yz) - cyl(r2, xyz.xz) - cyl(r2, xyz.xy);
+  let res = cubed(value, xyz - vec3f(0.6));
+  return vec4f(res, 0.0, 0.0);
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["Red","Green"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+const sphere = (radius, xyz) => {
+  return select(length(xyz).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const cyl = (radius, uv) => {
+  return select(length(uv).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const cubed = (value, xyz) => {
+  const v = step(vec3(0.5), mod(xyz, 1.0));
+  const count = v.x.add(v.y).add(v.z);
+  const even = count.equal(0.0).or(count.equal(2.0));
+  return [select(even, value, float(0.0)), select(even, float(0.0), value)];
+};
+
+const mainModel4 = (xyz) => {
+  const radius = 5.6;
+  const r2 = 3.3;
+  const value = float(1.0)
+    .sub(sphere(radius, xyz))
+    .sub(cyl(r2, xyz.yz))
+    .sub(cyl(r2, xyz.xz))
+    .sub(cyl(r2, xyz.xy));
+  return cubed(value, xyz.sub(vec3(0.6)));
+};
+```
+
+* Try loading [cubed-1.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/025-patterns/cubed-1.irmf) now in the IRMF editor!
+* Try loading [cubed-1-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/025-patterns/cubed-1-wgsl.irmf) now in the IRMF editor!
+* Try loading [cubed-1-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/025-patterns/cubed-1-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 
@@ -64,11 +146,14 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 Here is the [IRMF logo](https://github.com/gmlewis/irmf/tree/master/examples/002-cube#irmf-logo-model-1irmf)
 with the sphered pattern applied:
 
-![sphered-1.png](/examples/assets/025-patterns/sphered-1.png)
+![sphered-1.png](sphered-1.png)
+
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["Red","Green"],
   max: [5,5,5],
   min: [-5,-5,-5],
@@ -98,7 +183,84 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 }
 ```
 
-* Try loading [sphered-1.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/025-patterns/sphered-1.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["Red","Green"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+fn sphere(radius: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  return select(0.0, 1.0, r <= radius);
+}
+
+fn cyl(radius: f32, uv: vec2f) -> f32 {
+  let r = length(uv);
+  return select(0.0, 1.0, r <= radius);
+}
+
+fn sphered(value: f32, xyz_in: vec3f) -> vec2f {
+  let xyz = (xyz_in - floor(xyz_in)) - vec3f(0.5);
+  return select(vec2f(0.0, value), vec2f(value, 0.0), length(xyz) <= 0.5);
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let radius = 5.6;
+  let r2 = 3.3;
+  let value = 1.0 - sphere(radius, xyz) - cyl(r2, xyz.yz) - cyl(r2, xyz.xz) - cyl(r2, xyz.xy);
+  let res = sphered(value, xyz - vec3f(0.6));
+  return vec4f(res, 0.0, 0.0);
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["Red","Green"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+const sphere = (radius, xyz) => {
+  return select(length(xyz).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const cyl = (radius, uv) => {
+  return select(length(uv).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const sphered = (value, xyz) => {
+  const p = mod(xyz, float(1.0)).sub(vec3(0.5));
+  const inside = length(p).lessThanEqual(0.5);
+  return [select(inside, value, float(0.0)), select(inside, float(0.0), value)];
+};
+
+const mainModel4 = (xyz) => {
+  const radius = 5.6;
+  const r2 = 3.3;
+  const value = float(1.0)
+    .sub(sphere(radius, xyz))
+    .sub(cyl(r2, xyz.yz))
+    .sub(cyl(r2, xyz.xz))
+    .sub(cyl(r2, xyz.xy));
+  return sphered(value, xyz.sub(vec3(0.6)));
+};
+```
+
+* Try loading [sphered-1.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/025-patterns/sphered-1.irmf) now in the IRMF editor!
+* Try loading [sphered-1-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/025-patterns/sphered-1-wgsl.irmf) now in the IRMF editor!
+* Try loading [sphered-1-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/025-patterns/sphered-1-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 

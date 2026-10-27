@@ -1,0 +1,121 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-06-30",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["copper"],
+  "max": [170,150,50],
+  "min": [-150,-150,-50],
+  "notes": "1st order Rodin coil.",
+  "options": {},
+  "title": "1st order Rodin coil",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const cosN = (a) => (typeof a === 'number' ? Math.cos(a) : cos(a));
+const sinN = (a) => (typeof a === 'number' ? Math.sin(a) : sin(a));
+
+// Standard rotations. GLSL's `v * mat` equals `transpose(mat) * v`, and the
+// matrices in this shader are built so that this reduces to the standard
+// rotation below (verified against the GLSL render).
+const rotX = (p, a) => {
+  const c = cosN(a);
+  const s = sinN(a);
+  return vec3(p.x, p.y.mul(c).sub(p.z.mul(s)), p.y.mul(s).add(p.z.mul(c)));
+};
+const rotY = (p, a) => {
+  const c = cosN(a);
+  const s = sinN(a);
+  return vec3(p.x.mul(c).add(p.z.mul(s)), p.y, p.z.mul(c).sub(p.x.mul(s)));
+};
+const rotZ = (p, a) => {
+  const c = cosN(a);
+  const s = sinN(a);
+  return vec3(p.x.mul(c).sub(p.y.mul(s)), p.x.mul(s).add(p.y.mul(c)), p.z);
+};
+
+const torus = (majorRadius, minorRadius, p) => {
+  const r = length(p);
+  const ringOK = r.lessThanEqual(majorRadius + minorRadius).and(
+    r.greaterThanEqual(majorRadius - minorRadius)
+  );
+  const angle = atan(p.y, p.x);
+  const center = vec3(cos(angle).mul(majorRadius), sin(angle).mul(majorRadius), float(0));
+  return select(ringOK.and(length(p.sub(center)).lessThanEqual(minorRadius)), float(1.0), float(0.0));
+};
+
+const cubeRot = (angle, size, p) => {
+  const q = rotX(p, angle);
+  return select(any(q.abs().greaterThan(size)), float(0.0), float(1.0));
+};
+
+const wireRot = (angle, start, end, size, p) => {
+  const q = rotX(p, angle);
+  const xOK = q.x.greaterThanEqual(start.x.sub(size)).and(q.x.lessThanEqual(end.x.add(size)));
+  const qq = q.sub(start);
+  const rOK = length(qq.yz).lessThanEqual(size * 0.75);
+  return select(xOK.and(rOK), float(1.0), float(0.0));
+};
+
+const rodinCoil = (majorRadius, minorRadius, bundleRadius, numBundles, twistsPerRevolution, p) => {
+  const r = length(p);
+  const ringOK = r.lessThanEqual(majorRadius + minorRadius).and(
+    r.greaterThanEqual(majorRadius - minorRadius)
+  );
+
+  const angleRaw = atan(p.y, p.x);
+  const angle = select(angleRaw.lessThan(0.0), angleRaw.add(2.0 * Math.PI), angleRaw);
+  const torusSliceXYZ = rotZ(p, angle.negate()).sub(vec3(majorRadius, 0, 0));
+  const twistedSliceXYZ = rotY(
+    torusSliceXYZ,
+    float(twistsPerRevolution + 1.0 / numBundles).mul(angle)
+  );
+
+  const subAngleRaw = atan(twistedSliceXYZ.z, twistedSliceXYZ.x);
+  const subAngle = select(subAngleRaw.lessThan(0.0), subAngleRaw.add(2.0 * Math.PI), subAngleRaw);
+  const bundleNum = floor(
+    subAngle.mul(numBundles).div(2.0 * Math.PI).add(0.5 * numBundles / (2.0 * Math.PI))
+  );
+  const bundleAngle = bundleNum.mul(2.0 * Math.PI).div(numBundles);
+  const offsetRadius = minorRadius - bundleRadius;
+  const bundleCenter = vec3(
+    cos(bundleAngle).mul(offsetRadius),
+    float(0),
+    sin(bundleAngle).mul(offsetRadius)
+  );
+  const subBundleXYZ = twistedSliceXYZ.sub(bundleCenter);
+  const r2 = length(subBundleXYZ.xz);
+
+  return select(ringOK.and(r2.lessThanEqual(bundleRadius)), float(1.0), float(0.0));
+};
+
+const wiredRodinCoil = (majorRadius, minorRadius, bundleRadius, numBundles, twistsPerRevolution, p) => {
+  const coil = rodinCoil(majorRadius, minorRadius, bundleRadius, numBundles, twistsPerRevolution, p);
+  const x = majorRadius + minorRadius - bundleRadius;
+  const rot = 0.25 * Math.PI;
+  let result = coil.sub(cubeRot(rot, bundleRadius, p.sub(vec3(x, 0, 0))));
+  result = result.add(
+    wireRot(
+      rot,
+      vec3(x, 0, bundleRadius),
+      vec3(x + 4.0 * bundleRadius, 0, bundleRadius),
+      bundleRadius,
+      p
+    )
+  );
+  result = result.add(
+    wireRot(
+      rot,
+      vec3(x, 0, -bundleRadius),
+      vec3(x + 4.0 * bundleRadius, 0, -bundleRadius),
+      bundleRadius,
+      p
+    )
+  );
+  return result;
+};
+
+const mainModel4 = (xyz) => [wiredRodinCoil(100.0, 50.0, 5.0, 9, 3, xyz)];

@@ -1,0 +1,46 @@
+/*{
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["material0"],
+  "max": [50.04315,10.012651,50.04315],
+  "min": [-50.04315,-5,-50.04315],
+  "units": "mm"
+}*/
+
+
+const gsdfWinding = (p, v1, v2, ds) => {
+  const e = v2.sub(v1);
+  const w = p.sub(v1);
+  const b = w.sub(e.mul(clamp(dot(w, e).div(dot(e, e)), 0.0, 1.0)));
+  const dmin = min(ds.x, dot(b, b));
+  const c0 = p.y.greaterThanEqual(v1.y);
+  const c1 = p.y.lessThan(v2.y);
+  const c2 = e.x.mul(w.y).greaterThan(e.y.mul(w.x));
+  // Winding number from http://geomalgorithms.com/a03-_inclusion.html
+  // GLSL: all(cond) || all(not(cond)) for the bvec3 cond.
+  const flip = c0.and(c1).and(c2).or(c0.not().and(c1.not()).and(c2.not()));
+  return vec2(dmin, select(flip, ds.y.negate(), ds.y));
+};
+
+const makePoly = (verts) => (p) => {
+  const v = verts.map(([x, y]) => vec2(x, y));
+  const num = v.length;
+  let ds = vec2(dot(p.sub(v[0]), p.sub(v[0])), float(1.0));
+  for (let i = 0, j = num - 1; i < num; j = i, i++) {
+    ds = gsdfWinding(p, v[i], v[j], ds);
+  }
+  return ds.y.mul(sqrt(ds.x));
+};
+
+const poly2D = makePoly([[0,0],[40,0],[47.07106781,10],[47.435428619,10.012651443],[47.798168182,9.976100922],[48.152679443,9.891014099],[48.49249649,9.758943558],[48.811424255,9.582296371],[49.10364151,9.364293098],[49.363830566,9.108909607],[49.587238312,8.820800781],[49.769794464,8.505221367],[49.908172607,8.167924881],[49.999847412,7.815060139],[50.043151855,7.453062057],[50.037288666,7.088530064],[49.982368469,6.728111267],[49.879394531,6.378376961],[49.730243683,6.045703888],[49.537635803,5.736157417],[49.305076599,5.455381393],[49.036815643,5.20849514],[48.737735748,5],[42.5,-5],[0,-5]]);
+
+const revolution = (p) => {
+  const q = vec2(length(p.xz), p.y);
+  return poly2D(q);
+};
+
+const mainModel4 = (xyz) => {
+  const d = revolution(xyz);
+  return [select(d.lessThanEqual(0.0), float(1.0), float(0.0))];
+};

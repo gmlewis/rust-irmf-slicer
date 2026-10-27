@@ -6,8 +6,9 @@
 ## Summary
 
 IRMF (Infinite Resolution Materials Format) is a file format used to describe
-[GLSL ES](https://en.wikipedia.org/wiki/OpenGL_ES) or
-[WGSL](https://www.w3.org/TR/WGSL/) shaders that define the
+[GLSL ES](https://en.wikipedia.org/wiki/OpenGL_ES),
+[WGSL](https://www.w3.org/TR/WGSL/), or
+[TSL](https://threejs.org/docs/TSL.html) shaders that define the
 materials in a 3D object with infinite resolution. IRMF
 eliminates the need for traditional [software slicers](https://en.wikipedia.org/wiki/Slicer_(3D_printing)),
 [STL](https://en.wikipedia.org/wiki/STL_(file_format)), and
@@ -147,7 +148,9 @@ cargo run -p irmf-cal-cli -- --input examples/001-sphere/sphere-cal.irmf --port 
 
 ## Features
 
-- **Multi-Language Support**: Full support for both GLSL and WGSL shaders.
+- **Multi-Language Support**: Full support for GLSL, WGSL, and TSL shaders.
+  TSL is compiled to WGSL by the shared `irmf-tsl-compile` tool, which is
+  located via `IRMF_TSL_COMPILER` or on `PATH`.
 - **Hardware Acceleration**: Uses `wgpu` for fast, cross-platform GPU rendering (Vulkan, Metal, DX12, WebGPU).
 - **Multiple Output Formats**:
   - **STL**: High-quality meshes generated via Marching Cubes.

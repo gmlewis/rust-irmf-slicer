@@ -1,0 +1,26 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-04-12",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Simple IRMF shader - gyroid infill.",
+  "options": {},
+  "title": "Gyroid infill example",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const gyroid = (scale, xyz) => {
+  const p = xyz.div(scale);
+  const v = sin(p.x).mul(cos(p.y))
+    .add(sin(p.y).mul(cos(p.z)))
+    .add(sin(p.z).mul(cos(p.x)));
+  return select(abs(v).lessThan(0.2), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => [gyroid(0.5, xyz)];

@@ -1,0 +1,23 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-06-30",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["AISI 1018 steel"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Simple IRMF shader - Hello, Sphere!",
+  "options": {},
+  "title": "10mm diameter Sphere",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const mainModel4 = (xyz) => {
+  const radius = float(5.0); // 10mm diameter sphere.
+  const r = length(xyz); // distance from origin.
+  // Only materials[0] is used; the others are ignored.
+  return [select(r.lessThanEqual(radius), float(1.0), float(0.0))];
+};

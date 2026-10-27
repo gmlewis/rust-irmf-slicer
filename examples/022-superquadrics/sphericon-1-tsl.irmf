@@ -1,0 +1,33 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-04-12",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Sphericon using two half superquadrics.",
+  "options": {},
+  "title": "Sphericon",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const superquad = (e1, e2, xyz) => {
+  const p = xyz.abs(); // Due to GLSL 'pow' definition.
+  const f = pow(
+    pow(p.x, 2.0 / e2).add(pow(p.y, 2.0 / e2)),
+    e2 / e1
+  ).add(pow(p.z, 2.0 / e1));
+  return select(f.lessThanEqual(1.0), float(1.0), float(0.0));
+};
+
+const sphericon = (xyz) => {
+  const a = superquad(2.0, 1.0, xyz);
+  const b = superquad(2.0, 1.0, xyz.xzy);
+  return select(xyz.x.lessThanEqual(0.0), a, b);
+};
+
+const mainModel4 = (xyz) => [sphericon(xyz.div(5.0))];

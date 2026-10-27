@@ -1,0 +1,27 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-07-12",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA"],
+  "max": [1,1,0.5],
+  "min": [-1,-1,-0.5],
+  "notes": "Simple IRMF shader - cone.",
+  "options": {},
+  "title": "cone",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const cone = (xyz) => {
+  // Trivially reject above and below the cone.
+  const zOK = xyz.z.greaterThanEqual(0.0).and(xyz.z.lessThanEqual(1.0));
+  // Calculate the new size based on the height.
+  const zsize = mix(float(1.0), float(0.0), xyz.z);
+  const r = length(xyz.xy);
+  return select(zOK.and(r.lessThanEqual(zsize)), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => [cone(xyz.add(vec3(0, 0, 0.5)))];

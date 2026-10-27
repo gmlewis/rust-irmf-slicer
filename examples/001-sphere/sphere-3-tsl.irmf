@@ -1,0 +1,36 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-06-30",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA1","PLA2"],
+  "max": [7,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Partial sphere function.",
+  "options": {},
+  "title": "Two Sphere Slices",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const sphere = (radius, fromDeg, toDeg, xyz) => {
+  const r = length(xyz);
+  const angleDeg = mod(
+    float(360.0).add(atan(xyz.y, xyz.x).mul(180.0).div(Math.PI)),
+    float(360.0)
+  );
+  const angleOK = fromDeg < toDeg
+    ? angleDeg.greaterThanEqual(fromDeg).and(angleDeg.lessThanEqual(toDeg))
+    : angleDeg.greaterThanEqual(fromDeg).or(angleDeg.lessThanEqual(toDeg));
+  return select(r.lessThanEqual(radius).and(angleOK), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => {
+  const radius = 5.0;
+  return [
+    sphere(radius, 45.0, 315.0, xyz),
+    sphere(radius, 315.0, 45.0, xyz.sub(vec3(2, 0, 0))),
+  ];
+};

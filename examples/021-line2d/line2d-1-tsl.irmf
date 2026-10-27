@@ -1,0 +1,34 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-02-14",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA"],
+  "max": [1.5,1,0.1],
+  "min": [-1.5,-1,-0.1],
+  "notes": "This is a 2D line that can be extruded.",
+  "options": {},
+  "title": "line2d",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const line2d = (lineLength, width, startRoundCap, endRoundCap, xyz) => {
+  const bodyOK = xyz.y.abs().lessThanEqual(0.5 * width);
+  const beforeOK = startRoundCap
+    ? length(xyz.xy).lessThanEqual(0.5 * width)
+    : bool(false);
+  const afterOK = endRoundCap
+    ? length(xyz.xy.sub(vec2(lineLength, 0))).lessThanEqual(0.5 * width)
+    : bool(false);
+  const regionOK = select(
+    xyz.x.lessThan(0.0),
+    beforeOK,
+    select(xyz.x.greaterThan(lineLength), afterOK, bodyOK)
+  );
+  return select(regionOK, float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => [line2d(2.0, 0.5, true, true, xyz.add(vec3(1, 0, 0)))];

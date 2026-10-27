@@ -1,0 +1,33 @@
+/*{
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["material0"],
+  "max": [3.9837167,3.4499998,2.5],
+  "min": [-3.9837167,-3.4499998,-2.5],
+  "units": "mm"
+}*/
+
+const gsdfHexagon2D = (p, r) => {
+  const k = vec3(-0.8660254038, 0.5, 0.577350269);
+  let q = p.abs();
+  q = q.sub(k.xy.mul(min(dot(k.xy, q), 0.0).mul(2.0)));
+  q = q.sub(vec2(clamp(q.x, k.z.mul(r).negate(), k.z.mul(r)), r));
+  return length(q).mul(sign(q.y));
+};
+
+const circle1p5 = (p) => length(p).sub(1.5);
+
+const diff2D = (p) => max(gsdfHexagon2D(p, 3.449999809), circle1p5(p).negate());
+
+const extrusion = (p) => {
+  const h = 2.5;
+  const d = diff2D(p.xy);
+  const w = vec2(d, p.z.abs().sub(h));
+  return min(max(w.x, w.y), 0.0).add(length(max(w, vec2(0, 0))));
+};
+
+const mainModel4 = (xyz) => {
+  const d = extrusion(xyz);
+  return [select(d.lessThanEqual(0.0), float(1.0), float(0.0))];
+};

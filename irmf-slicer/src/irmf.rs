@@ -32,6 +32,15 @@ pub enum IrmfError {
     /// The shader language is not supported.
     #[error("Unsupported language: {0}")]
     UnsupportedLanguage(String),
+    /// The TSL compiler (irmf-tsl-compile) could not be found.
+    #[error(
+        "TSL compiler not available: set IRMF_TSL_COMPILER to the irmf-tsl-compile \
+         executable or add `irmf-tsl-compile` to PATH"
+    )]
+    TslCompilerUnavailable,
+    /// The TSL compiler reported an error.
+    #[error("TSL compile error: {0}")]
+    TslCompileError(String),
     /// The material list is invalid.
     #[error("Invalid materials: {0}")]
     InvalidMaterials(String),
@@ -105,6 +114,9 @@ pub struct IrmfHeader {
     /// Title of the model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Exact three.js version a TSL shader targets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tsl_version: Option<String>,
     /// Units of measurement (e.g., "mm").
     pub units: String,
     /// Version of the model.
@@ -188,6 +200,10 @@ impl IrmfHeader {
 
         if let Some(ref title) = self.title {
             lines.push(format!("  title: \"{}\",", title));
+        }
+
+        if let Some(ref tsl) = self.tsl_version {
+            lines.push(format!("  tslVersion: \"{}\",", tsl));
         }
 
         lines.push(format!("  units: \"{}\",", self.units));
@@ -309,7 +325,7 @@ impl IrmfModel {
 
         let lang = self.header.language.as_deref().unwrap_or("glsl");
         match lang {
-            "glsl" | "" | "wgsl" => {} // No-op
+            "glsl" | "" | "wgsl" | "tsl" => {} // No-op
             _ => return Err(IrmfError::UnsupportedLanguage(lang.into())),
         }
 
@@ -548,6 +564,7 @@ void main() {}";
             notes: Some("Simple IRMF shader - Hello, Sphere!".into()),
             options: Some(serde_json::json!({})),
             title: Some("10mm diameter Sphere".into()),
+            tsl_version: None,
             units: "mm".into(),
             version: Some("1.0".into()),
         };
@@ -573,6 +590,7 @@ void main() {}";
             notes: Some("Simple IRMF shader - Hello, Sphere!".into()),
             options: Some(serde_json::json!({})),
             title: Some("10mm diameter Sphere".into()),
+            tsl_version: None,
             units: "mm".into(),
             version: Some("1.0".into()),
         };
@@ -597,6 +615,7 @@ void main() {}";
             notes: None,
             options: Some(serde_json::json!({})), // Empty map should be skipped
             title: None,
+            tsl_version: None,
             units: "mm".into(),
             version: None,
         };
@@ -627,6 +646,7 @@ void main() {}";
             notes: None,
             options: None,
             title: None,
+            tsl_version: None,
             units: "mm".into(),
             version: None,
         };

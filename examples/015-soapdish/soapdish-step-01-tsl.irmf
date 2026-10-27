@@ -1,0 +1,72 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-07-19",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA1"],
+  "max": [42.5,42.5,12],
+  "min": [-42.5,-42.5,-12],
+  "notes": "One step in soapdish tutorial.",
+  "options": {},
+  "title": "soapdish",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+
+const cone = (radius, height, p) => {
+  const zOK = p.z.lessThanEqual(height).and(p.z.greaterThanEqual(0.0));
+  const rOK = length(p.xy).lessThanEqual(float(radius).sub(float(height).sub(p.z)));
+  return select(zOK.and(rOK), float(1.0), float(0.0));
+};
+
+const halfTorus = (majorRadius, minorRadius, p) => {
+  const r = length(p);
+  const ringOK = r.lessThanEqual(majorRadius + minorRadius).and(
+    r.greaterThanEqual(majorRadius - minorRadius)
+  );
+  const angle = atan(p.y, p.x);
+  const center = vec3(cos(angle).mul(majorRadius), sin(angle).mul(majorRadius), float(0));
+  const r2 = length(p.sub(center));
+  const zOK = p.z.lessThanEqual(minorRadius).and(p.z.greaterThanEqual(0.0));
+  return select(zOK.and(ringOK).and(r2.lessThanEqual(minorRadius)), float(1.0), float(0.0));
+};
+
+const sphere = (radius, p) => {
+  return select(length(p).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const cylinderZ = (radius, height, p) => {
+  const zOK = p.z.lessThanEqual(height).and(p.z.greaterThanEqual(0.0));
+  return select(zOK.and(length(p.xy).lessThanEqual(radius)), float(1.0), float(0.0));
+};
+
+const post6 = (p) => cylinderZ(5.0, 5.0, p);
+
+const post7 = (p) => {
+  const height = 5.0;
+  const radius = 5.0;
+  const cap = sphere(radius, p.sub(vec3(0, 0, height))); // Top the post with a sphere.
+  const zOK = p.z.lessThanEqual(height).and(p.z.greaterThanEqual(0.0));
+  const rOK = length(p.xy).lessThanEqual(radius);
+  return select(zOK.and(rOK), float(1.0), cap);
+};
+
+const drain = (p) => {
+  const top = length(p.sub(vec3(0, 0, 0.5))).lessThanEqual(3.0); // Top the drain off with a sphere.
+  return select(top.or(length(p.xy).lessThanEqual(2.0)), float(1.0), float(0.0));
+};
+
+const base = (radius, baseHeight, p) => {
+  const zOK = p.z.lessThanEqual(baseHeight).and(p.z.greaterThanEqual(0.0));
+  return select(zOK.and(length(p.xy).lessThanEqual(radius)), float(1.0), float(0.0));
+};
+
+const baseDrain = (radius, p) => {
+  return select(length(p.xz).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const soapdish = (p) => cone(42.5, 20.0, p);
+const mainModel4 = (xyz) => [soapdish(xyz.add(vec3(0, 0, 12)))];

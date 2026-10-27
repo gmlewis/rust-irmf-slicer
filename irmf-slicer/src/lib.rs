@@ -8,6 +8,7 @@
 
 pub mod irmf;
 pub mod mock_renderer;
+pub mod tsl_compiler;
 pub mod wgpu_renderer;
 
 pub use image::DynamicImage;

@@ -1,0 +1,28 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-07-12",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA"],
+  "max": [1,1,0.5],
+  "min": [-1,-1,-0.5],
+  "notes": "Simple IRMF shader - square tetrahedron.",
+  "options": {},
+  "title": "square tetrahedron",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const squareTetrahedron = (xyz) => {
+  // Trivially reject above and below the tetrahedron.
+  const zOK = xyz.z.greaterThanEqual(0.0).and(xyz.z.lessThanEqual(1.0));
+  // Calculate the new size based on the height.
+  const zsize = mix(float(1.0), float(0.0), xyz.z);
+  const size2 = vec2(zsize, zsize);
+  const outside = any(xyz.xy.greaterThan(size2)).or(any(xyz.xy.lessThan(size2.mul(-1.0))));
+  return select(zOK.and(outside.not()), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => [squareTetrahedron(xyz.add(vec3(0, 0, 0.5)))];

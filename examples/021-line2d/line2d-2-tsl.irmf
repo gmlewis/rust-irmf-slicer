@@ -1,0 +1,50 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-02-14",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA"],
+  "max": [3,3,0.1],
+  "min": [-3,-3,-0.1],
+  "notes": "This is a 2D line that can be extruded.",
+  "options": {},
+  "title": "line2d with start and end points",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const line2dLen = (lineLength, width, startRoundCap, endRoundCap, p) => {
+  const bodyOK = p.y.abs().lessThanEqual(0.5 * width);
+  const beforeOK = startRoundCap
+    ? length(p.xy).lessThanEqual(0.5 * width)
+    : bool(false);
+  const afterOK = endRoundCap
+    ? length(p.xy.sub(vec2(lineLength, 0))).lessThanEqual(0.5 * width)
+    : bool(false);
+  const regionOK = select(
+    p.x.lessThan(0.0),
+    beforeOK,
+    select(p.x.greaterThan(lineLength), afterOK, bodyOK)
+  );
+  return select(regionOK, float(1.0), float(0.0));
+};
+
+const line2dSeg = (sx, sy, ex, ey, width, startRoundCap, endRoundCap, p) => {
+  const q = p.xy.sub(vec2(sx, sy));
+  const dx = ex - sx;
+  const dy = ey - sy;
+  const lineLength = Math.hypot(dx, dy);
+  const angle = Math.atan2(dy, dx);
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  // GLSL: xyz.xy = mat2(c,-s,s,c) * xyz.xy
+  const rx = q.x.mul(c).add(q.y.mul(s));
+  const ry = q.y.mul(c).sub(q.x.mul(s));
+  return line2dLen(lineLength, width, startRoundCap, endRoundCap, vec3(rx, ry, p.z));
+};
+
+const mainModel4 = (xyz) => [
+  line2dSeg(-1, -1, 1, 1, 0.5, true, true, xyz),
+];

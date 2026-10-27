@@ -1,0 +1,35 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-03-11",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["AISI1018steel"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Simple CSG IRMF shader - IRMF logo model 2.",
+  "options": {},
+  "title": "Constructive Solid Geometry example",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const sphere = (radius, p) => {
+  return select(length(p).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const cyl = (radius, uv) => {
+  return select(length(uv).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => {
+  const r2 = 3.3;
+  return [
+    sphere(6.3, xyz)
+      .sub(sphere(5.6, xyz))
+      .sub(cyl(r2, xyz.yz))
+      .sub(cyl(r2, xyz.xz))
+      .sub(cyl(r2, xyz.xy)),
+  ];
+};

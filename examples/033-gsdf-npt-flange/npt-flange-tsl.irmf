@@ -1,0 +1,82 @@
+/*{
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["material0"],
+  "max": [30,30,5.388603],
+  "min": [-30,-30,-12.5],
+  "units": "mm"
+}*/
+
+
+const gsdfWinding = (p, v1, v2, ds) => {
+  const e = v2.sub(v1);
+  const w = p.sub(v1);
+  const b = w.sub(e.mul(clamp(dot(w, e).div(dot(e, e)), 0.0, 1.0)));
+  const dmin = min(ds.x, dot(b, b));
+  const c0 = p.y.greaterThanEqual(v1.y);
+  const c1 = p.y.lessThan(v2.y);
+  const c2 = e.x.mul(w.y).greaterThan(e.y.mul(w.x));
+  const flip = c0.and(c1).and(c2).or(c0.not().and(c1.not()).and(c2.not()));
+  return vec2(dmin, select(flip, ds.y.negate(), ds.y));
+};
+
+const makePoly = (verts) => (p) => {
+  const v = verts.map(([x, y]) => vec2(x, y));
+  const num = v.length;
+  let ds = vec2(dot(p.sub(v[0]), p.sub(v[0])), float(1.0));
+  for (let i = 0, j = num - 1; i < num; j = i, i++) {
+    ds = gsdfWinding(p, v[i], v[j], ds);
+  }
+  return ds.y.mul(sqrt(ds.x));
+};
+
+const gsdfCylinder3D = (p, radius, h, round) => {
+  const q = p.xzy;
+  const d = vec2(length(q.xz).sub(radius).add(round), q.y.abs().sub(h));
+  return min(max(d.x, d.y), 0.0).add(length(max(d, vec2(0, 0)))).sub(round);
+};
+
+const poly2D = makePoly([[0.071428575,0],[0.071428575,0.381338149],[0.026785716,0.381338149],[0.004464287,0.419999987],[0.003029984,0.421592951],[0.00107177,0.422464788],[-0.001071763,0.422464788],[-0.003029979,0.421592951],[-0.004464287,0.419999987],[-0.026785716,0.381338149],[-0.071428575,0.381338149],[-0.071428575,0]]);
+
+const screw = (p) => {
+  const lead = -0.071428575;
+  const pitch = 0.071428575;
+  const taper = 0.031239834;
+  const L = 0.214271203;
+  let y = length(p.xy);
+  if (taper !== 0) {
+    y = y.add(p.z.mul(Math.atan(taper)));
+  }
+  const theta = atan(p.y, p.x);
+  const z = p.z.add(theta.mul(lead).div(2.0 * Math.PI));
+  const sawt = z.add(pitch / 2.0).div(pitch);
+  const saw = float(pitch).mul(sawt.sub(floor(sawt))).sub(0.5 * pitch);
+  const p2 = vec2(saw, y);
+  const d2 = poly2D(p2);
+  const d3 = p.z.abs().sub(L);
+  return max(d2, d3);
+};
+
+const cyl1p18 = (p) => gsdfCylinder3D(p, 1.181102395, 0.103346452, 0.034448817);
+const cyl0p56 = (p) => gsdfCylinder3D(p, 0.560075283, 0.212149709, 0.0);
+const cyl0p375 = (p) => gsdfCylinder3D(p, 0.375, 0.551181078, 0.0);
+const translate0 = (p) => cyl1p18(p.sub(vec3(0, 0, -0.354330719)));
+const diff_cyl0p56 = (p) => max(cyl0p56(p), screw(p).negate());
+const smoothUnion = (p) => {
+  const d1 = diff_cyl0p56(p);
+  const d2 = translate0(p);
+  const k = 0.200000003;
+  const h = clamp(float(0.5).add(float(0.5).mul(d2.sub(d1)).div(k)), 0.0, 1.0);
+  return mix(d2, d1, h).sub(h.mul(h.negate().add(1.0)).mul(k));
+};
+const diff_smoothU = (p) => max(smoothUnion(p), cyl0p375(p).negate());
+const scaleModel = (p) => {
+  const s = 25.399999619;
+  return diff_smoothU(p.div(s)).mul(s);
+};
+
+const mainModel4 = (xyz) => {
+  const d = scaleModel(xyz);
+  return [select(d.lessThanEqual(0.0), float(1.0), float(0.0))];
+};

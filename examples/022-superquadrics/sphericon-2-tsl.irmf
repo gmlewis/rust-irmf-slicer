@@ -1,0 +1,40 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-04-12",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["Red","Green"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Sphericon using two half superquadrics.",
+  "options": {
+    "resolution": 2048,
+    "color1": [255,0,0,1],
+    "color2": [0,255,0,1]
+  },
+  "title": "Sphericon",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const superquad = (e1, e2, p) => {
+  const q = p.abs(); // Due to GLSL 'pow' definition.
+  const f = pow(pow(q.x, 2.0 / e2).add(pow(q.y, 2.0 / e2)), e2 / e1).add(pow(q.z, 2.0 / e1));
+  return select(f.lessThanEqual(1.0), float(1.0), float(0.0));
+};
+
+const sphericon2 = (slices, p) => {
+  const leftSide = p.x.lessThanEqual(0.0);
+  const lv = superquad(2.0, 1.0, p);
+  const rv = superquad(2.0, 1.0, p.xzy);
+  const lp = mod(p.z.abs().mul(slices), 1.0).lessThanEqual(0.5);
+  const rp = mod(p.y.abs().mul(slices).negate(), 1.0).lessThanEqual(0.5);
+  return [
+    select(leftSide, select(lp, lv, float(0)), select(rp, rv, float(0))),
+    select(leftSide, select(lp, float(0), lv), select(rp, float(0), rv)),
+  ];
+};
+
+const mainModel4 = (xyz) => sphericon2(6.0, xyz.div(5.0));

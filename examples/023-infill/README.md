@@ -6,13 +6,16 @@
 
 This is a gyroid structure as defined on [Wikipedia](https://en.wikipedia.org/wiki/Gyroid):
 
-![sin x cos y + sin y cos z + sin z cos x = 0](/examples/assets/023-infill/gyroid-equation.png)
+![sin x cos y + sin y cos z + sin z cos x = 0](gyroid-equation.png)
 
-![gyroid-1.png](/examples/assets/023-infill/gyroid-1.png)
+![gyroid-1.png](gyroid-1.png)
+
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["PLA"],
   max: [5,5,5],
   min: [-5,-5,-5],
@@ -30,7 +33,58 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 }
 ```
 
-* Try loading [gyroid-1.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/023-infill/gyroid-1.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["PLA"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+fn gyroid(scale: f32, xyz_in: vec3f) -> f32 {
+  let xyz = xyz_in / scale;
+  let v = sin(xyz.x) * cos(xyz.y) + sin(xyz.y) * cos(xyz.z) + sin(xyz.z) * cos(xyz.x);
+  return select(0.0, 1.0, abs(v) < 0.2);
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = gyroid(0.5, xyz);
+  return materials;
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["PLA"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+const gyroid = (scale, xyz) => {
+  const p = xyz.div(scale);
+  const v = sin(p.x).mul(cos(p.y))
+    .add(sin(p.y).mul(cos(p.z)))
+    .add(sin(p.z).mul(cos(p.x)));
+  return select(abs(v).lessThan(0.2), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => [gyroid(0.5, xyz)];
+```
+
+* Try loading [gyroid-1.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/023-infill/gyroid-1.irmf) now in the IRMF editor!
+* Try loading [gyroid-1-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/023-infill/gyroid-1-wgsl.irmf) now in the IRMF editor!
+* Try loading [gyroid-1-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/023-infill/gyroid-1-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 

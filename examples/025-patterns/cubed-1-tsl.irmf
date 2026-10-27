@@ -1,0 +1,42 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-04-14",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["Red","Green"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "IRMF logo model 1 with cubed pattern.",
+  "options": {},
+  "title": "Constructive Solid Geometry example",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const sphere = (radius, xyz) => {
+  return select(length(xyz).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const cyl = (radius, uv) => {
+  return select(length(uv).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const cubed = (value, xyz) => {
+  const v = step(vec3(0.5), mod(xyz, 1.0));
+  const count = v.x.add(v.y).add(v.z);
+  const even = count.equal(0.0).or(count.equal(2.0));
+  return [select(even, value, float(0.0)), select(even, float(0.0), value)];
+};
+
+const mainModel4 = (xyz) => {
+  const radius = 5.6;
+  const r2 = 3.3;
+  const value = float(1.0)
+    .sub(sphere(radius, xyz))
+    .sub(cyl(r2, xyz.yz))
+    .sub(cyl(r2, xyz.xz))
+    .sub(cyl(r2, xyz.xy));
+  return cubed(value, xyz.sub(vec3(0.6)));
+};

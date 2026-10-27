@@ -1,0 +1,49 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-03-17",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Figure 10 from: https://authors.library.caltech.edu/9756.",
+  "options": {},
+  "title": "Superquadric toroids",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const superquad = (e1, e2, a4, p) => {
+  let q = p.mul(2.5);
+  const angle = -1.3;
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  // GLSL: xyz.yz = mat2(c,-s,s,c) * xyz.yz
+  const y2 = q.y.mul(c).add(q.z.mul(s));
+  const z2 = q.y.mul(s).negate().add(q.z.mul(c));
+  q = vec3(q.x, y2, z2).abs(); // Due to GLSL 'pow' definition.
+  const f = pow(
+    pow(pow(q.x, 2.0 / e2).add(pow(q.y, 2.0 / e2)), e2 / 2.0).sub(a4),
+    2.0 / e1
+  ).add(pow(q.z, 2.0 / e1));
+  return select(f.lessThanEqual(1.0), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => {
+  const u = 1.2;
+  const v = 3.4;
+  const a4 = 1.25;
+  const entries = [
+    [0.3, 0.3, -v, v], [0.3, 0.1, -u, v], [0.3, 1.0, u, v], [0.3, 3.0, v, v],
+    [0.1, 0.3, -v, u], [0.1, 0.1, -u, u], [0.1, 1.0, u, u], [0.1, 3.0, v, u],
+    [1.0, 0.3, -v, -u], [1.0, 0.1, -u, -u], [1.0, 1.0, u, -u], [1.0, 3.0, v, -u],
+    [3.0, 0.3, -v, -v], [3.0, 0.1, -u, -v], [3.0, 1.0, u, -v], [3.0, 3.0, v, -v],
+  ];
+  let sum = float(0.0);
+  for (const [e1, e2, cx, cz] of entries) {
+    sum = sum.add(superquad(e1, e2, a4, xyz.sub(vec3(cx, 0, cz))));
+  }
+  return [sum];
+};

@@ -1,0 +1,48 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-07-15",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA1"],
+  "max": [21,15,3],
+  "min": [-15,-15,-3],
+  "notes": "Chain link.",
+  "options": {},
+  "title": "Chain Link",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const torus = (majorRadius, minorRadius, fromDeg, toDeg, p) => {
+  const r = length(p);
+  const ringOK = r.lessThanEqual(majorRadius + minorRadius).and(
+    r.greaterThanEqual(majorRadius - minorRadius)
+  );
+  const angle = atan(p.y, p.x);
+  const center = vec3(cos(angle).mul(majorRadius), sin(angle).mul(majorRadius), float(0));
+  const r2 = length(p.sub(center));
+  const angleDeg = mod(
+    float(360.0).add(atan(p.y, p.x).mul(180.0).div(Math.PI)),
+    float(360.0)
+  );
+  const angleOK = fromDeg < toDeg
+    ? angleDeg.greaterThanEqual(fromDeg).and(angleDeg.lessThanEqual(toDeg))
+    : angleDeg.greaterThanEqual(fromDeg).or(angleDeg.lessThanEqual(toDeg));
+  return select(ringOK.and(r2.lessThanEqual(minorRadius)).and(angleOK), float(1.0), float(0.0));
+};
+
+const cylinderX = (radius, height, p) => {
+  const xOK = p.x.greaterThanEqual(0.0).and(p.x.lessThanEqual(height));
+  return select(xOK.and(length(p.yz).lessThanEqual(radius)), float(1.0), float(0.0));
+};
+
+const chainLink = (majorRadius, minorRadius, separator, p) => {
+  return torus(majorRadius, minorRadius, 90.0, 270.0, p)
+    .add(torus(majorRadius, minorRadius, 270.0, 90.0, p.sub(vec3(separator, 0, 0))))
+    .add(cylinderX(minorRadius, separator, p.sub(vec3(0, majorRadius, 0))))
+    .add(cylinderX(minorRadius, separator, p.add(vec3(0, majorRadius, 0))));
+};
+
+const mainModel4 = (xyz) => [chainLink(9.0, 3.0, 6.0, xyz)];

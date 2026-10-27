@@ -1,0 +1,43 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-10-14",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["copper"],
+  "max": [36,36,46],
+  "min": [-36,-36,0],
+  "notes": "Simple IRMF shader - half-utron.",
+  "options": {},
+  "title": "half-utron",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const cone = (xyz) => {
+  const zOK = xyz.z.greaterThanEqual(0.0).and(xyz.z.lessThanEqual(1.0));
+  const zsize = mix(float(1.0), float(0.0), xyz.z);
+  return select(zOK.and(length(xyz.xy).lessThanEqual(zsize)), float(1.0), float(0.0));
+};
+
+const sphere = (radius, xyz) => {
+  return select(length(xyz).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const cylinder = (radius, height, xyz) => {
+  const zOK = xyz.z.greaterThanEqual(0.0).and(xyz.z.lessThanEqual(height));
+  return select(zOK.and(length(xyz.xy).lessThanEqual(radius)), float(1.0), float(0.0));
+};
+
+const halfUtron = (sphereDiam, edgeLen, shaftDiam, shaftHeight, xyz) => {
+  const h = Math.sqrt((edgeLen * edgeLen) / 2.0);
+  const r = sphereDiam / 2.0;
+  const shaftR = shaftDiam / 2.0;
+  const shaftPos = vec3(0, 0, h - shaftR);
+  return cone(xyz.div(h))
+    .add(cylinder(shaftR, shaftHeight, xyz.sub(shaftPos)))
+    .sub(sphere(1.0, xyz.div(r)));
+};
+
+const mainModel4 = (xyz) => [halfUtron(44.0, 50.0, 4.98, 10.0, xyz)];

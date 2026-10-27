@@ -1,0 +1,148 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-02-13",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["copper","copper","dielectric"],
+  "max": [25,25,71],
+  "min": [-25,-25,-63],
+  "notes": "The IRMF shader that started it all... the bifilar electromagnet.",
+  "options": {
+    "resolution": 512,
+    "color1": [255,0,0,1],
+    "color2": [0,255,0,1],
+    "color3": [0,0,255,1]
+  },
+  "title": "bifilar electromagnet",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+
+const rotZ = (p, a) => {
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  return vec3(p.x.mul(c).sub(p.y.mul(s)), p.x.mul(s).add(p.y.mul(c)), p.z);
+};
+
+const box = (sx, sy, sz, ex, ey, ez, size, p) => {
+  const h = 0.5 * size;
+  const llx = Math.min(sx, ex) - h, lly = Math.min(sy, ey) - h, llz = Math.min(sz, ez) - h;
+  const urx = Math.max(sx, ex) + h, ury = Math.max(sy, ey) + h, urz = Math.max(sz, ez) + h;
+  const outside = p.x.lessThan(llx).or(p.x.greaterThan(urx))
+    .or(p.y.lessThan(lly)).or(p.y.greaterThan(ury))
+    .or(p.z.lessThan(llz)).or(p.z.greaterThan(urz));
+  return select(outside, float(0.0), float(1.0));
+};
+
+const cylinder = (radius, height, p) => {
+  const zOK = p.z.greaterThanEqual(0.0).and(p.z.lessThanEqual(height));
+  return select(zOK.and(length(p.xy).lessThanEqual(radius)), float(1.0), float(0.0));
+};
+
+const coilSquareFace = (radius, size, gap, nTurns, p) => {
+  const zOK = p.z.greaterThanEqual(-0.5 * size).and(
+    p.z.lessThanEqual(nTurns * (size + gap) + 0.5 * size)
+  );
+  const rxy = length(p.xy);
+  const rOK = rxy.greaterThanEqual(radius - 0.5 * size).and(
+    rxy.lessThanEqual(radius + 0.5 * size)
+  );
+  let angle = atan(p.y, p.x).div(2.0 * Math.PI);
+  angle = select(angle.lessThan(0.0), angle.add(1.0), angle);
+  const dz = mod(p.z, size + gap);
+  const base = angle.mul(size + gap);
+  const wrapped = base.greaterThan(dz);
+  const lastHelixZ = select(wrapped, base.sub(size + gap), base);
+  const coilNum0 = select(wrapped, float(-1.0), float(0.0));
+  const nextHelixZ = lastHelixZ.add(size + gap);
+  const inGap = dz.greaterThan(lastHelixZ.add(0.5 * size)).and(
+    dz.lessThan(nextHelixZ.sub(0.5 * size))
+  );
+  const coilNum = coilNum0.add(floor(p.z.add(0.5 * size).sub(lastHelixZ).div(size + gap)));
+  const coilOK = coilNum.greaterThanEqual(0.0).and(coilNum.lessThan(nTurns));
+  // TODO: the GLSL source ignores trimEndAngle here.
+  return select(zOK.and(rOK).and(inGap.not()).and(coilOK), float(1.0), float(0.0));
+};
+
+const coilPlusConnectorWires = (coilNum, numCoils, inc, innerRadius, connectorRadius, size, gap, nTurns, p0) => {
+  const radiusOffset = coilNum - 1;
+  const p = rotZ(p0, radiusOffset * inc);
+  const coilRadius = radiusOffset + innerRadius;
+  let coil = coilSquareFace(coilRadius, size, gap, nTurns, p);
+
+  const bz = -(size + gap);
+  const tz = nTurns * (size + gap);
+  const tzp1 = (nTurns + 1.0) * (size + gap);
+  const add = (v) => { coil = coil.add(v); };
+
+  add(box(coilRadius, 0, 0, coilRadius, 0, bz, size, p));
+  add(box(coilRadius, 0, bz, connectorRadius, 0, bz, size, p));
+  add(box(connectorRadius, 0, bz, connectorRadius, 0, tzp1, size, p));
+
+  const zexit = (nTurns + 10.0) * (size + gap);
+  if (coilNum >= 3) {
+    // Connect the start of this coil to the end of two coils prior.
+    const lastCoilRadius = radiusOffset - 2 + innerRadius;
+    add(box(lastCoilRadius, 0, tzp1, connectorRadius, 0, tzp1, size, p));
+    add(box(lastCoilRadius, 0, tz, lastCoilRadius, 0, tzp1, size, p));
+  } else if (coilNum === 2) {
+    // Connect the start of 2 to the end of the last odd coil.
+    const endOddRadius = numCoils - 2 + innerRadius;
+    add(box(endOddRadius, 0, tzp1, connectorRadius, 0, tzp1, size, p));
+    add(box(endOddRadius, 0, tz, endOddRadius, 0, tzp1, size, p));
+  } else if (coilNum === 1) {
+    // Bring out the exit wires.
+    add(box(connectorRadius, 0, tz, connectorRadius, 0, zexit, size, p));
+  }
+
+  if (coilNum === numCoils) {
+    const ps = rotZ(p, 0.5 * inc);
+    add(box(connectorRadius - (size + gap), 0, tz, connectorRadius - (size + gap), 0, zexit, size, ps));
+  }
+  return coil;
+};
+
+const bifilarElectromagnet = (numPairs, innerRadius, size, gap, numTurns, p) => {
+  const nTurns = numTurns;
+  const numCoils = 2 * numPairs;
+  const inc = (2.0 * Math.PI) / numCoils;
+  const connectorRadius = innerRadius + numCoils * (size + gap);
+
+  let metal1 = float(0.0);
+  let metal2 = float(0.0);
+  for (let i = 1; i <= numCoils; i += 2) {
+    metal1 = metal1.add(
+      coilPlusConnectorWires(i, numCoils, inc, innerRadius, connectorRadius, size, gap, nTurns, p)
+    );
+    metal2 = metal2.add(
+      coilPlusConnectorWires(i + 1, numCoils, inc, innerRadius, connectorRadius, size, gap, nTurns, p)
+    );
+  }
+  metal1 = clamp(metal1, 0.0, 1.0);
+  metal2 = clamp(metal2, 0.0, 1.0);
+
+  const dielectricRadius = 2.0 * numPairs * (size + gap) + innerRadius + gap;
+  const dielectricHeight = (nTurns + 4.0) * (size + gap);
+  let dielectric = cylinder(dielectricRadius, dielectricHeight, p.add(vec3(0, 0, 2)));
+  const spindleRadius = 2.0 * (numPairs + 1) * (size + gap) + innerRadius;
+  dielectric = dielectric.add(cylinder(spindleRadius, 2.0 * (size + gap), p.add(vec3(0, 0, 2))));
+  dielectric = dielectric.add(
+    cylinder(spindleRadius, 2.0 * (size + gap), p.sub(vec3(0, 0, dielectricHeight - 4.0)))
+  );
+  dielectric = clamp(dielectric, 0.0, 1.0);
+  // Don't put dielectric where the metal is.
+  dielectric = dielectric.sub(clamp(metal1.add(metal2), 0.0, 1.0));
+  return [metal1, metal2, dielectric];
+};
+
+const mainModel4 = (xyz) => {
+  const wireSize = 0.85;
+  const wireGap = 0.15;
+  const turnsPerCoil = 122;
+  const wireSpacing = wireSize + wireGap;
+  const p = xyz.add(vec3(0, 0, 0.5 * turnsPerCoil * wireSpacing));
+  return bifilarElectromagnet(10, 3.0, wireSize, wireGap, turnsPerCoil, p);
+};

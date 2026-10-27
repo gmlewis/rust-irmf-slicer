@@ -1,0 +1,26 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-07-12",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Simple IRMF shader - cylinder.",
+  "options": {},
+  "title": "cylinder",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const cylinder = (radius, height, xyz) => {
+  // First, trivial reject on the two ends of the cylinder.
+  const zOK = xyz.z.greaterThanEqual(0.0).and(xyz.z.lessThanEqual(height));
+  // Then, constrain radius of the cylinder:
+  const rxy = length(xyz.xy);
+  return select(zOK.and(rxy.lessThanEqual(radius)), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => [cylinder(2.5, 5.0, xyz.add(vec3(0, 0, 2.5)))];

@@ -1,0 +1,37 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2022-07-14",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA1"],
+  "max": [1,1,1],
+  "min": [-1,-1,-1],
+  "notes": "Based on libfive example.",
+  "options": {},
+  "title": "libfive-1",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const sphere = (radius, center, xyz) => {
+  return select(length(xyz.sub(center)).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const cylinder_z = (radius, height, center, xyz) => {
+  const h = xyz.z.sub(center.z).abs();
+  const r = length(xyz.xy.sub(center.xy));
+  return select(h.lessThanEqual(height).and(r.lessThanEqual(radius)), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => {
+  const zero = vec3(0);
+  const c = vec3(0, 0, -1);
+  let m = sphere(1.0, zero, xyz);
+  m = m.sub(sphere(0.6, zero, xyz));
+  m = m.sub(cylinder_z(0.6, 2.0, c, xyz));
+  m = m.sub(cylinder_z(0.6, 2.0, c, xyz.zyx));
+  m = m.sub(cylinder_z(0.6, 2.0, c, xyz.xzy));
+  return [m];
+};

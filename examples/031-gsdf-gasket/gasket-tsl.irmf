@@ -1,0 +1,50 @@
+/*{
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["material0"],
+  "max": [82.31442,52.15,0.5],
+  "min": [-82.31442,-52.15,-0.5],
+  "units": "mm"
+}*/
+
+
+const gsdfWinding = (p, v1, v2, ds) => {
+  const e = v2.sub(v1);
+  const w = p.sub(v1);
+  const b = w.sub(e.mul(clamp(dot(w, e).div(dot(e, e)), 0.0, 1.0)));
+  const dmin = min(ds.x, dot(b, b));
+  const c0 = p.y.greaterThanEqual(v1.y);
+  const c1 = p.y.lessThan(v2.y);
+  const c2 = e.x.mul(w.y).greaterThan(e.y.mul(w.x));
+  // Winding number from http://geomalgorithms.com/a03-_inclusion.html
+  // GLSL: all(cond) || all(not(cond)) for the bvec3 cond.
+  const flip = c0.and(c1).and(c2).or(c0.not().and(c1.not()).and(c2.not()));
+  return vec2(dmin, select(flip, ds.y.negate(), ds.y));
+};
+
+const makePoly = (verts) => (p) => {
+  const v = verts.map(([x, y]) => vec2(x, y));
+  const num = v.length;
+  let ds = vec2(dot(p.sub(v[0]), p.sub(v[0])), float(1.0));
+  for (let i = 0, j = num - 1; i < num; j = i, i++) {
+    ds = gsdfWinding(p, v[i], v[j], ds);
+  }
+  return ds.y.mul(sqrt(ds.x));
+};
+
+const poly2D = makePoly([[78,-1.799999952],[78.13885498,6.164907455],[78.10824585,14.130966187],[77.90814209,22.09457016],[77.538665771,30.052112579],[77,38],[76.659255981,40.588191986],[75.660255432,43],[74.07106781,45.07106781],[72,46.660255432],[69.588188171,47.659255981],[67,48],[-1.799999952,48],[-1.799999952,52.150001526],[67,52.150001526],[70.349639893,51.627998352],[73.496131897,50.366188049],[76.278327942,48.42918396],[78.553741455,45.916202545],[80.205833435,42.955936432],[81.150001526,39.700000763],[81.714202881,31.412776947],[82.096466064,23.115169525],[82.296569824,14.811170578],[82.314422607,6.504780769],[82.150001526,-1.799999952]]);
+
+const symmetry2DXY = (p) => poly2D(vec2(p.x.abs(), p.y.abs()));
+const offset2D = (p) => symmetry2DXY(p).add(0.800000012);
+const extrusion = (p) => {
+  const h = 0.5;
+  const d = offset2D(p.xy);
+  const w = vec2(d, p.z.abs().sub(h));
+  return min(max(w.x, w.y), 0.0).add(length(max(w, vec2(0, 0))));
+};
+
+const mainModel4 = (xyz) => {
+  const d = extrusion(xyz);
+  return [select(d.lessThanEqual(0.0), float(1.0), float(0.0))];
+};

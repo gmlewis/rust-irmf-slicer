@@ -89,6 +89,14 @@ struct Args {
     #[arg(long)]
     zip: bool,
 
+    /// Path to irmf-tsl-compile (default: $IRMF_TSL_COMPILER or PATH)
+    #[arg(long)]
+    tsl_compiler: Option<String>,
+
+    /// TSL compilation cache directory (default: $IRMF_TSL_CACHE_DIR)
+    #[arg(long)]
+    tsl_cache_dir: Option<String>,
+
     /// Input IRMF files
     #[arg(required = true)]
     files: Vec<PathBuf>,
@@ -147,10 +155,15 @@ impl Viewer {
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
+    if let Some(ref path) = args.tsl_compiler {
+        irmf_slicer::tsl_compiler::set_tsl_compiler(path.clone());
+    }
+    if let Some(ref dir) = args.tsl_cache_dir {
+        irmf_slicer::tsl_compiler::set_tsl_cache_dir(dir.clone());
+    }
+
     if !args.binvox && !args.dlp && !args.stl && !args.svx && !args.zip {
-        println!(
-            "-binvox, -dlp, -stl, -svx, or -zip must be supplied to generate output. Testing IRMF shader compilation only."
-        );
+        println!("-binvox, -dlp, -stl, -svx, or -zip not supplied: compiling and validating only.");
     }
 
     let (x_res, y_res, z_res) = match () {

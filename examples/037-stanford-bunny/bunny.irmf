@@ -14,11 +14,15 @@ const DIMS = vec3f(128.0, 128.0, 128.0);
 const VOXEL_SIZE = (MAX_BOUND - MIN_BOUND) / DIMS;
 const solidMaterial = vec4f(1.0, 0.0, 0.0, 0.0);
 
+const TWO_PI: f32 = 6.28318530718;
+const half_k: i32 = 8;
+const r2: f32 = 64.0;
+
 fn cuboid(v: vec3i, b_min: vec3i, b_max: vec3i) -> bool {
     return all(v >= b_min) && all(v <= b_max);
 }
 
-const coeffs_re = array<f32, 2106>(
+var<private> coeffs_re: array<f32, 2106> = array<f32, 2106>(
     0.020162, 0.009048, -0.014278, 0.059574, 0.002314, -0.005146, -0.003533, 0.006148, 
     -0.020335, 0.114126, -0.017922, 0.004961, 0.017130, 0.002503, -0.004306, -0.026047, 
     0.231860, 0.002677, -0.000782, -0.004315, -0.032829, -0.069068, -0.132309, 0.040596, 
@@ -285,7 +289,7 @@ const coeffs_re = array<f32, 2106>(
     -0.014278, 0.009048
 );
 
-const coeffs_im = array<f32, 2106>(
+var<private> coeffs_im: array<f32, 2106> = array<f32, 2106>(
     -0.294135, -0.001000, 0.011190, -0.015943, 0.004786, 0.009136, 0.005186, 0.020171, 
     -0.004715, -0.006476, -0.009927, -0.022387, 0.006601, -0.003774, -0.017460, 0.018323, 
     0.051486, 0.052972, -0.015837, 0.002076, 0.008504, 0.017885, 0.017831, -0.338155, 
@@ -559,9 +563,6 @@ fn mainModel4(xyz: vec3f) -> vec4f {
     let iz = i32(floor(v.z));
 
     var d: f32 = 0.0;
-    const TWO_PI: f32 = 6.28318530718;
-    const half_k: i32 = 8;
-    const r2: f32 = 64.0;
 
     var cos_x: array<f32, 16>; var sin_x: array<f32, 16>;
     var cos_y: array<f32, 16>; var sin_y: array<f32, 16>;

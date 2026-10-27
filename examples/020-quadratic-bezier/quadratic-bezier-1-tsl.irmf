@@ -1,0 +1,41 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-08-24",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,0],
+  "notes": "Revolved quadratic Bezier spline.",
+  "options": {},
+  "title": "Quadratic Bezier",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const interpQuadratic = (p0, p1, p2, y) => {
+  const a = float(p2.y + p0.y - 2 * p1.y);
+  const b = float(2 * (p1.y - p0.y));
+  const c = float(p0.y).sub(y);
+  const disc = b.mul(b).sub(a.mul(c).mul(4.0));
+  const bad = b.mul(b).lessThan(a.mul(c).mul(4.0)); // imaginary
+  const det = sqrt(disc.max(0.0));
+  const t = det.sub(b).div(a.mul(2.0));
+  const omt = float(1.0).sub(t);
+  const x = omt.mul(omt).mul(p0.x)
+    .add(omt.mul(t).mul(2.0).mul(p1.x))
+    .add(t.mul(t).mul(p2.x));
+  return select(bad, float(0.0), x);
+};
+
+const qBezier = (p0, p1, p2, xyz) => {
+  const r = length(xyz.xy);
+  const x = interpQuadratic(p0, p1, p2, xyz.z);
+  return select(r.greaterThan(x), float(0.0), float(1.0));
+};
+
+const mainModel4 = (xyz) => [
+  qBezier({ x: -2, y: 2 }, { x: 0, y: 0 }, { x: 2, y: 2 }, xyz.add(vec3(0, 0, 1.0))),
+];

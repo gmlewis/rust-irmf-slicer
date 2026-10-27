@@ -11,11 +11,14 @@ Yet, ironically, the perfect sphere is almost the easiest thing to model using a
 
 Here is an [IRMF shader](sphere-1.irmf) defining a 10mm diameter sphere:
 
-![sphere-1.png](/examples/assets/001-sphere/sphere-1.png)
+![sphere-1.png](sphere-1.png)
+
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["AISI 1018 steel"],
   max: [5,5,5],
   min: [-5,-5,-5],
@@ -29,7 +32,51 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 }
 ```
 
-* Try loading [sphere-1.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/001-sphere/sphere-1.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["AISI 1018 steel"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let radius = 5.0; // 10mm diameter sphere.
+  let r = length(xyz); // distance from origin.
+  var materials = vec4f(0.0);
+  materials[0] = select(0.0, 1.0, r <= radius); // Only materials[0] is used; the others are ignored.
+  return materials;
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["AISI 1018 steel"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+const mainModel4 = (xyz) => {
+  const radius = float(5.0); // 10mm diameter sphere.
+  const r = length(xyz); // distance from origin.
+  // Only materials[0] is used; the others are ignored.
+  return [select(r.lessThanEqual(radius), float(1.0), float(0.0))];
+};
+```
+
+* Try loading [sphere-1.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/001-sphere/sphere-1.irmf) now in the IRMF editor!
+* Try loading [sphere-1-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/001-sphere/sphere-1-wgsl.irmf) now in the IRMF editor!
+* Try loading [sphere-1-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/001-sphere/sphere-1-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 
@@ -39,11 +86,14 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 terribly useful if you would like to make a more complex model out of
 one or more spheres. Let's make a `sphere` function that is reusable.
 
-![sphere-2.png](/examples/assets/001-sphere/sphere-2.png)
+![sphere-2.png](sphere-2.png)
+
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["AISI 1018 steel"],
   max: [5,5,5],
   min: [-5,-5,-5],
@@ -61,7 +111,58 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 }
 ```
 
-* Try loading [sphere-2.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/001-sphere/sphere-2.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["AISI 1018 steel"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+fn sphere(radius: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  return select(0.0, 1.0, r <= radius);
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let radius = 5.0; // 10mm diameter sphere.
+  var materials = vec4f(0.0);
+  materials[0] = sphere(radius, xyz);
+  return materials;
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["AISI 1018 steel"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+const sphere = (radius, xyz) => {
+  const r = length(xyz);
+  return select(r.lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => {
+  const radius = float(5.0); // 10mm diameter sphere.
+  return [sphere(radius, xyz)];
+};
+```
+
+* Try loading [sphere-2.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/001-sphere/sphere-2.irmf) now in the IRMF editor!
+* Try loading [sphere-2-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/001-sphere/sphere-2-wgsl.irmf) now in the IRMF editor!
+* Try loading [sphere-2-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/001-sphere/sphere-2-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 
@@ -71,11 +172,14 @@ Sometimes you just want a slice of a sphere, and I find it easier to think
 in terms of degrees when sectioning things with a 'from' and 'to', so I
 made the parameters degrees in this case.
 
-![sphere-3.png](/examples/assets/001-sphere/sphere-3.png)
+![sphere-3.png](sphere-3.png)
+
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["PLA1","PLA2"],
   max: [7,5,5],
   min: [-5,-5,-5],
@@ -87,11 +191,11 @@ made the parameters degrees in this case.
 float sphere(in float radius, float fromDeg, float toDeg, in vec3 xyz) {
   float r = length(xyz);
   if (r > radius) { return 0.0; }
-
+  
   float angleDeg = mod(360.0 + atan(xyz.y, xyz.x) * 180.0 / M_PI, 360.0);
   if (fromDeg < toDeg &&(angleDeg < fromDeg || angleDeg > toDeg)) { return 0.0; }
   if (fromDeg > toDeg && angleDeg < fromDeg && angleDeg > toDeg) { return 0.0; }
-
+  
   return 1.0;
 }
 
@@ -102,7 +206,77 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 }
 ```
 
-* Try loading [sphere-3.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/001-sphere/sphere-3.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["PLA1","PLA2"],
+  max: [7,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+const M_PI: f32 = 3.14159265358979323846;
+
+fn sphere(radius: f32, fromDeg: f32, toDeg: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  if (r > radius) { return 0.0; }
+  
+  let angleDeg = (360.0 + atan2(xyz.y, xyz.x) * 180.0 / M_PI) % 360.0;
+  if (fromDeg < toDeg && (angleDeg < fromDeg || angleDeg > toDeg)) { return 0.0; }
+  if (fromDeg > toDeg && angleDeg < fromDeg && angleDeg > toDeg) { return 0.0; }
+  
+  return 1.0;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let radius = 5.0;
+  var materials = vec4f(0.0);
+  materials[0] = sphere(radius, 45.0, 315.0, xyz);
+  materials[1] = sphere(radius, 315.0, 45.0, xyz - vec3f(2.0, 0.0, 0.0));
+  return materials;
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["PLA1","PLA2"],
+  max: [7,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+const sphere = (radius, fromDeg, toDeg, xyz) => {
+  const r = length(xyz);
+  const angleDeg = mod(
+    float(360.0).add(atan(xyz.y, xyz.x).mul(180.0).div(Math.PI)),
+    float(360.0)
+  );
+  const angleOK = fromDeg < toDeg
+    ? angleDeg.greaterThanEqual(fromDeg).and(angleDeg.lessThanEqual(toDeg))
+    : angleDeg.greaterThanEqual(fromDeg).or(angleDeg.lessThanEqual(toDeg));
+  return select(r.lessThanEqual(radius).and(angleOK), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => {
+  const radius = 5.0;
+  return [
+    sphere(radius, 45.0, 315.0, xyz),
+    sphere(radius, 315.0, 45.0, xyz.sub(vec3(2, 0, 0))),
+  ];
+};
+```
+
+* Try loading [sphere-3.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/001-sphere/sphere-3.irmf) now in the IRMF editor!
+* Try loading [sphere-3-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/001-sphere/sphere-3-wgsl.irmf) now in the IRMF editor!
+* Try loading [sphere-3-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/001-sphere/sphere-3-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 

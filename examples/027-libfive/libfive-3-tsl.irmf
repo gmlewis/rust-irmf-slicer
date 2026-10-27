@@ -1,0 +1,44 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2022-07-15",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA1"],
+  "max": [2,2,2],
+  "min": [-2,-2,-2],
+  "notes": "Based on libfive example.",
+  "options": {
+    "color1": [255,255,255,1]
+  },
+  "title": "libfive-3",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const sphere = (radius, center, xyz) => {
+  return length(center.sub(xyz)).sub(radius);
+};
+
+const blend = (a, b, m) => {
+  const v = sqrt(a.abs()).add(sqrt(b.abs())).sub(m);
+  return min(a, min(b, v));
+};
+
+const mainModel4 = (xyz) => {
+  const v = blend(
+    blend(
+      sphere(1.0, vec3(0, -1, -1), xyz),
+      sphere(1.0, vec3(0, 1, -1), xyz),
+      0.75
+    ),
+    blend(
+      sphere(1.0, vec3(0, -1, 1), xyz),
+      sphere(1.0, vec3(0, 1, 1), xyz),
+      0.75
+    ),
+    0.75
+  );
+  return [select(v.greaterThan(0.01), float(0.0), float(1.0))];
+};

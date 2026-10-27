@@ -11,11 +11,14 @@ and the MBB itself defines the object (the cube).
 
 Here is an [IRMF shader](cube-1.irmf) defining a 10mm diameter cube:
 
-![cube-1.png](/examples/assets/002-cube/cube-1.png)
+![cube-1.png](cube-1.png)
+
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["PLA"],
   max: [5,5,5],
   min: [-5,-5,-5],
@@ -27,7 +30,44 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 }
 ```
 
-* Try loading [cube-1.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-1.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["PLA"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = 1.0;
+  return materials;
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["PLA"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+const mainModel4 = (xyz) => [float(1.0)];
+```
+
+* Try loading [cube-1.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-1.irmf) now in the IRMF editor!
+* Try loading [cube-1-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-1-wgsl.irmf) now in the IRMF editor!
+* Try loading [cube-1-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-1-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 
@@ -48,11 +88,14 @@ One thing that the "Book of Shaders" stresses is that the coordinate system
 is transformed such that the shader always performs its calculations in its
 own local coordinate system. Here's an example of this:
 
-![cube-2.png](/examples/assets/002-cube/cube-2.png)
+![cube-2.png](cube-2.png)
+
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["PLA"],
   max: [5,5,5],
   min: [-5,-5,-5],
@@ -70,7 +113,56 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 }
 ```
 
-* Try loading [cube-2.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-2.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["PLA"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+fn cube(size: f32, xyz_in: vec3f) -> f32 {
+  let xyz = xyz_in / size; // Scale local coordinate system.
+  if (any(abs(xyz) > vec3f(0.5))) { return 0.0; }
+  return 1.0;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = cube(10.0, xyz);
+  return materials;
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["PLA"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+const cube = (size, xyz) => {
+  const p = xyz.div(size); // Scale local coordinate system.
+  const outside = any(p.abs().greaterThan(float(0.5)));
+  return select(outside, float(0.0), float(1.0));
+};
+
+const mainModel4 = (xyz) => [cube(10.0, xyz)];
+```
+
+* Try loading [cube-2.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-2.irmf) now in the IRMF editor!
+* Try loading [cube-2-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-2-wgsl.irmf) now in the IRMF editor!
+* Try loading [cube-2-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-2-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 
@@ -86,11 +178,14 @@ then externally manipulate that shader's coordinate space outside of
 its code. That certainly makes each individual shader much easier to
 understand.
 
-![cube-3.png](/examples/assets/002-cube/cube-3.png)
+![cube-3.png](cube-3.png)
+
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["PLA"],
   max: [0.5,0.5,0.5],
   min: [-0.5,-0.5,-0.5],
@@ -108,7 +203,59 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 }
 ```
 
-* Try loading [cube-3.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-3.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["PLA"],
+  max: [0.5,0.5,0.5],
+  min: [-0.5,-0.5,-0.5],
+  units: "mm",
+}*/
+
+fn cube(xfm: mat4x4f, xyz_in: vec4f) -> f32 {
+  let xyz = xfm * xyz_in;
+  if (any(abs(xyz) > vec4f(0.5, 0.5, 0.5, 1.0))) { return 0.0; }
+  return 1.0;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var materials = vec4f(0.0);
+  materials[0] = cube(mat4x4f(vec4f(1,0,0,0), vec4f(0,1,0,0), vec4f(0,0,1,0), vec4f(0,0,0,1)), vec4f(xyz, 1.0));
+  return materials;
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["PLA"],
+  max: [0.5,0.5,0.5],
+  min: [-0.5,-0.5,-0.5],
+  units: "mm",
+}*/
+
+// GLSL uses a row-vector product (`xyz * xfm`); WGSL/TSL matrices are
+// column-major, so we multiply the matrix by the column vector. For the
+// identity matrix used here the result is identical.
+const cube = (xfm, xyzw) => {
+  const p = xfm.mul(xyzw);
+  const outside = any(p.abs().greaterThan(vec4(0.5, 0.5, 0.5, 1.0)));
+  return select(outside, float(0.0), float(1.0));
+};
+
+const mainModel4 = (xyz) => [cube(mat4(1), vec4(xyz, 1.0))]; // mat4(1) is the identity matrix.
+```
+
+* Try loading [cube-3.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-3.irmf) now in the IRMF editor!
+* Try loading [cube-3-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-3-wgsl.irmf) now in the IRMF editor!
+* Try loading [cube-3-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-3-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 
@@ -118,11 +265,14 @@ This model is the "Hello World" of CSG. It is a boolean difference
 between a cube and in inscribed sphere. IRMF makes this model pretty trivial
 to write.
 
-![cube-csg.png](/examples/assets/002-cube/cube-csg.png)
+![cube-csg.png](cube-csg.png)
+
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["AISI1018steel"],
   max: [5,5,5],
   min: [-5,-5,-5],
@@ -140,7 +290,57 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 }
 ```
 
-* Try loading [cube-csg.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-csg.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["AISI1018steel"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+fn sphere(radius: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  return select(0.0, 1.0, r <= radius);
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let radius = 6.0; // 12mm diameter sphere.
+  var materials = vec4f(0.0);
+  materials[0] = 1.0 - sphere(radius, xyz); // 1.0 is a cube.
+  return materials;
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["AISI1018steel"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+const sphere = (radius, p) => {
+  return select(length(p).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => {
+  const radius = 6.0; // 12mm diameter sphere.
+  return [float(1.0).sub(sphere(radius, xyz))]; // 1.0 is a cube.
+};
+```
+
+* Try loading [cube-csg.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-csg.irmf) now in the IRMF editor!
+* Try loading [cube-csg-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-csg-wgsl.irmf) now in the IRMF editor!
+* Try loading [cube-csg-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/cube-csg-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 
@@ -152,11 +352,14 @@ perfect for a cheese grater, but not a very human-friendly object otherwise.
 
 So here is a safer model to print that would make a good IRMF logo.
 
-![irmf-logo-model-1.png](/examples/assets/002-cube/irmf-logo-model-1.png)
+![irmf-logo-model-1.png](irmf-logo-model-1.png)
+
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["AISI1018steel"],
   max: [5,5,5],
   min: [-5,-5,-5],
@@ -180,7 +383,74 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 }
 ```
 
-* Try loading [irmf-logo-model-1.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/irmf-logo-model-1.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["AISI1018steel"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+fn sphere(radius: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  return select(0.0, 1.0, r <= radius);
+}
+
+fn cyl(radius: f32, uv: vec2f) -> f32 {
+  let r = length(uv);
+  return select(0.0, 1.0, r <= radius);
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let radius = 5.6;
+  let r2 = 3.3;
+  var materials = vec4f(0.0);
+  materials[0] = 1.0 - sphere(radius, xyz) - cyl(r2, xyz.yz) - cyl(r2, xyz.xz) - cyl(r2, xyz.xy);
+  return materials;
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["AISI1018steel"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+const sphere = (radius, p) => {
+  return select(length(p).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const cyl = (radius, uv) => {
+  return select(length(uv).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => {
+  const radius = 5.6;
+  const r2 = 3.3;
+  return [
+    float(1.0)
+      .sub(sphere(radius, xyz))
+      .sub(cyl(r2, xyz.yz))
+      .sub(cyl(r2, xyz.xz))
+      .sub(cyl(r2, xyz.xy)),
+  ];
+};
+```
+
+* Try loading [irmf-logo-model-1.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/irmf-logo-model-1.irmf) now in the IRMF editor!
+* Try loading [irmf-logo-model-1-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/irmf-logo-model-1-wgsl.irmf) now in the IRMF editor!
+* Try loading [irmf-logo-model-1-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/irmf-logo-model-1-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 
@@ -189,11 +459,14 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 Here is a second option with mostly rounded edges that would also make
 a nice IRMF logo.
 
-![irmf-logo-model-2.png](/examples/assets/002-cube/irmf-logo-model-2.png)
+![irmf-logo-model-2.png](irmf-logo-model-2.png)
+
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["AISI1018steel"],
   max: [5,5,5],
   min: [-5,-5,-5],
@@ -216,7 +489,72 @@ void mainModel4(out vec4 materials, in vec3 xyz) {
 }
 ```
 
-* Try loading [irmf-logo-model-2.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/irmf-logo-model-2.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["AISI1018steel"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+fn sphere(radius: f32, xyz: vec3f) -> f32 {
+  let r = length(xyz);
+  return select(0.0, 1.0, r <= radius);
+}
+
+fn cyl(radius: f32, uv: vec2f) -> f32 {
+  let r = length(uv);
+  return select(0.0, 1.0, r <= radius);
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let r2 = 3.3;
+  var materials = vec4f(0.0);
+  materials[0] = sphere(6.3, xyz) - sphere(5.6, xyz) - cyl(r2, xyz.yz) - cyl(r2, xyz.xz) - cyl(r2, xyz.xy);
+  return materials;
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["AISI1018steel"],
+  max: [5,5,5],
+  min: [-5,-5,-5],
+  units: "mm",
+}*/
+
+const sphere = (radius, p) => {
+  return select(length(p).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const cyl = (radius, uv) => {
+  return select(length(uv).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => {
+  const r2 = 3.3;
+  return [
+    sphere(6.3, xyz)
+      .sub(sphere(5.6, xyz))
+      .sub(cyl(r2, xyz.yz))
+      .sub(cyl(r2, xyz.xz))
+      .sub(cyl(r2, xyz.xy)),
+  ];
+};
+```
+
+* Try loading [irmf-logo-model-2.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/irmf-logo-model-2.irmf) now in the IRMF editor!
+* Try loading [irmf-logo-model-2-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/irmf-logo-model-2-wgsl.irmf) now in the IRMF editor!
+* Try loading [irmf-logo-model-2-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/002-cube/irmf-logo-model-2-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 

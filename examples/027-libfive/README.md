@@ -12,21 +12,12 @@ in IRMF.
 
 This [libfive example](https://libfive.com/examples/#stdlib):
 
-```scheme
-(difference (sphere 1 [0 0 0])
-  (sphere 0.6 [0 0 0])
-  (cylinder-z 0.6 2 [0 0 -1])
-  (reflect-xz (cylinder-z 0.6 2 [0 0 -1]))
-  (reflect-yz (cylinder-z 0.6 2 [0 0 -1])))
-```
-
-can easily be translated to IRMF:
-
-![libfive-1.png](/examples/assets/027-libfive/libfive-1.png)
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["PLA1"],
   max: [1,1,1],
   min: [-1,-1,-1],
@@ -56,7 +47,81 @@ void mainModel4(out vec4 m, in vec3 xyz) {
 }
 ```
 
-* Try loading [libfive-1.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/027-libfive/libfive-1.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["PLA1"],
+  max: [1,1,1],
+  min: [-1,-1,-1],
+  units: "mm",
+}*/
+
+fn sphere(radius: f32, center: vec3f, xyz: vec3f) -> f32 {
+  let r = length(xyz-center);
+  if (r > radius) { return 0.0; }
+  return 1.0;
+}
+
+fn cylinder_z(radius: f32, height: f32, center: vec3f, xyz: vec3f) -> f32 {
+  let h = abs(xyz.z - center.z);
+  if (h > height) { return 0.0; }
+  let r = length(xyz.xy - center.xy);
+  if (r > radius) { return 0.0; }
+  return 1.0;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  var m = vec4f(0.0);
+  m[0] = sphere(1.0, vec3f(0.0), xyz);
+  m[0] -= sphere(0.6, vec3f(0.0), xyz);
+  m[0] -= cylinder_z(0.6, 2.0, vec3f(0.0, 0.0, -1.0), xyz);
+  m[0] -= cylinder_z(0.6, 2.0, vec3f(0.0, 0.0, -1.0), xyz.zyx);
+  m[0] -= cylinder_z(0.6, 2.0, vec3f(0.0, 0.0, -1.0), xyz.xzy);
+  return m;
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["PLA1"],
+  max: [1,1,1],
+  min: [-1,-1,-1],
+  units: "mm",
+}*/
+
+const sphere = (radius, center, xyz) => {
+  return select(length(xyz.sub(center)).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const cylinder_z = (radius, height, center, xyz) => {
+  const h = xyz.z.sub(center.z).abs();
+  const r = length(xyz.xy.sub(center.xy));
+  return select(h.lessThanEqual(height).and(r.lessThanEqual(radius)), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => {
+  const zero = vec3(0);
+  const c = vec3(0, 0, -1);
+  let m = sphere(1.0, zero, xyz);
+  m = m.sub(sphere(0.6, zero, xyz));
+  m = m.sub(cylinder_z(0.6, 2.0, c, xyz));
+  m = m.sub(cylinder_z(0.6, 2.0, c, xyz.zyx));
+  m = m.sub(cylinder_z(0.6, 2.0, c, xyz.xzy));
+  return [m];
+};
+```
+
+* Try loading [libfive-1.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/027-libfive/libfive-1.irmf) now in the IRMF editor!
+* Try loading [libfive-1-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/027-libfive/libfive-1-wgsl.irmf) now in the IRMF editor!
+* Try loading [libfive-1-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/027-libfive/libfive-1-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 
@@ -64,25 +129,12 @@ void mainModel4(out vec4 m, in vec3 xyz) {
 
 The second [libfive example](https://libfive.com/examples/#scheme):
 
-```scheme
-(define-shape (cube x y z)
-  (max (- x 1) (- -1 x)
-       (- y 1) (- -1 y)
-       (- z 1) (- -1 z)))
-
-(remap-shape (cube x y z)
-  (+ (* (cos z) x) (* (sin z) y))
-  (- (* (cos z) y) (* (sin z) x))
-  z)
-```
-
-could look like this in IRMF:
-
-![libfive-2.png](/examples/assets/027-libfive/libfive-2.png)
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["PLA1"],
   max: [3,3,3],
   min: [-3,-3,-3],
@@ -102,7 +154,65 @@ void mainModel4(out vec4 m, in vec3 xyz) {
 }
 ```
 
-* Try loading [libfive-2.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/027-libfive/libfive-2.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["PLA1"],
+  max: [3,3,3],
+  min: [-3,-3,-3],
+  units: "mm",
+}*/
+
+fn cube(xyz: vec3f) -> f32 {
+  if (any(abs(xyz) > vec3f(1.0))) { return 0.0; }
+  return 1.0;
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let cz = cos(xyz.z);
+  let sz = sin(xyz.z);
+  let twist = vec3f(cz*xyz.x + sz*xyz.y, cz*xyz.y-sz*xyz.x, xyz.z);
+  var m = vec4f(0.0);
+  m[0] = cube(twist);
+  return m;
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["PLA1"],
+  max: [3,3,3],
+  min: [-3,-3,-3],
+  units: "mm",
+}*/
+
+const cube = (xyz) => {
+  return select(any(xyz.abs().greaterThan(1.0)), float(0.0), float(1.0));
+};
+
+const mainModel4 = (xyz) => {
+  const cz = cos(xyz.z);
+  const sz = sin(xyz.z);
+  const twist = vec3(
+    cz.mul(xyz.x).add(sz.mul(xyz.y)),
+    cz.mul(xyz.y).sub(sz.mul(xyz.x)),
+    xyz.z
+  );
+  return [cube(twist)];
+};
+```
+
+* Try loading [libfive-2.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/027-libfive/libfive-2.irmf) now in the IRMF editor!
+* Try loading [libfive-2-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/027-libfive/libfive-2-wgsl.irmf) now in the IRMF editor!
+* Try loading [libfive-2-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/027-libfive/libfive-2-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 
@@ -110,27 +220,12 @@ void mainModel4(out vec4 m, in vec3 xyz) {
 
 The third [libfive example](https://libfive.com/examples/#scheme):
 
-```scheme
-(define (blend a b m)
-  (min a b (+ (sqrt (abs a))
-              (sqrt (abs b))
-              (- m)) ))
-
-(blend
-  (blend (sphere 1 [0 -1 -1])
-         (sphere 1 [0  1 -1]) 0.75)
-  (blend (sphere 1 [0 -1  1])
-         (sphere 1 [0  1  1]) 0.75)
-         0.75)
-```
-
-could look like this in IRMF:
-
-![libfive-3.png](/examples/assets/027-libfive/libfive-3.png)
+**GLSL**
 
 ```glsl
 /*{
   irmf: "1.0",
+  language: "glsl",
   materials: ["PLA1"],
   max: [2,2,2],
   min: [-2,-2,-2],
@@ -160,7 +255,86 @@ void mainModel4(out vec4 m, in vec3 xyz) {
 }
 ```
 
-* Try loading [libfive-3.irmf](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/027-libfive/libfive-3.irmf) now in the experimental IRMF editor!
+**WGSL**
+
+```wgsl
+/*{
+  irmf: "1.0",
+  language: "wgsl",
+  materials: ["PLA1"],
+  max: [2,2,2],
+  min: [-2,-2,-2],
+  units: "mm",
+}*/
+
+fn sphere(radius: f32, center: vec3f, xyz: vec3f) -> f32 {
+  return length(center-xyz) - radius;
+}
+
+fn blend(a: f32, b: f32, m: f32) -> f32 {
+  let v = sqrt(abs(a)) + sqrt(abs(b)) - m;
+  return min(a, min(b, v));
+}
+
+fn mainModel4(xyz: vec3f) -> vec4f {
+  let v =
+    blend(
+      blend(
+        sphere(1.0, vec3f(0.0, -1.0, -1.0), xyz),
+        sphere(1.0, vec3f(0.0, 1.0, -1.0), xyz), 0.75),
+      blend(
+        sphere(1.0, vec3f(0.0, -1.0, 1.0), xyz),
+        sphere(1.0, vec3f(0.0, 1.0, 1.0), xyz), 0.75),
+      0.75);
+  var m = vec4f(0.0);
+  m[0] = select(1.0, 0.0, v > 0.01);
+  return m;
+}
+```
+
+**TSL**
+
+```tsl
+/*{
+  irmf: "1.0",
+  language: "tsl",
+  tslVersion: "0.180.0",
+  materials: ["PLA1"],
+  max: [2,2,2],
+  min: [-2,-2,-2],
+  units: "mm",
+}*/
+
+const sphere = (radius, center, xyz) => {
+  return length(center.sub(xyz)).sub(radius);
+};
+
+const blend = (a, b, m) => {
+  const v = sqrt(a.abs()).add(sqrt(b.abs())).sub(m);
+  return min(a, min(b, v));
+};
+
+const mainModel4 = (xyz) => {
+  const v = blend(
+    blend(
+      sphere(1.0, vec3(0, -1, -1), xyz),
+      sphere(1.0, vec3(0, 1, -1), xyz),
+      0.75
+    ),
+    blend(
+      sphere(1.0, vec3(0, -1, 1), xyz),
+      sphere(1.0, vec3(0, 1, 1), xyz),
+      0.75
+    ),
+    0.75
+  );
+  return [select(v.greaterThan(0.01), float(0.0), float(1.0))];
+};
+```
+
+* Try loading [libfive-3.irmf (GLSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/027-libfive/libfive-3.irmf) now in the IRMF editor!
+* Try loading [libfive-3-wgsl.irmf (WGSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/027-libfive/libfive-3-wgsl.irmf) now in the IRMF editor!
+* Try loading [libfive-3-tsl.irmf (TSL)](https://gmlewis.github.io/irmf-editor/?s=github.com/gmlewis/irmf-examples/blob/master/examples/027-libfive/libfive-3-tsl.irmf) now in the IRMF editor!
 
 * Use [irmf-slicer](https://github.com/gmlewis/irmf-slicer) to generate an STL or voxel approximation.
 

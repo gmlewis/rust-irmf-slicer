@@ -1,0 +1,29 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-06-30",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA1"],
+  "max": [15,15,3],
+  "min": [-15,-15,-3],
+  "notes": "Torus.",
+  "options": {},
+  "title": "Torus",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const torus = (majorRadius, minorRadius, xyz) => {
+  const r = length(xyz);
+  const ringOK = r.lessThanEqual(majorRadius + minorRadius).and(
+    r.greaterThanEqual(majorRadius - minorRadius)
+  );
+  const angle = atan(xyz.y, xyz.x);
+  const center = vec3(cos(angle).mul(majorRadius), sin(angle).mul(majorRadius), float(0));
+  const r2 = length(xyz.sub(center));
+  return select(ringOK.and(r2.lessThanEqual(minorRadius)), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => [torus(9.0, 3.0, xyz)];

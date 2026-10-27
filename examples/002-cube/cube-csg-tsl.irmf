@@ -1,0 +1,25 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-06-30",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["AISI1018steel"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Simple CSG IRMF shader - cube less sphere.",
+  "options": {},
+  "title": "Constructive Solid Geometry example",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const sphere = (radius, p) => {
+  return select(length(p).lessThanEqual(radius), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => {
+  const radius = 6.0; // 12mm diameter sphere.
+  return [float(1.0).sub(sphere(radius, xyz))]; // 1.0 is a cube.
+};

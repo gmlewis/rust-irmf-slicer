@@ -1,0 +1,28 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-07-24",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Nostalgic cos(θ)+cos(2θ)+cos(5θ) 3D function.",
+  "options": {},
+  "title": "cos125",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const cos125 = (thickness, xyz) => {
+  const theta = length(xyz.xy);
+  const z = cos(theta).add(cos(theta.mul(2.0))).add(cos(theta.mul(5.0)));
+  return select(
+    xyz.z.lessThanEqual(z).and(xyz.z.greaterThanEqual(z.sub(thickness))),
+    float(1.0),
+    float(0.0)
+  );
+};
+
+const mainModel4 = (xyz) => [cos125(0.4, xyz)];

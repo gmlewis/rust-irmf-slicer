@@ -1,0 +1,487 @@
+/*{
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["material0"],
+  "max": [36.8,36.8,2.5],
+  "min": [-36.8,-36.8,-4],
+  "units": "mm"
+}*/
+
+
+const gsdfWinding = (p, v1, v2, ds) => {
+  const e = v2.sub(v1);
+  const w = p.sub(v1);
+  const b = w.sub(e.mul(clamp(dot(w, e).div(dot(e, e)), 0.0, 1.0)));
+  const dmin = min(ds.x, dot(b, b));
+  const c0 = p.y.greaterThanEqual(v1.y);
+  const c1 = p.y.lessThan(v2.y);
+  const c2 = e.x.mul(w.y).greaterThan(e.y.mul(w.x));
+  const flip = c0.and(c1).and(c2).or(c0.not().and(c1.not()).and(c2.not()));
+  return vec2(dmin, select(flip, ds.y.negate(), ds.y));
+};
+
+const makePoly = (verts) => (p) => {
+  const v = verts.map(([x, y]) => vec2(x, y));
+  const num = v.length;
+  let ds = vec2(dot(p.sub(v[0]), p.sub(v[0])), float(1.0));
+  for (let i = 0, j = num - 1; i < num; j = i, i++) {
+    ds = gsdfWinding(p, v[i], v[j], ds);
+  }
+  return ds.y.mul(sqrt(ds.x));
+};
+
+const gsdfCylinder3D = (p, radius, h, round) => {
+  const q = p.xzy;
+  const d = vec2(length(q.xz).sub(radius).add(round), q.y.abs().sub(h));
+  return min(max(d.x, d.y), 0.0).add(length(max(d, vec2(0, 0)))).sub(round);
+};
+
+const makeScrew = (poly, lead, pitch, taper, L) => (p) => {
+  let y = length(p.xy);
+  if (taper !== 0) y = y.add(p.z.mul(Math.atan(taper)));
+  const theta = atan(p.y, p.x);
+  const z = p.z.add(theta.mul(lead).div(2.0 * Math.PI));
+  const sawt = z.add(pitch / 2.0).div(pitch);
+  const saw = float(pitch).mul(sawt.sub(floor(sawt))).sub(0.5 * pitch);
+  const p2 = vec2(saw, y);
+  const d2 = poly(p2);
+  const d3 = p.z.abs().sub(L);
+  return max(d2, d3);
+};
+
+const poly2Dbhq9sj4grnkj2mp7tj8 = makePoly([[0.5,0],[0.5,36.5],[0,36.799999237],[-0.5,36.5],[-0.5,0]]);
+
+const cyl0p800000092vksqn8de8a8 = (p) => gsdfCylinder3D(p, .800000012,12.5,0.);
+
+const screw_1d229dfhrcovai6hfu4 = makeScrew(poly2Dbhq9sj4grnkj2mp7tj8, 229., 1., 0., 1.5);
+
+const screw_1dn229c9ffhrbo4hivt = makeScrew(poly2Dbhq9sj4grnkj2mp7tj8, -229., 1., 0., 1.5);
+
+const translaten23894rdherj2mqi = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-23.935707092,-17.295139313,0.)));
+
+const translaten24aju13fs9m9q66 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-24.726015091,15.934364319,0.)));
+
+const translate5p88vmfd6qkg7kqa = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(5.816504478,28.717384338,0.)));
+
+const translate28pa91rngulm3ea7 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(28.750326157,5.017833233,0.)));
+
+const translate15p1rnrp6taj2eon = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(15.080307961,-24.851243973,0.)));
+
+const translaten17e3g15uvap4guj = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-17.584774017,-23.000339508,0.)));
+
+const translaten27buei3vk51rf5s = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-27.711502075,7.971986294,0.)));
+
+const translaten2p9kgok2c6aostd = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-2.65265274,28.595161438,0.)));
+
+const translate25p5b209osqc5b5g = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(25.561609268,12.828252792,0.)));
+
+const translate21pdfq1mbf1kqoe7 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(21.166007996,-19.057811737,0.)));
+
+const translaten105nhri74io3t90 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-10.00215435,-26.540475845,0.)));
+
+const translaten2824qehv4nci0tq = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-28.241117477,-.345306188,0.)));
+
+const translaten104mtuldh5u78nh = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-10.558233261,26.066141129,0.)));
+
+const translate20pbss0o7380dbev = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(20.346179962,19.2403965,0.)));
+
+const translate25p8e9d96gubpaq7 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(25.217945099,-11.893498421,0.)));
+
+const translaten1p4h2hrdktkpmdg = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-1.888008595,-27.696126938,0.)));
+
+const translaten269f1v7dblqeplu = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-26.366373062,-8.288201332,0.)));
+
+const translaten17dafjc9d5c92ap = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-17.2417202,21.443948746,0.)));
+
+const translate13pfu9d82n1kesog = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(13.633903503,23.758718491,0.)));
+
+const translate26p7dhf6io9ua623 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(26.969501495,-4.030626297,0.)));
+
+const translate6p0fa3jcriq73i3a = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(6.037049294,-26.464958191,0.)));
+
+const translaten221lg12jbtnqtc3 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-22.347633362,-15.187600136,0.)));
+
+const translaten22f4dr0ujossjo2 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-22.17795372,15.213755608,0.)));
+
+const translate6p05g2p8i0ehni8j = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(6.066878319,26.07207489,0.)));
+
+const translate26p4ikmvlcbv4c52 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(26.366342545,3.823080778,0.)));
+
+const translate13p9ecmt8ut5jmqm = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(13.096826553,-23.054567337,0.)));
+
+const translaten166jefjl86fnaon = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-16.623622894,-20.492319107,0.)));
+
+const translaten25dndrhfvu75vp = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-25.015707016,7.983376503,0.)));
+
+const translaten1p4r7rtrvj6ujcf = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-1.663667321,26.076660156,0.)));
+
+const translate23pdc76bi8ej8it7 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(23.563966751,10.988150597,0.)));
+
+const translate18p9iu1sqotksg8q = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(18.718618393,-17.856462479,0.)));
+
+const translaten9pf4qlibdqmevrp = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-9.766500473,-23.813764572,0.)));
+
+const translaten257jk5pdrr63ha7 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-25.603513718,.424275696,0.)));
+
+const translaten8p3igvhqsj40kap = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-8.87991333,23.876916885,0.)));
+
+const translate18pbeot3t8ridfdh = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(18.906187057,16.874717712,0.)));
+
+const translate22p5osrb9qsqrv60 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(22.480419159,-11.404858589,0.)));
+
+const translaten2p8d3j2jqv36fau = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-2.424615622,-24.955986023,0.)));
+
+const translaten23c2hgjo7h2bi6p = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-23.996042252,-6.790430546,0.)));
+
+const translaten1454rarfnn4cdao = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-14.978205681,19.769001007,0.)));
+
+const translate12pfhp89sbpb7eql = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(12.887684822,21.031108856,0.)));
+
+const translate24pi699mdqf8a0p = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(24.144481659,-4.322485924,0.)));
+
+const translate4p78qckdct12lmvd = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(4.737512112,-23.925634384,0.)));
+
+const translaten207ihur23lm1904 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-20.441772461,-13.048138618,0.)));
+
+const translaten192go9vs70lr3fl = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-19.481693268,14.206463814,0.)));
+
+const translate6p1doau0ltnrfdv9 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(6.102908134,23.180906296,0.)));
+
+const translate23p4bm6rn1sq8qb4 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(23.671470642,2.738874435,0.)));
+
+const translate11p55tgu4edrpj7q = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(11.102383614,-20.924077988,0.)));
+
+const translaten157m15ucjoco4ma = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-15.352782249,-17.849710464,0.)));
+
+const translaten223ov2u4lvqcb4m = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-22.078184128,7.753307343,0.)));
+
+const translaten0p9lln06anf6q5b = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-.811651647,23.240936279,0.)));
+
+const translate21paq2igtskuf9st = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(21.216623306,9.159410477,0.)));
+
+const translate16pa0umiv8sgm1jr = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(16.151882172,-16.321660995,0.)));
+
+const translaten9p9n9r48rqs38kd = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-9.261406898,-20.850570679,0.)));
+
+const translaten227ddf30plhurjl = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-22.642946243,1.028085113,0.)));
+
+const translaten7p1rqevdag0j5ob = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-7.237754822,21.32170105,0.)));
+
+const translate17p5ggv1mjoqkc5i = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(17.108221054,14.406552315,0.)));
+
+const translate19p9onvsc2hk72pk = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(19.513206482,-10.616719246,0.)));
+
+const translaten2pf06v2046a052r = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-2.764883518,-21.887788773,0.)));
+
+const translaten211102rj99b24u0 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-21.24325943,-5.355727673,0.)));
+
+const translaten12c4u5bmhas3sth = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-12.632096291,17.709604263,0.)));
+
+const translate11p6tkgpa9kpti31 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(11.810049057,18.082107544,0.)));
+
+const translate20p15ksc4phmnc6h = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(20.987112045,-4.384186745,0.)));
+
+const translate3p5ag129c5bhfsus = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(3.530978918,-20.986951828,0.)));
+
+const translaten188r7m3ru98vsra = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-18.12446022,-10.847300529,0.)));
+
+const translaten16d6i4b98v5vcf8 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-16.574382782,12.833151817,0.)));
+
+const translate5p879csna1aapgms = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(5.872569084,19.953767776,0.)));
+
+const translate20p4mt4uj019ooqu = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(20.55988884,1.780713797,0.)));
+
+const translate9p06gkv6lcmrhf4f = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(9.070817947,-18.353206635,0.)));
+
+const translaten13fjai2suehhbe2 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-13.679740906,-15.007486343,0.)));
+
+const translaten18f30s5uo6vdcfe = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-18.801870346,7.217319965,0.)));
+
+const translaten0p88jsbs6cgl8ls = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-.122086443,19.97060585,0.)));
+
+const translate18p1vc1itmui87em = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(18.397768021,7.321352005,0.)));
+
+const translate13p2bbnncii3bo4o = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(13.399888992,-14.344439507,0.)));
+
+const translaten8p7sp43rggg2hda = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-8.406842232,-17.546649933,0.)));
+
+const translaten19sd3plgns4386 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-19.229091644,1.428970933,0.)));
+
+const translaten5p58l8gjdcjc8nk = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-5.617985725,18.261384964,0.)));
+
+const translate14p82b36mnggg1ke = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(14.823646545,11.770278931,0.)));
+
+const translate16p1t2k5l89m1dgn = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(16.204172134,-9.431050301,0.)));
+
+const translaten2p9mummu7dr5tmq = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-2.856557369,-18.346662521,0.)));
+
+const translaten17ee2gva5cd0os7 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-17.948976517,-3.979222536,0.)));
+
+const translaten109urtn7o2fbjp3 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-10.137838364,15.115032196,0.)));
+
+const translate10p4qoegpi7nkkqu = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(10.280404091,14.791660309,0.)));
+
+const translate17p66kd17144qalk = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(17.335836411,-4.145934105,0.)));
+
+const translate2p4cccb6qoq90e41 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(2.423784256,-17.466690063,0.)));
+
+const translaten1516anq3q968cb5 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-15.217461586,-8.522255898,0.)));
+
+const translaten13503fdnn3fsfo = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-13.326934814,10.946818352,0.)));
+
+const translate5p2acap9okfh7si2 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(5.282729149,16.210266113,0.)));
+
+const translate16p7fekgs8tijes6 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(16.821985245,.969946682,0.)));
+
+const translate6p9ffrlbt5ijacum = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(6.943595409,-15.130976677,0.)));
+
+const translaten116q12u1ue32cbk = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-11.422838211,-11.828726768,0.)));
+
+const translaten14eda0fmbr6l1es = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-14.984731674,6.252820969,0.)));
+
+const translate0p33tka8g4ic170b = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(.363576502,16.023351669,0.)));
+
+const translate14p3e6kged593531 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(14.856675148,5.422101498,0.)));
+
+const translate10pc0lflbdkp194k = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(10.316514015,-11.701687813,0.)));
+
+const translaten7p3gfat2bsbclgo = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-7.042938709,-13.674685478,0.)));
+
+const translaten1529detceitjh3p = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-15.0801754,1.558297873,0.)));
+
+const translaten3p2aonbq0eflvgh = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-3.978883982,14.396126747,0.)));
+
+const translate11pagthpju41ho4g = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(11.776983261,8.810370445,0.)));
+
+const translate12pa83njr79a0a1u = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(12.296560287,-7.639017582,0.)));
+
+const translaten2pbri6f6sgk26tf = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-2.595163822,-14.002326012,0.)));
+
+const translaten13flphi9gv0udo1 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-13.75112915,-2.635604143,0.)));
+
+const translaten7p689vqk4oanm93 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-7.331290245,11.641828537,0.)));
+
+const translate8p05o4bspt8o3c61 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(8.02655983,10.867120743,0.)));
+
+const translate12pdu0414t9pn2kc = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(12.799705505,-3.453624725,0.)));
+
+const translate1p49t3d1pj526bi9 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(1.415279746,-12.9227314,0.)));
+
+const translaten116of7oa8n7pmta = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-11.287873268,-5.901179314,0.)));
+
+const translaten9p2hdis03pe9uct = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-9.4034729,8.188694,0.)));
+
+const translate4p1eh9h0gr9ganjk = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(4.110891342,11.481313705,0.)));
+
+const translate11p1pb048uslj7u4 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(11.909755707,.343070209,0.)));
+
+const translate4p5613ljrl8r85r8 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(4.543253899,-10.703215599,0.)));
+
+const translaten8p4a0tcvdg7olqe = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-8.104123116,-7.922322273,0.)));
+
+const translaten108arps9fkkpogl = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-10.053575516,4.539338112,0.)));
+
+const translate0p5a0irc0r1iq482 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(.551672459,10.705869675,0.)));
+
+const translate9p8b7mscth0r2pgm = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(9.868304253,3.282766342,0.)));
+
+const translate6p49gu7h2rh8fb7l = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(6.438998699,-7.742046833,0.)));
+
+const translaten4p4ga8q010498t3 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-4.701509953,-8.516795158,0.)));
+
+const translaten9pfmt74075nkd21 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-9.293162346,1.231718898,0.)));
+
+const translaten2prn2lhtuj4rmt = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-2.148397207,8.746677399,0.)));
+
+const translate7p0bvrcjfrlsed59 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(7.050756454,4.964558125,0.)));
+
+const translate6p89l4p4vc96814s = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(6.856145859,-4.537980556,0.)));
+
+const translaten1pfudfks8es9skt = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-1.641671538,-7.625280857,0.)));
+
+const translaten7p7sun69ibnntfk = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-7.259310246,-1.175757885,0.)));
+
+const translaten3pftqpndf2aaun2 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-3.496507406,5.924055099,0.)));
+
+const translate3p9d9qbnp228oda3 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(3.92969799,5.011733532,0.)));
+
+const translate5p555b2l3kmch9cn = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(5.567106247,-1.675507784,0.)));
+
+const translate0p452a7tsbck7hqu = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(.417036533,-5.18324995,0.)));
+
+const translaten4paivt0fc1emg9g = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-4.04928875,-1.970598578,0.)));
+
+const translaten2pchm4bkjspa40t = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(-2.702248335,2.493561983,0.)));
+
+const translate0p9dn138os7vduu6 = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(.946566522,2.42157197,0.)));
+
+const translate0p0b4ivk422sqfac = (p) => cyl0p800000092vksqn8de8a8(p.sub(vec3(0.,0.,0.)));
+
+const cyl36p52p50p12cvca3tot4tp = (p) => gsdfCylinder3D(p, 36.5,1.25,0.);
+
+const poly2Dflu90us9o605e0v55l = makePoly([[1.666666627,0],[1.666666627,32.5],[0.877321661,32.5],[0.853514671,32.496528625],[0.8316921,32.48639679],[0.81367296,32.47045517],[0.800959289,32.450031281],[0.794609487,32.426822662],[0.713538587,31.766551971],[0.676014841,31.662326813],[0.597140431,31.584547043],[0.492401183,31.548482895],[0.382361054,31.561214447],[0.28862524,31.620243073],[-0.517907739,32.426776886],[-0.547738194,32.452255249],[-0.581186891,32.472751617],[-0.617430329,32.487762451],[-0.655575991,32.496921539],[-0.694684446,32.5],[-1.666666627,32.5],[-1.666666627,0]]);
+
+const intersect_sc2sh57uuaij919 = (p) => max(screw_1dn229c9ffhrbo4hivt(p), screw_1d229dfhrcovai6hfu4(p));
+
+const cyl36p55p1p8dcddpfjg3l3pc = (p) => gsdfCylinder3D(p, 36.5,.674999952,1.825000048);
+
+const union_cyl0p8607sbjinkp0qa = (p) => {
+  const d = cyl0p800000092vksqn8de8a8(p).toVar();
+  d.assign(min(d, translate0p0b4ivk422sqfac(p)));
+  d.assign(min(d, translate0p9dn138os7vduu6(p)));
+  d.assign(min(d, translaten2pchm4bkjspa40t(p)));
+  d.assign(min(d, translaten4paivt0fc1emg9g(p)));
+  d.assign(min(d, translate0p452a7tsbck7hqu(p)));
+  d.assign(min(d, translate5p555b2l3kmch9cn(p)));
+  d.assign(min(d, translate3p9d9qbnp228oda3(p)));
+  d.assign(min(d, translaten3pftqpndf2aaun2(p)));
+  d.assign(min(d, translaten7p7sun69ibnntfk(p)));
+  d.assign(min(d, translaten1pfudfks8es9skt(p)));
+  d.assign(min(d, translate6p89l4p4vc96814s(p)));
+  d.assign(min(d, translate7p0bvrcjfrlsed59(p)));
+  d.assign(min(d, translaten2prn2lhtuj4rmt(p)));
+  d.assign(min(d, translaten9pfmt74075nkd21(p)));
+  d.assign(min(d, translaten4p4ga8q010498t3(p)));
+  d.assign(min(d, translate6p49gu7h2rh8fb7l(p)));
+  d.assign(min(d, translate9p8b7mscth0r2pgm(p)));
+  d.assign(min(d, translate0p5a0irc0r1iq482(p)));
+  d.assign(min(d, translaten108arps9fkkpogl(p)));
+  d.assign(min(d, translaten8p4a0tcvdg7olqe(p)));
+  d.assign(min(d, translate4p5613ljrl8r85r8(p)));
+  d.assign(min(d, translate11p1pb048uslj7u4(p)));
+  d.assign(min(d, translate4p1eh9h0gr9ganjk(p)));
+  d.assign(min(d, translaten9p2hdis03pe9uct(p)));
+  d.assign(min(d, translaten116of7oa8n7pmta(p)));
+  d.assign(min(d, translate1p49t3d1pj526bi9(p)));
+  d.assign(min(d, translate12pdu0414t9pn2kc(p)));
+  d.assign(min(d, translate8p05o4bspt8o3c61(p)));
+  d.assign(min(d, translaten7p689vqk4oanm93(p)));
+  d.assign(min(d, translaten13flphi9gv0udo1(p)));
+  d.assign(min(d, translaten2pbri6f6sgk26tf(p)));
+  d.assign(min(d, translate12pa83njr79a0a1u(p)));
+  d.assign(min(d, translate11pagthpju41ho4g(p)));
+  d.assign(min(d, translaten3p2aonbq0eflvgh(p)));
+  d.assign(min(d, translaten1529detceitjh3p(p)));
+  d.assign(min(d, translaten7p3gfat2bsbclgo(p)));
+  d.assign(min(d, translate10pc0lflbdkp194k(p)));
+  d.assign(min(d, translate14p3e6kged593531(p)));
+  d.assign(min(d, translate0p33tka8g4ic170b(p)));
+  d.assign(min(d, translaten14eda0fmbr6l1es(p)));
+  d.assign(min(d, translaten116q12u1ue32cbk(p)));
+  d.assign(min(d, translate6p9ffrlbt5ijacum(p)));
+  d.assign(min(d, translate16p7fekgs8tijes6(p)));
+  d.assign(min(d, translate5p2acap9okfh7si2(p)));
+  d.assign(min(d, translaten13503fdnn3fsfo(p)));
+  d.assign(min(d, translaten1516anq3q968cb5(p)));
+  d.assign(min(d, translate2p4cccb6qoq90e41(p)));
+  d.assign(min(d, translate17p66kd17144qalk(p)));
+  d.assign(min(d, translate10p4qoegpi7nkkqu(p)));
+  d.assign(min(d, translaten109urtn7o2fbjp3(p)));
+  d.assign(min(d, translaten17ee2gva5cd0os7(p)));
+  d.assign(min(d, translaten2p9mummu7dr5tmq(p)));
+  d.assign(min(d, translate16p1t2k5l89m1dgn(p)));
+  d.assign(min(d, translate14p82b36mnggg1ke(p)));
+  d.assign(min(d, translaten5p58l8gjdcjc8nk(p)));
+  d.assign(min(d, translaten19sd3plgns4386(p)));
+  d.assign(min(d, translaten8p7sp43rggg2hda(p)));
+  d.assign(min(d, translate13p2bbnncii3bo4o(p)));
+  d.assign(min(d, translate18p1vc1itmui87em(p)));
+  d.assign(min(d, translaten0p88jsbs6cgl8ls(p)));
+  d.assign(min(d, translaten18f30s5uo6vdcfe(p)));
+  d.assign(min(d, translaten13fjai2suehhbe2(p)));
+  d.assign(min(d, translate9p06gkv6lcmrhf4f(p)));
+  d.assign(min(d, translate20p4mt4uj019ooqu(p)));
+  d.assign(min(d, translate5p879csna1aapgms(p)));
+  d.assign(min(d, translaten16d6i4b98v5vcf8(p)));
+  d.assign(min(d, translaten188r7m3ru98vsra(p)));
+  d.assign(min(d, translate3p5ag129c5bhfsus(p)));
+  d.assign(min(d, translate20p15ksc4phmnc6h(p)));
+  d.assign(min(d, translate11p6tkgpa9kpti31(p)));
+  d.assign(min(d, translaten12c4u5bmhas3sth(p)));
+  d.assign(min(d, translaten211102rj99b24u0(p)));
+  d.assign(min(d, translaten2pf06v2046a052r(p)));
+  d.assign(min(d, translate19p9onvsc2hk72pk(p)));
+  d.assign(min(d, translate17p5ggv1mjoqkc5i(p)));
+  d.assign(min(d, translaten7p1rqevdag0j5ob(p)));
+  d.assign(min(d, translaten227ddf30plhurjl(p)));
+  d.assign(min(d, translaten9p9n9r48rqs38kd(p)));
+  d.assign(min(d, translate16pa0umiv8sgm1jr(p)));
+  d.assign(min(d, translate21paq2igtskuf9st(p)));
+  d.assign(min(d, translaten0p9lln06anf6q5b(p)));
+  d.assign(min(d, translaten223ov2u4lvqcb4m(p)));
+  d.assign(min(d, translaten157m15ucjoco4ma(p)));
+  d.assign(min(d, translate11p55tgu4edrpj7q(p)));
+  d.assign(min(d, translate23p4bm6rn1sq8qb4(p)));
+  d.assign(min(d, translate6p1doau0ltnrfdv9(p)));
+  d.assign(min(d, translaten192go9vs70lr3fl(p)));
+  d.assign(min(d, translaten207ihur23lm1904(p)));
+  d.assign(min(d, translate4p78qckdct12lmvd(p)));
+  d.assign(min(d, translate24pi699mdqf8a0p(p)));
+  d.assign(min(d, translate12pfhp89sbpb7eql(p)));
+  d.assign(min(d, translaten1454rarfnn4cdao(p)));
+  d.assign(min(d, translaten23c2hgjo7h2bi6p(p)));
+  d.assign(min(d, translaten2p8d3j2jqv36fau(p)));
+  d.assign(min(d, translate22p5osrb9qsqrv60(p)));
+  d.assign(min(d, translate18pbeot3t8ridfdh(p)));
+  d.assign(min(d, translaten8p3igvhqsj40kap(p)));
+  d.assign(min(d, translaten257jk5pdrr63ha7(p)));
+  d.assign(min(d, translaten9pf4qlibdqmevrp(p)));
+  d.assign(min(d, translate18p9iu1sqotksg8q(p)));
+  d.assign(min(d, translate23pdc76bi8ej8it7(p)));
+  d.assign(min(d, translaten1p4r7rtrvj6ujcf(p)));
+  d.assign(min(d, translaten25dndrhfvu75vp(p)));
+  d.assign(min(d, translaten166jefjl86fnaon(p)));
+  d.assign(min(d, translate13p9ecmt8ut5jmqm(p)));
+  d.assign(min(d, translate26p4ikmvlcbv4c52(p)));
+  d.assign(min(d, translate6p05g2p8i0ehni8j(p)));
+  d.assign(min(d, translaten22f4dr0ujossjo2(p)));
+  d.assign(min(d, translaten221lg12jbtnqtc3(p)));
+  d.assign(min(d, translate6p0fa3jcriq73i3a(p)));
+  d.assign(min(d, translate26p7dhf6io9ua623(p)));
+  d.assign(min(d, translate13pfu9d82n1kesog(p)));
+  d.assign(min(d, translaten17dafjc9d5c92ap(p)));
+  d.assign(min(d, translaten269f1v7dblqeplu(p)));
+  d.assign(min(d, translaten1p4h2hrdktkpmdg(p)));
+  d.assign(min(d, translate25p8e9d96gubpaq7(p)));
+  d.assign(min(d, translate20pbss0o7380dbev(p)));
+  d.assign(min(d, translaten104mtuldh5u78nh(p)));
+  d.assign(min(d, translaten2824qehv4nci0tq(p)));
+  d.assign(min(d, translaten105nhri74io3t90(p)));
+  d.assign(min(d, translate21pdfq1mbf1kqoe7(p)));
+  d.assign(min(d, translate25p5b209osqc5b5g(p)));
+  d.assign(min(d, translaten2p9kgok2c6aostd(p)));
+  d.assign(min(d, translaten27buei3vk51rf5s(p)));
+  d.assign(min(d, translaten17e3g15uvap4guj(p)));
+  d.assign(min(d, translate15p1rnrp6taj2eon(p)));
+  d.assign(min(d, translate28pa91rngulm3ea7(p)));
+  d.assign(min(d, translate5p88vmfd6qkg7kqa(p)));
+  d.assign(min(d, translaten24aju13fs9m9q66(p)));
+  d.assign(min(d, translaten23894rdherj2mqi(p)));
+  return d;
+};
+
+const translate0p02ohbg1oga3qju = (p) => cyl36p52p50p12cvca3tot4tp(p.sub(vec3(0.,0.,-2.75)));
+
+const screw_1d666662kba3e1tsiks = makeScrew(poly2Dflu90us9o605e0v55l, -1.666666627, 1.666666627, 0., 2.75);
+
+const union_cyl36pe6ggbr31te9b0 = (p) => {
+  const d = cyl36p55p1p8dcddpfjg3l3pc(p).toVar();
+  d.assign(min(d, intersect_sc2sh57uuaij919(p)));
+  return d;
+};
+
+const diff_transla7ai1r9b9fmnmh = (p) => max(translate0p02ohbg1oga3qju(p), union_cyl0p8607sbjinkp0qa(p).negate());
+
+const diff_union_cp189fanbi3gf = (p) => max(union_cyl36pe6ggbr31te9b0(p), screw_1d666662kba3e1tsiks(p).negate());
+
+const union_diff_uglpkhp1bft17 = (p) => {
+  const d = diff_union_cp189fanbi3gf(p).toVar();
+  d.assign(min(d, diff_transla7ai1r9b9fmnmh(p)));
+  return d;
+};
+
+const mainModel4 = (xyz) => {
+  const d = union_diff_uglpkhp1bft17(xyz);
+  return [select(d.lessThanEqual(0.0), float(1.0), float(0.0))];
+};

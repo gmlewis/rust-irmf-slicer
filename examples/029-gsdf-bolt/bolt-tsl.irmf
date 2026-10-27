@@ -1,0 +1,96 @@
+/*{
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["material0"],
+  "max": [5.468897,10.091039,3.718645],
+  "min": [-3.8632028,-3.406863,-10.275591],
+  "units": "mm",
+}*/
+
+
+const gsdfWinding = (p, v1, v2, ds) => {
+  const e = v2.sub(v1);
+  const w = p.sub(v1);
+  const b = w.sub(e.mul(clamp(dot(w, e).div(dot(e, e)), 0.0, 1.0)));
+  const dmin = min(ds.x, dot(b, b));
+  const c0 = p.y.greaterThanEqual(v1.y);
+  const c1 = p.y.lessThan(v2.y);
+  const c2 = e.x.mul(w.y).greaterThan(e.y.mul(w.x));
+  const flip = c0.and(c1).and(c2).or(c0.not().and(c1.not()).and(c2.not()));
+  return vec2(dmin, select(flip, ds.y.negate(), ds.y));
+};
+
+const makePoly = (verts) => (p) => {
+  const v = verts.map(([x, y]) => vec2(x, y));
+  const num = v.length;
+  let ds = vec2(dot(p.sub(v[0]), p.sub(v[0])), float(1.0));
+  for (let i = 0, j = num - 1; i < num; j = i, i++) {
+    ds = gsdfWinding(p, v[i], v[j], ds);
+  }
+  return ds.y.mul(sqrt(ds.x));
+};
+
+const gsdfCylinder3D = (p, radius, h, round) => {
+  const q = p.xzy;
+  const d = vec2(length(q.xz).sub(radius).add(round), q.y.abs().sub(h));
+  return min(max(d.x, d.y), 0.0).add(length(max(d, vec2(0, 0)))).sub(round);
+};
+
+const hexPoly = makePoly([[3.186973572,0],[1.593486667,2.760000229],[-1.593487144,2.75999999],[-3.18697381,-5.59e-7],[-1.593486309,-2.760000706],[1.59348774,-2.75999999]]);
+const threadPoly = makePoly([[0.5,0],[0.5,1.55412662],[0.3125,1.229367018],[0.292419732,1.207065582],[0.265004724,1.194859743],[0.234995246,1.194859743],[0.207580224,1.207065701],[0.1875,1.229367018],[0.03125,1.5],[-0.03125,1.5],[-0.1875,1.229367018],[-0.207580268,1.207065582],[-0.234995276,1.194859743],[-0.265004754,1.194859743],[-0.292419761,1.207065701],[-0.3125,1.229367018],[-0.5,1.55412662],[-0.5,0]]);
+
+const screw = (p) => {
+  const lead = -0.5;
+  const pitch = 0.5;
+  const taper = 0;
+  const L = 4;
+  let y = length(p.xy);
+  if (taper !== 0) {
+    y = y.add(p.z.mul(Math.atan(taper)));
+  }
+  const theta = atan(p.y, p.x);
+  const z = p.z.add(theta.mul(lead).div(2.0 * Math.PI));
+  const sawt = z.add(pitch / 2.0).div(pitch);
+  const saw = float(pitch).mul(sawt.sub(floor(sawt))).sub(0.5 * pitch);
+  const p2 = vec2(saw, y);
+  const d2 = threadPoly(p2);
+  const d3 = p.z.abs().sub(L);
+  return max(d2, d3);
+};
+
+const sphere = (p) => length(p).sub(5.542562962);
+const offset2D = (p) => hexPoly(p).add(-0.27712813);
+const translateA = (p) => sphere(p.sub(vec3(0, 0, 3.217096806)));
+const extrusion = (p) => {
+  const h = 1.443375707;
+  const d = offset2D(p.xy);
+  const w = vec2(d, p.z.abs().sub(h));
+  return min(max(w.x, w.y), 0.0).add(length(max(w, vec2(0, 0))));
+};
+const cyl1p53 = (p) => gsdfCylinder3D(p, 1.5, 1.269059896, 0.230940104);
+const intersect = (p) => max(extrusion(p), translateA(p));
+const translateB = (p) => cyl1p53(p.sub(vec3(0, 0, 2.943375587)));
+const smoothUnion = (p) => {
+  const d1 = translateB(p);
+  const d2 = intersect(p);
+  const k = 0.346410155;
+  const h = clamp(float(0.5).add(float(0.5).mul(d2.sub(d1)).div(k)), 0.0, 1.0);
+  return mix(d2, d1, h).sub(h.mul(h.negate().add(1.0)).mul(k));
+};
+const translateC = (p) => screw(p.sub(vec3(0, 0, 6.943375587)));
+const unionModel = (p) => min(translateC(p), smoothUnion(p));
+// TSL's mat4(...) interprets scalar arguments row-major, unlike GLSL's
+// column-major constructor, so pass the transpose of the GLSL matrix.
+const invT = mat4(
+  0.98309809, -0.070359752, 0.169020519, 0.0,
+  0.070359752, -0.707106948, -0.703597546, 0.0,
+  0.169020519, 0.703597546, -0.690204918, 0.0,
+  0.0, 0.0, 0.0, 1.0
+);
+const transform = (p) => unionModel(invT.mul(vec4(p, 0.0)).xyz);
+
+const mainModel4 = (xyz) => {
+  const d = transform(xyz);
+  return [select(d.lessThanEqual(0.0), float(1.0), float(0.0))];
+};

@@ -1,0 +1,43 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2019-06-30",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA1","PLA2"],
+  "max": [17,15,3],
+  "min": [-15,-15,-3],
+  "notes": "Partial torus.",
+  "options": {},
+  "title": "Partial Torus",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const torus = (majorRadius, minorRadius, fromDeg, toDeg, xyz) => {
+  const r = length(xyz);
+  const ringOK = r.lessThanEqual(majorRadius + minorRadius).and(
+    r.greaterThanEqual(majorRadius - minorRadius)
+  );
+  const angle = atan(xyz.y, xyz.x);
+  const center = vec3(cos(angle).mul(majorRadius), sin(angle).mul(majorRadius), float(0));
+  const r2 = length(xyz.sub(center));
+  const angleDeg = mod(
+    float(360.0).add(atan(xyz.y, xyz.x).mul(180.0).div(Math.PI)),
+    float(360.0)
+  );
+  const angleOK = fromDeg < toDeg
+    ? angleDeg.greaterThanEqual(fromDeg).and(angleDeg.lessThanEqual(toDeg))
+    : angleDeg.greaterThanEqual(fromDeg).or(angleDeg.lessThanEqual(toDeg));
+  return select(
+    ringOK.and(r2.lessThanEqual(minorRadius)).and(angleOK),
+    float(1.0),
+    float(0.0)
+  );
+};
+
+const mainModel4 = (xyz) => [
+  torus(9.0, 3.0, 45.0, 315.0, xyz),
+  torus(9.0, 3.0, 315.0, 45.0, xyz.sub(vec3(2, 0, 0))),
+];

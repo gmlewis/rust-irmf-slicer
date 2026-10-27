@@ -1,0 +1,41 @@
+/*{
+  "author": "Glenn M. Lewis",
+  "license": "Apache-2.0",
+  "date": "2020-03-17",
+  "irmf": "1.0",
+  "language": "tsl",
+  "tslVersion": "0.180.0",
+  "materials": ["PLA"],
+  "max": [5,5,5],
+  "min": [-5,-5,-5],
+  "notes": "Figure 7 from: https://authors.library.caltech.edu/9756.",
+  "options": {},
+  "title": "Superquadric ellipsoids",
+  "units": "mm",
+  "version": "1.0"
+}*/
+
+const superquad = (e1, e2, xyz) => {
+  const p = xyz.abs(); // Due to GLSL 'pow' definition.
+  const f = pow(
+    pow(p.x, 2.0 / e2).add(pow(p.y, 2.0 / e2)),
+    e2 / e1
+  ).add(pow(p.z, 2.0 / e1));
+  return select(f.lessThanEqual(1.0), float(1.0), float(0.0));
+};
+
+const mainModel4 = (xyz) => {
+  const u = 1.2;
+  const v = 3.4;
+  const entries = [
+    [0.3, 0.3, -v, v], [0.3, 0.1, -u, v], [0.3, 1.0, u, v], [0.3, 3.0, v, v],
+    [0.1, 0.3, -v, u], [0.1, 0.1, -u, u], [0.1, 1.0, u, u], [0.1, 3.0, v, u],
+    [1.0, 0.3, -v, -u], [1.0, 0.1, -u, -u], [1.0, 1.0, u, -u], [1.0, 3.0, v, -u],
+    [3.0, 0.3, -v, -v], [3.0, 0.1, -u, -v], [3.0, 1.0, u, -v], [3.0, 3.0, v, -v],
+  ];
+  let sum = float(0.0);
+  for (const [e1, e2, cx, cz] of entries) {
+    sum = sum.add(superquad(e1, e2, xyz.sub(vec3(cx, 0, cz))));
+  }
+  return [sum];
+};

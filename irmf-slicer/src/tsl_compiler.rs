@@ -8,9 +8,18 @@
 use crate::IrmfResult;
 use crate::irmf::IrmfError;
 use serde::Deserialize;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
+use std::thread;
+use std::time::{Duration, Instant};
+
+/// Hard limit for one TSL compilation.
+const COMPILE_TIMEOUT: Duration = Duration::from_secs(60);
+/// Maximum JSON output accepted from the compiler.
+const MAX_STDOUT_BYTES: usize = 16 << 20;
+/// Maximum stderr captured for diagnostics.
+const MAX_STDERR_BYTES: usize = 64 << 10;
 
 static TSL_EXE: OnceLock<String> = OnceLock::new();
 static TSL_CACHE: OnceLock<String> = OnceLock::new();
@@ -63,6 +72,12 @@ pub fn compile_tsl(source: &str, materials: usize) -> IrmfResult<String> {
     compile_tsl_with_exe(&exe, source, materials)
 }
 
+fn read_capped<R: Read>(reader: R, limit: usize) -> std::io::Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    reader.take(limit as u64 + 1).read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
 fn compile_tsl_with_exe(exe: &str, source: &str, materials: usize) -> IrmfResult<String> {
     let mut cmd = Command::new(exe);
     cmd.arg("--json")
@@ -72,6 +87,19 @@ fn compile_tsl_with_exe(exe: &str, source: &str, materials: usize) -> IrmfResult
     if let Some(dir) = cache_dir() {
         cmd.arg("--cache-dir").arg(dir);
     }
+    // The TSL body is untrusted code. Do not leak the parent's environment
+    // (tokens, credentials) to the compiler, and do not run it in the model's
+    // directory. The compiler additionally runs the body under Node's
+    // permission model (no network, no writes, read-only package access).
+    cmd.env_clear();
+    if let Ok(path) = std::env::var("PATH") {
+        cmd.env("PATH", path);
+    }
+    if let Ok(tmp) = std::env::var("TMPDIR") {
+        cmd.env("TMPDIR", tmp);
+    }
+    cmd.env("NO_COLOR", "1");
+    cmd.current_dir(std::env::temp_dir());
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -89,20 +117,68 @@ fn compile_tsl_with_exe(exe: &str, source: &str, materials: usize) -> IrmfResult
         stdin.write_all(source.as_bytes())?;
     }
 
-    let output = child.wait_with_output()?;
-    if output.stdout.is_empty() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    // Drain the pipes on separate threads so a verbose compiler cannot block.
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| IrmfError::TslCompileError("cannot read compiler stdout".into()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| IrmfError::TslCompileError("cannot read compiler stderr".into()))?;
+    let out_thread = thread::spawn(move || read_capped(stdout, MAX_STDOUT_BYTES));
+    let err_thread = thread::spawn(move || read_capped(stderr, MAX_STDERR_BYTES));
+
+    let start = Instant::now();
+    let mut timed_out = false;
+    let status = loop {
+        match child.try_wait()? {
+            Some(status) => break Some(status),
+            None if start.elapsed() >= COMPILE_TIMEOUT => {
+                let _ = child.kill();
+                let _ = child.wait();
+                timed_out = true;
+                break None;
+            }
+            None => thread::sleep(Duration::from_millis(25)),
+        }
+    };
+
+    let stdout = out_thread
+        .join()
+        .map_err(|_| IrmfError::TslCompileError("compiler stdout reader panicked".into()))??;
+    let stderr = err_thread
+        .join()
+        .map_err(|_| IrmfError::TslCompileError("compiler stderr reader panicked".into()))??;
+
+    if timed_out {
+        return Err(IrmfError::TslCompileError(format!(
+            "TSL compile timed out after {:?}",
+            COMPILE_TIMEOUT
+        )));
+    }
+    if stdout.len() > MAX_STDOUT_BYTES {
+        return Err(IrmfError::ResourceLimit(format!(
+            "TSL compiler output exceeds {} bytes",
+            MAX_STDOUT_BYTES
+        )));
+    }
+    if stdout.is_empty() {
+        let stderr = String::from_utf8_lossy(&stderr).trim().to_string();
         if stderr.contains("TSL compiler not") {
             return Err(IrmfError::TslCompilerUnavailable);
         }
         return Err(IrmfError::TslCompileError(if stderr.is_empty() {
-            format!("compiler exited with {}", output.status)
+            format!(
+                "compiler exited with {}",
+                status.map(|s| s.to_string()).unwrap_or_default()
+            )
         } else {
             stderr
         }));
     }
 
-    let res: CompileResult = serde_json::from_slice(&output.stdout)?;
+    let res: CompileResult = serde_json::from_slice(&stdout)?;
     if !res.ok {
         if let Some(d) = res.diagnostics.first() {
             return Err(IrmfError::TslCompileError(format!(

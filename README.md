@@ -65,6 +65,21 @@ This means that you can add lines to your IRMF shaders like this:
 
 and the source will be retrieved from the LYGIA server.
 
+Remote includes are **disabled by default** because they fetch executable
+shader code at load time. Pass `--remote-includes` to enable them, and only do
+so for models you trust:
+
+```sh
+irmf-slicer-cli --stl --remote-includes model.irmf
+```
+
+Even when enabled, only `lygia.xyz` and `raw.githubusercontent.com` are
+allowed over HTTPS, redirects are restricted to those hosts, requests time
+out, and the number and total size of includes are capped. A failed fetch is
+an error rather than a silently missing include. `#include` is never expanded
+in TSL bodies: a TSL body is JavaScript, so a remote include would be remote
+code execution. Inline the code instead.
+
 Congratulations and thanks go to [Patricio Gonzalez Vivo](https://github.com/sponsors/patriciogonzalezvivo)
 for making the LYGIA server available for anyone to use, and also
 for the amazing tool [glslViewer](https://github.com/patriciogonzalezvivo/glslViewer)!
@@ -158,7 +173,7 @@ cargo run -p irmf-cal-cli -- --input examples/001-sphere/sphere-cal.irmf --port 
   - **ZIP**: Archive of PNG slices, compatible with [NanoDLP](https://www.nano3dtech.com/).
   - **DLP (.cbddlp)**: Compatible with Anycubic and ChiTuBox-based resin printers.
   - **SVX**: Simple Voxel Format.
-- **Remote Includes**: Automatic resolution of `#include` directives from `lygia.xyz` and GitHub.
+- **Remote Includes (opt-in)**: Resolution of `#include` directives from `lygia.xyz` and GitHub, enabled only with `--remote-includes`.
 - **Offscreen Rendering**: No windowing system required for slicing (though a `--view` mode is available for debugging).
 
 ## How it works

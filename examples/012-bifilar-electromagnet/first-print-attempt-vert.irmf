@@ -14,8 +14,8 @@
   "version": "1.0"
 }*/
 
-#include "github.com/gmlewis/irmf-examples/blob/master/examples/012-bifilar-electromagnet/rotation.glsl"
-#include "github.com/gmlewis/irmf-examples/blob/master/examples/012-bifilar-electromagnet/primitives.glsl"
+#include "github.com/gmlewis/irmf-examples/blob/6bb268f05fbe1c68a68ec1e66ce4c5d335bdf021/examples/012-bifilar-electromagnet/rotation.glsl"
+#include "github.com/gmlewis/irmf-examples/blob/6bb268f05fbe1c68a68ec1e66ce4c5d335bdf021/examples/012-bifilar-electromagnet/primitives.glsl"
 
 #define M_PI 3.1415926535897932384626433832795
 

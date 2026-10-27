@@ -126,6 +126,30 @@ impl<R: Renderer> Slicer<R> {
         (0.5 + (max_z - min_z) / delta_z).floor() as usize
     }
 
+    /// Rejects render sizes that would exhaust memory or time. Bounds and
+    /// resolution are independently attacker-influenced, so cap the derived
+    /// work before allocating buffers.
+    fn check_render_size(&self, width: u32, height: u32) -> IrmfResult<()> {
+        const MAX_RENDER_PIXELS: u64 = 64 << 20;
+        const MAX_SLICES: usize = 1 << 20;
+
+        let pixels = (width as u64) * (height as u64);
+        if pixels > MAX_RENDER_PIXELS {
+            return Err(IrmfError::ResourceLimit(format!(
+                "render slice is {}x{} ({} samples); limit is {}",
+                width, height, pixels, MAX_RENDER_PIXELS
+            )));
+        }
+        let slices = self.num_z_slices();
+        if slices > MAX_SLICES {
+            return Err(IrmfError::ResourceLimit(format!(
+                "model requires {} slices; limit is {}",
+                slices, MAX_SLICES
+            )));
+        }
+        Ok(())
+    }
+
     /// Prepares the renderer for slicing in the X dimension.
     pub fn prepare_render_x(&mut self) -> IrmfResult<()> {
         let left = self.model.header.min[1];
@@ -148,6 +172,7 @@ impl<R: Renderer> Slicer<R> {
             new_width += 1;
             new_height += 1;
         }
+        self.check_render_size(new_width, new_height)?;
 
         self.renderer.init(new_width, new_height)?;
 
@@ -200,6 +225,7 @@ impl<R: Renderer> Slicer<R> {
             new_width += 1;
             new_height += 1;
         }
+        self.check_render_size(new_width, new_height)?;
 
         self.renderer.init(new_width, new_height)?;
 
@@ -252,6 +278,7 @@ impl<R: Renderer> Slicer<R> {
             new_width += 1;
             new_height += 1;
         }
+        self.check_render_size(new_width, new_height)?;
 
         self.renderer.init(new_width, new_height)?;
 
@@ -456,6 +483,16 @@ mod tests {
         slicer.prepare_render_z().unwrap();
         assert_eq!(slicer.renderer.width, 10);
         assert_eq!(slicer.renderer.height, 10);
+    }
+
+    #[test]
+    fn rejects_huge_render_size() {
+        let data = b"/*{\"irmf\":\"1.0\",\"materials\":[\"PLA\"],\"max\":[500000,500000,500000],\"min\":[-500000,-500000,-500000],\"units\":\"mm\"}*/\nvoid mainModel4(out vec4 materials, in vec3 xyz) { materials[0] = 1.0; }";
+        let model = IrmfModel::new(data).unwrap();
+        let renderer = MockRenderer::new();
+        let mut slicer = Slicer::new(model, renderer, 1.0, 1.0, 1.0);
+        let err = slicer.prepare_render_z().unwrap_err();
+        assert!(matches!(err, IrmfError::ResourceLimit(_)));
     }
 
     #[test]

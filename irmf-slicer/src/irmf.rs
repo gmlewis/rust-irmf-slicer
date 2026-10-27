@@ -8,6 +8,11 @@ use serde::{Deserialize, Serialize};
 use std::io::Read;
 use thiserror::Error;
 
+/// Limits applied to untrusted `.irmf` input.
+pub const MAX_IRMF_FILE_BYTES: usize = 64 << 20; // 64 MiB raw file
+pub const MAX_SHADER_BODY_BYTES: usize = 16 << 20; // 16 MiB decoded body
+pub const MAX_MODEL_EXTENT: f32 = 1_048_576.0; // model units along one axis
+
 /// Error type for IRMF operations.
 #[derive(Error, Debug)]
 pub enum IrmfError {
@@ -53,6 +58,9 @@ pub enum IrmfError {
     /// The header does not comply with the IRMF specification.
     #[error("IRMF spec compliance error: {0}")]
     HeaderSpecError(String),
+    /// The input exceeds a resource limit.
+    #[error("Resource limit exceeded: {0}")]
+    ResourceLimit(String),
 
     /// A general renderer error occurred.
     #[error("Renderer error: {0}")]
@@ -241,6 +249,13 @@ impl IrmfModel {
     /// The input data should contain the JSON header in a leading comment,
     /// followed by the shader payload.
     pub fn new(data: &[u8]) -> Result<Self, IrmfError> {
+        if data.len() > MAX_IRMF_FILE_BYTES {
+            return Err(IrmfError::ResourceLimit(format!(
+                "IRMF file is {} bytes; limit is {}",
+                data.len(),
+                MAX_IRMF_FILE_BYTES
+            )));
+        }
         let (header, shader_payload) = parse_header(data)?;
         let shader = decode_shader(&header, shader_payload)?;
 
@@ -315,10 +330,23 @@ impl IrmfModel {
         }
 
         for i in 0..3 {
+            if !self.header.min[i].is_finite() || !self.header.max[i].is_finite() {
+                return Err(IrmfError::InvalidMbb(format!(
+                    "min[{}] and max[{}] must be finite",
+                    i, i
+                )));
+            }
             if self.header.min[i] >= self.header.max[i] {
                 return Err(IrmfError::InvalidMbb(format!(
                     "min[{}] ({}) must be strictly less than max[{}] ({})",
                     i, self.header.min[i], i, self.header.max[i]
+                )));
+            }
+            let extent = self.header.max[i] - self.header.min[i];
+            if extent > MAX_MODEL_EXTENT {
+                return Err(IrmfError::InvalidMbb(format!(
+                    "extent on axis {} is {} (limit is {})",
+                    i, extent, MAX_MODEL_EXTENT
                 )));
             }
         }
@@ -387,16 +415,26 @@ fn parse_header(data: &[u8]) -> Result<(IrmfHeader, &[u8]), IrmfError> {
 }
 
 /// Decodes the shader payload based on the encoding specified in the header.
+/// Reads a shader from `reader`, refusing to decompress more than
+/// MAX_SHADER_BODY_BYTES. This bounds gzip bombs.
+fn read_shader_capped<R: Read>(reader: R) -> Result<String, IrmfError> {
+    let mut buf = Vec::new();
+    reader
+        .take(MAX_SHADER_BODY_BYTES as u64 + 1)
+        .read_to_end(&mut buf)
+        .map_err(IrmfError::IoError)?;
+    if buf.len() > MAX_SHADER_BODY_BYTES {
+        return Err(IrmfError::ResourceLimit(format!(
+            "decoded shader exceeds {} bytes",
+            MAX_SHADER_BODY_BYTES
+        )));
+    }
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
 fn decode_shader(header: &IrmfHeader, payload: &[u8]) -> Result<String, IrmfError> {
     match header.encoding.as_deref() {
-        Some("gzip") => {
-            let mut decoder = GzDecoder::new(payload);
-            let mut shader = String::new();
-            decoder
-                .read_to_string(&mut shader)
-                .map_err(IrmfError::IoError)?;
-            Ok(shader)
-        }
+        Some("gzip") => read_shader_capped(GzDecoder::new(payload)),
         Some("gzip+base64") => {
             // Remove all whitespace from base64 payload
             let payload_str = std::str::from_utf8(payload).unwrap_or("");
@@ -404,14 +442,18 @@ fn decode_shader(header: &IrmfHeader, payload: &[u8]) -> Result<String, IrmfErro
                 payload_str.chars().filter(|c| !c.is_whitespace()).collect();
             let decoded =
                 base64::engine::general_purpose::STANDARD_NO_PAD.decode(&cleaned_payload)?;
-            let mut decoder = GzDecoder::new(&decoded[..]);
-            let mut shader = String::new();
-            decoder
-                .read_to_string(&mut shader)
-                .map_err(IrmfError::IoError)?;
-            Ok(shader)
+            read_shader_capped(GzDecoder::new(&decoded[..]))
         }
-        None | Some("") => Ok(String::from_utf8_lossy(payload).into_owned()),
+        None | Some("") => {
+            if payload.len() > MAX_SHADER_BODY_BYTES {
+                return Err(IrmfError::ResourceLimit(format!(
+                    "shader body is {} bytes; limit is {}",
+                    payload.len(),
+                    MAX_SHADER_BODY_BYTES
+                )));
+            }
+            Ok(String::from_utf8_lossy(payload).into_owned())
+        }
         Some(enc) => Err(IrmfError::UnsupportedEncoding(enc.into())),
     }
 }

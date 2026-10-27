@@ -53,8 +53,8 @@ and here's an animation of the slices of the electromagnet:
   units: "mm",
 }*/
 
-#include "github.com/gmlewis/irmf-examples/blob/master/examples/012-bifilar-electromagnet/rotation.glsl"
-#include "github.com/gmlewis/irmf-examples/blob/master/examples/012-bifilar-electromagnet/primitives.glsl"
+#include "github.com/gmlewis/irmf-examples/blob/6bb268f05fbe1c68a68ec1e66ce4c5d335bdf021/examples/012-bifilar-electromagnet/rotation.glsl"
+#include "github.com/gmlewis/irmf-examples/blob/6bb268f05fbe1c68a68ec1e66ce4c5d335bdf021/examples/012-bifilar-electromagnet/primitives.glsl"
 
 #define M_PI 3.1415926535897932384626433832795
 
@@ -512,8 +512,8 @@ axial direction!
   units: "mm",
 }*/
 
-#include "github.com/gmlewis/irmf-examples/blob/master/examples/012-bifilar-electromagnet/rotation.glsl"
-#include "github.com/gmlewis/irmf-examples/blob/master/examples/012-bifilar-electromagnet/primitives.glsl"
+#include "github.com/gmlewis/irmf-examples/blob/6bb268f05fbe1c68a68ec1e66ce4c5d335bdf021/examples/012-bifilar-electromagnet/rotation.glsl"
+#include "github.com/gmlewis/irmf-examples/blob/6bb268f05fbe1c68a68ec1e66ce4c5d335bdf021/examples/012-bifilar-electromagnet/primitives.glsl"
 
 #define M_PI 3.1415926535897932384626433832795
 
@@ -947,8 +947,8 @@ Here is the full model only showing the metal:
   units: "mm",
 }*/
 
-#include "github.com/gmlewis/irmf-examples/blob/master/examples/012-bifilar-electromagnet/rotation.glsl"
-#include "github.com/gmlewis/irmf-examples/blob/master/examples/012-bifilar-electromagnet/primitives.glsl"
+#include "github.com/gmlewis/irmf-examples/blob/6bb268f05fbe1c68a68ec1e66ce4c5d335bdf021/examples/012-bifilar-electromagnet/rotation.glsl"
+#include "github.com/gmlewis/irmf-examples/blob/6bb268f05fbe1c68a68ec1e66ce4c5d335bdf021/examples/012-bifilar-electromagnet/primitives.glsl"
 
 #define M_PI 3.1415926535897932384626433832795
 
@@ -1385,8 +1385,8 @@ Here is the full model with metal and dielectric:
   units: "mm",
 }*/
 
-#include "github.com/gmlewis/irmf-examples/blob/master/examples/012-bifilar-electromagnet/rotation.glsl"
-#include "github.com/gmlewis/irmf-examples/blob/master/examples/012-bifilar-electromagnet/primitives.glsl"
+#include "github.com/gmlewis/irmf-examples/blob/6bb268f05fbe1c68a68ec1e66ce4c5d335bdf021/examples/012-bifilar-electromagnet/rotation.glsl"
+#include "github.com/gmlewis/irmf-examples/blob/6bb268f05fbe1c68a68ec1e66ce4c5d335bdf021/examples/012-bifilar-electromagnet/primitives.glsl"
 
 #define M_PI 3.1415926535897932384626433832795
 
@@ -1823,8 +1823,8 @@ Here is the full model with metal, dielectric, and solid core:
   units: "mm",
 }*/
 
-#include "github.com/gmlewis/irmf-examples/blob/master/examples/012-bifilar-electromagnet/rotation.glsl"
-#include "github.com/gmlewis/irmf-examples/blob/master/examples/012-bifilar-electromagnet/primitives.glsl"
+#include "github.com/gmlewis/irmf-examples/blob/6bb268f05fbe1c68a68ec1e66ce4c5d335bdf021/examples/012-bifilar-electromagnet/rotation.glsl"
+#include "github.com/gmlewis/irmf-examples/blob/6bb268f05fbe1c68a68ec1e66ce4c5d335bdf021/examples/012-bifilar-electromagnet/primitives.glsl"
 
 #define M_PI 3.1415926535897932384626433832795
 
@@ -2269,8 +2269,8 @@ Here is the same model, rotated to the horizontal:
   units: "mm",
 }*/
 
-#include "github.com/gmlewis/irmf-examples/blob/master/examples/012-bifilar-electromagnet/rotation.glsl"
-#include "github.com/gmlewis/irmf-examples/blob/master/examples/012-bifilar-electromagnet/primitives.glsl"
+#include "github.com/gmlewis/irmf-examples/blob/6bb268f05fbe1c68a68ec1e66ce4c5d335bdf021/examples/012-bifilar-electromagnet/rotation.glsl"
+#include "github.com/gmlewis/irmf-examples/blob/6bb268f05fbe1c68a68ec1e66ce4c5d335bdf021/examples/012-bifilar-electromagnet/primitives.glsl"
 
 #define M_PI 3.1415926535897932384626433832795
 

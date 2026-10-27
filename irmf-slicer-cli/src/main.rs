@@ -97,6 +97,12 @@ struct Args {
     #[arg(long)]
     tsl_cache_dir: Option<String>,
 
+    /// Allow #include directives to fetch shader code from lygia.xyz or
+    /// raw.githubusercontent.com. Remote includes are executable code fetched
+    /// at load time, so only use this with models you trust.
+    #[arg(long)]
+    remote_includes: bool,
+
     /// Input IRMF files
     #[arg(required = true)]
     files: Vec<PathBuf>,
@@ -193,18 +199,33 @@ async fn main() -> anyhow::Result<()> {
         let mut model = irmf_slicer::IrmfModel::new(&data)
             .map_err(|e| anyhow::anyhow!("IrmfModel::new: {}", e))?;
 
-        #[cfg(feature = "remote-includes")]
-        {
-            println!("Resolving includes for {}...", file_path.display());
-            model.shader = irmf_include_resolver::resolve_includes(&model.shader)
-                .await
-                .map_err(|e| anyhow::anyhow!("resolve_includes: {}", e))?;
-        }
-        #[cfg(not(feature = "remote-includes"))]
-        {
-            if model.shader.contains("#include") {
-                eprintln!(
-                    "Warning: Shader contains #include but 'remote-includes' feature is disabled."
+        if irmf_include_resolver::has_include_directive(&model.shader) {
+            let language = model.header.language.as_deref().unwrap_or("glsl");
+            if language == "tsl" {
+                anyhow::bail!(
+                    "{}: TSL bodies must not contain #include; inline the included code",
+                    file_path.display()
+                );
+            }
+            if !args.remote_includes {
+                anyhow::bail!(
+                    "{}: shader contains #include but remote includes are disabled; \
+                     pass --remote-includes to fetch them, or inline the included code",
+                    file_path.display()
+                );
+            }
+            #[cfg(feature = "remote-includes")]
+            {
+                println!("Resolving includes for {}...", file_path.display());
+                model.shader = irmf_include_resolver::resolve_includes(&model.shader)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("resolve_includes: {}", e))?;
+            }
+            #[cfg(not(feature = "remote-includes"))]
+            {
+                anyhow::bail!(
+                    "{}: this build was compiled without the 'remote-includes' feature",
+                    file_path.display()
                 );
             }
         }
@@ -219,7 +240,8 @@ async fn main() -> anyhow::Result<()> {
             irmf_slicer::Slicer::new(model, renderer, x_res as f32, y_res as f32, z_res as f32);
 
         for material_num in 1..=slicer.model.header.materials.len() {
-            let material_name = slicer.model.header.materials[material_num - 1].replace(" ", "-");
+            let material_name =
+                safe_material_name(&slicer.model.header.materials[material_num - 1]);
 
             slicer
                 .prepare_render_z()
@@ -368,4 +390,73 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Converts an untrusted material name into a safe filename component.
+///
+/// Material names come from the IRMF header. Without sanitizing, a name
+/// containing "/" or ".." would change the output path, and control
+/// characters could spoof terminal output or the filesystem.
+fn safe_material_name(name: &str) -> String {
+    // Keep printable Unicode (letters, digits, combining marks, CJK,
+    // punctuation) so material names in any language remain usable, but never
+    // path separators, control characters, or characters invalid on common
+    // filesystems.
+    let mut out = String::new();
+    let mut last_dash = false;
+    for c in name.chars() {
+        let safe = !c.is_control()
+            && !c.is_whitespace()
+            && c != '\0'
+            && !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|');
+        if safe {
+            out.push(c);
+            last_dash = false;
+        } else if !last_dash {
+            out.push('-');
+            last_dash = true;
+        }
+    }
+    out = out.trim_matches(['.', '-', '_']).to_string();
+    if out.is_empty() {
+        out.push_str("material");
+    }
+    // Cap by characters (never splitting a UTF-8 sequence) and by bytes.
+    if out.chars().count() > 64 {
+        out = out.chars().take(64).collect();
+    }
+    while out.len() > 200 {
+        out.pop();
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::safe_material_name;
+
+    #[test]
+    fn sanitizes_material_names() {
+        assert_eq!(safe_material_name("AISI 1018 steel"), "AISI-1018-steel");
+        assert_eq!(
+            safe_material_name("../../.ssh/authorized_keys"),
+            "ssh-authorized_keys"
+        );
+        assert_eq!(safe_material_name("PLA"), "PLA");
+        assert_eq!(safe_material_name(""), "material");
+        assert_eq!(safe_material_name(".."), "material");
+        assert_eq!(safe_material_name(&"x".repeat(200)).len(), 64);
+        assert!(!safe_material_name("a/b").contains('/'));
+        assert!(!safe_material_name("a\nb").contains('\n'));
+        // Unicode is preserved.
+        assert_eq!(safe_material_name("日本語 PLA"), "日本語-PLA");
+        assert_eq!(safe_material_name("AISI 1018 钢"), "AISI-1018-钢");
+        assert_eq!(safe_material_name("naïve"), "naïve");
+        assert_eq!(safe_material_name("PLA·金属"), "PLA·金属");
+        for input in ["日".repeat(100), "😀".repeat(100)] {
+            let out = safe_material_name(&input);
+            assert!(out.len() <= 200);
+            assert!(std::str::from_utf8(out.as_bytes()).is_ok());
+        }
+    }
 }

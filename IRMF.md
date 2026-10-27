@@ -249,7 +249,19 @@ Every canonical example in
 [irmf-examples](https://github.com/gmlewis/irmf-examples) is provided in all
 three languages (`<base>.irmf`, `<base>-wgsl.irmf`, `<base>-tsl.irmf`).
 
-Please see the [IRMF Spec](spec) and [provided examples](#examples).
+### Security
+
+An IRMF file is executable code. TSL is JavaScript; GLSL and WGSL are compiled
+by the GPU driver. Consumers must treat untrusted models as untrusted code:
+run TSL in a sandbox (no network, filesystem, host environment, or unbounded
+time/memory), require explicit per-source consent before running remote TSL,
+never expand `#include` in a TSL body, and leave network includes disabled by
+default. Encrypted bodies (`encoding: "gpg"`) hide code from review and are not
+a trust boundary. Header strings (material names, titles, notes) are
+display-only data and must never be interpreted as HTML or used as raw
+filenames.
+
+Please see the [IRMF Spec](IRMF-spec.md) and [provided examples](#examples).
 
 ## Examples
 

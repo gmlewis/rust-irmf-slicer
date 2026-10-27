@@ -1,11 +1,15 @@
 use clap::Parser;
-use irmf_include_resolver::resolve_includes;
+use irmf_include_resolver::{has_include_directive, resolve_includes};
 use irmf_slicer::{IrmfModel, Renderer, WgpuRenderer};
 use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    /// Allow #include directives to fetch shader code from the network
+    #[arg(long)]
+    remote_includes: bool,
+
     /// IRMF files to lint
     files: Vec<PathBuf>,
 }
@@ -42,15 +46,36 @@ async fn main() -> anyhow::Result<()> {
             }
         };
 
-        // Resolve includes
-        model.shader = match resolve_includes(&model.shader).await {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Error resolving includes in {}: {}", file.display(), e);
+        // Resolve includes only when the caller explicitly opts in. TSL is
+        // JavaScript, so an #include there would be remote code execution.
+        if has_include_directive(&model.shader) {
+            let language = model.header.language.as_deref().unwrap_or("glsl");
+            if language == "tsl" {
+                eprintln!(
+                    "Error: {}: TSL bodies must not contain #include; inline the included code",
+                    file.display()
+                );
                 exit_code = 1;
                 continue;
             }
-        };
+            if !cli.remote_includes {
+                eprintln!(
+                    "Error: {}: shader contains #include but remote includes are disabled; \
+                     pass --remote-includes or inline the included code",
+                    file.display()
+                );
+                exit_code = 1;
+                continue;
+            }
+            model.shader = match resolve_includes(&model.shader).await {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Error resolving includes in {}: {}", file.display(), e);
+                    exit_code = 1;
+                    continue;
+                }
+            };
+        }
 
         let mut renderer = match WgpuRenderer::new().await {
             Ok(r) => r,

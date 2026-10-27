@@ -55,7 +55,11 @@ async fn main() -> Result<()> {
     let mut archive = zip::ZipArchive::new(file)?;
 
     let mut slices = Vec::new();
-    let mut file_names: Vec<String> = archive.file_names().map(|s| s.to_string()).collect();
+    let mut file_names: Vec<String> = archive
+        .file_names()
+        .filter_map(Result::ok)
+        .map(|s| s.to_string())
+        .collect();
     file_names.sort();
 
     for name in file_names {

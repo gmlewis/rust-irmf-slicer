@@ -4,7 +4,7 @@ use chrono::{Datelike, Local, Timelike};
 use irmf_slicer::{DynamicImage, IrmfError, IrmfResult, Renderer, Slicer};
 use std::fs::File;
 use std::io::Write;
-use zip::write::FileOptions;
+use zip::write::SimpleFileOptions;
 
 /// Slices the model and saves the result as an SVX file.
 ///
@@ -46,7 +46,7 @@ where
     )
     .map_err(|_| IrmfError::IoError(std::io::Error::other("Invalid current local time for SVX")))?;
 
-    let options = FileOptions::<()>::default().last_modified_time(dt);
+    let options = SimpleFileOptions::default().last_modified_time(dt);
 
     // 1. Write Manifest
     zip.start_file("manifest.xml", options)

@@ -21,13 +21,13 @@ members = [
 ]
 
 [workspace.package]
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 authors = ["Glenn M. Lewis"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/gmlewis/rust-irmf-slicer"
 homepage = "https://irmf.io"
-rust-version = "1.85.0"
+rust-version = "1.88.0"
 description = "A slicer for IRMF (Infinite Resolution Materials Format) files"
 readme = "README.md"
 keywords = ["slicer", "irmf", "3d-printing", "3d-modeling", "cad"]

@@ -187,14 +187,14 @@ Using the `--binvox` option, it will write one `.binvox` file per model material
 
 ### Installation
 
-After you have a recent version of [Rust](https://rustup.rs/) installed,
+After you have [Rust](https://rustup.rs/) 1.88 or newer installed,
 run the following command in a terminal window:
 
 ```sh
 $ cargo install --path irmf-slicer-cli
 ```
 
-(Or `$ cargo install irmf-slicer` if you are installing from [crates.io](https://crates.io).)
+(Or `$ cargo install irmf-slicer-cli` if you are installing from [crates.io](https://crates.io).)
 
 ### Examples
 

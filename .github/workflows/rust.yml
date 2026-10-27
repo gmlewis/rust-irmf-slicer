@@ -34,3 +34,23 @@ jobs:
 
       - name: Run tests
         run: ./scripts/test-all.sh
+
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # Composite action (no Node runtime); installs a prebuilt cargo-audit.
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      # Scans Cargo.lock against the RustSec advisory database. Vulnerability
+      # advisories fail the job; unmaintained-advisory warnings do not.
+      - name: Audit dependencies
+        run: cargo audit

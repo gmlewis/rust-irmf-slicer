@@ -79,7 +79,17 @@ fn http_client() -> Result<Client, ResolverError> {
         .map_err(ResolverError::NetworkError)
 }
 
-/// Resolves `#include` directives in the given shader source.
+/// Options for include resolution.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct IncludeOptions {
+    /// Accept GitHub includes that name a branch or tag instead of a 40-hex
+    /// commit. Less reproducible: the included code can change after review.
+    /// Off by default; only enable on an explicit operator request.
+    pub allow_mutable: bool,
+}
+
+/// Resolves `#include` directives in the given shader source, requiring pinned
+/// commits for GitHub URLs.
 ///
 /// Currently supports:
 /// - `lygia.xyz/` or `lygia/` prefix (maps to `https://lygia.xyz`)
@@ -89,6 +99,14 @@ fn http_client() -> Result<Client, ResolverError> {
 /// silently dropping the include would produce a shader that differs from the
 /// author's intent.
 pub async fn resolve_includes(source: &str) -> Result<String, ResolverError> {
+    resolve_includes_with_options(source, IncludeOptions::default()).await
+}
+
+/// Resolves `#include` directives using explicit options.
+pub async fn resolve_includes_with_options(
+    source: &str,
+    options: IncludeOptions,
+) -> Result<String, ResolverError> {
     let client = http_client()?;
     let mut resolved_source = String::new();
     let include_re = Regex::new("^#include\\s+\"([^\"]+)\"").unwrap();
@@ -98,12 +116,21 @@ pub async fn resolve_includes(source: &str) -> Result<String, ResolverError> {
         let trimmed = line.trim();
         if let Some(caps) = include_re.captures(trimmed) {
             let inc = &caps[1];
-            let url = parse_include_url(inc).ok_or_else(|| {
-                ResolverError::DisallowedUrl(format!(
-                    "unsupported or unpinned include: {:?}",
-                    inc.escape_debug().to_string()
-                ))
-            })?;
+            let url =
+                parse_include_url_with_options(inc, options.allow_mutable).ok_or_else(|| {
+                    let hint = if options.allow_mutable {
+                        ""
+                    } else {
+                        " (pass --allow-mutable-includes to accept a branch or tag)"
+                    };
+                    ResolverError::DisallowedUrl(format!(
+                        "unsupported or unpinned include: {:?}{hint}",
+                        inc.escape_debug().to_string()
+                    ))
+                })?;
+            if options.allow_mutable && parse_include_url(inc).is_none() {
+                println!("WARNING: fetching mutable include: {:?}", url);
+            }
             if count >= MAX_INCLUDES {
                 return Err(ResolverError::TooManyIncludes(MAX_INCLUDES));
             }
@@ -120,8 +147,12 @@ pub async fn resolve_includes(source: &str) -> Result<String, ResolverError> {
     Ok(resolved_source)
 }
 
-/// Parses an include path into a full URL.
+/// Parses an include path into a full URL, requiring a pinned commit.
 fn parse_include_url(inc: &str) -> Option<String> {
+    parse_include_url_with_options(inc, false)
+}
+
+fn parse_include_url_with_options(inc: &str, allow_mutable: bool) -> Option<String> {
     if !inc.ends_with(".glsl") && !inc.ends_with(".wgsl") {
         return None;
     }
@@ -134,9 +165,24 @@ fn parse_include_url(inc: &str) -> Option<String> {
     } else if let Some(stripped) = inc.strip_prefix("lygia/") {
         Some(format!("{}/{}", LYGIA_BASE_URL, stripped))
     } else if let Some(stripped) = inc.strip_prefix("github.com/") {
-        // Require an immutable commit hash. A branch or tag can be moved by
+        // Prefer an immutable commit hash. A branch or tag can be moved by
         // the repository owner, silently changing the code a model executes.
-        let caps = github_include_re().captures(stripped)?;
+        if let Some(caps) = github_include_re().captures(stripped) {
+            if !safe_ref_and_path(&caps[3], &caps[4]) {
+                return None;
+            }
+            return Some(format!(
+                "{}{}/{}/{}/{}",
+                GITHUB_RAW_PREFIX, &caps[1], &caps[2], &caps[3], &caps[4]
+            ));
+        }
+        if !allow_mutable {
+            return None;
+        }
+        let caps = github_mutable_include_re().captures(stripped)?;
+        if !safe_ref_and_path(&caps[3], &caps[4]) {
+            return None;
+        }
         Some(format!(
             "{}{}/{}/{}/{}",
             GITHUB_RAW_PREFIX, &caps[1], &caps[2], &caps[3], &caps[4]
@@ -151,6 +197,33 @@ fn github_include_re() -> &'static Regex {
     RE.get_or_init(|| {
         Regex::new(r"^([^/]+)/([^/]+)/(?:(?:blob|raw)/)?([0-9a-fA-F]{40})/(.+)$").unwrap()
     })
+}
+
+fn github_mutable_include_re() -> &'static Regex {
+    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"^([^/]+)/([^/]+)/(?:blob|raw)/([^/]+)/(.+)$").unwrap())
+}
+
+/// Rejects refs and paths that would change the constructed URL or traverse
+/// the fetched path.
+fn safe_ref_and_path(reference: &str, path: &str) -> bool {
+    if reference.is_empty()
+        || reference == "."
+        || reference == ".."
+        || reference.contains("..")
+        || reference
+            .chars()
+            .any(|c| matches!(c, '\\' | '?' | '#' | '%'))
+    {
+        return false;
+    }
+    if path
+        .chars()
+        .any(|c| matches!(c, '\\' | '?' | '#' | '%') || c.is_control() || c.is_whitespace())
+    {
+        return false;
+    }
+    !path.split('/').any(|part| part == "." || part == "..")
 }
 
 /// Fetches the content of an allowlisted HTTPS URL with a size cap.
@@ -224,9 +297,28 @@ mod tests {
     fn rejects_other_paths_and_extensions() {
         assert!(parse_include_url("/etc/passwd").is_none());
         assert!(parse_include_url("lygia/x.txt").is_none());
-        // Branches and tags are mutable, so they are not accepted.
+        // Branches and tags are mutable, so they are not accepted by default.
         assert!(parse_include_url("github.com/user/repo/blob/main/x.wgsl").is_none());
         assert!(parse_include_url("github.com/user/repo/blob/v1.0.0/x.wgsl").is_none());
+    }
+
+    #[test]
+    fn mutable_refs_require_an_explicit_opt_in() {
+        assert_eq!(
+            parse_include_url_with_options("github.com/user/repo/blob/main/x.wgsl", true)
+                .as_deref(),
+            Some("https://raw.githubusercontent.com/user/repo/main/x.wgsl")
+        );
+        // Traversal and URL-injection attempts stay rejected even with the
+        // opt-in enabled.
+        assert!(
+            parse_include_url_with_options("github.com/user/repo/blob/main/../../x.wgsl", true)
+                .is_none()
+        );
+        assert!(
+            parse_include_url_with_options("github.com/user/repo/blob/main/x.wgsl?raw=1", true)
+                .is_none()
+        );
     }
 
     #[test]

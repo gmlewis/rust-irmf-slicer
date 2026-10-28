@@ -1,5 +1,5 @@
 use clap::Parser;
-use irmf_include_resolver::{has_include_directive, resolve_includes};
+use irmf_include_resolver::has_include_directive;
 use irmf_slicer::{IrmfModel, Renderer, WgpuRenderer};
 use std::path::PathBuf;
 
@@ -10,6 +10,10 @@ struct Cli {
     #[arg(long)]
     remote_includes: bool,
 
+    /// Allow GitHub includes that name a branch or tag instead of a commit
+    #[arg(long)]
+    allow_mutable_includes: bool,
+
     /// IRMF files to lint
     files: Vec<PathBuf>,
 }
@@ -17,6 +21,10 @@ struct Cli {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+
+    if cli.allow_mutable_includes && !cli.remote_includes {
+        anyhow::bail!("--allow-mutable-includes requires --remote-includes");
+    }
 
     let mut exit_code = 0;
 
@@ -67,14 +75,20 @@ async fn main() -> anyhow::Result<()> {
                 exit_code = 1;
                 continue;
             }
-            model.shader = match resolve_includes(&model.shader).await {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("Error resolving includes in {}: {}", file.display(), e);
-                    exit_code = 1;
-                    continue;
-                }
+            let options = irmf_include_resolver::IncludeOptions {
+                allow_mutable: cli.allow_mutable_includes,
             };
+            model.shader =
+                match irmf_include_resolver::resolve_includes_with_options(&model.shader, options)
+                    .await
+                {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("Error resolving includes in {}: {}", file.display(), e);
+                        exit_code = 1;
+                        continue;
+                    }
+                };
         }
 
         let mut renderer = match WgpuRenderer::new().await {

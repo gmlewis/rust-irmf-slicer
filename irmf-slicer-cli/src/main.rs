@@ -103,6 +103,11 @@ struct Args {
     #[arg(long)]
     remote_includes: bool,
 
+    /// Allow GitHub includes that name a branch or tag instead of a commit.
+    /// Requires --remote-includes and is less reproducible.
+    #[arg(long)]
+    allow_mutable_includes: bool,
+
     /// Input IRMF files
     #[arg(required = true)]
     files: Vec<PathBuf>,
@@ -161,6 +166,10 @@ impl Viewer {
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
+    if args.allow_mutable_includes && !args.remote_includes {
+        anyhow::bail!("--allow-mutable-includes requires --remote-includes");
+    }
+
     if let Some(ref path) = args.tsl_compiler {
         irmf_slicer::tsl_compiler::set_tsl_compiler(path.clone());
     }
@@ -214,12 +223,22 @@ async fn main() -> anyhow::Result<()> {
                     file_path.display()
                 );
             }
+            if args.allow_mutable_includes {
+                eprintln!(
+                    "WARNING: --allow-mutable-includes accepts branch/tag includes, \
+                     which can change after review."
+                );
+            }
             #[cfg(feature = "remote-includes")]
             {
                 println!("Resolving includes for {}...", file_path.display());
-                model.shader = irmf_include_resolver::resolve_includes(&model.shader)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("resolve_includes: {}", e))?;
+                let options = irmf_include_resolver::IncludeOptions {
+                    allow_mutable: args.allow_mutable_includes,
+                };
+                model.shader =
+                    irmf_include_resolver::resolve_includes_with_options(&model.shader, options)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("resolve_includes: {}", e))?;
             }
             #[cfg(not(feature = "remote-includes"))]
             {
